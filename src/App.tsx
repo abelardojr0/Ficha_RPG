@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   MAX_POWER_GRADUATION_LIMIT,
   MAX_POWER_GRADUATION_RULE,
@@ -12,6 +12,29 @@ type Dice = "D4" | "D6" | "D8" | "D10" | "D12";
 type CombatDice = "-" | Dice;
 type Naipe = "Espadas" | "Ouros" | "Paus" | "Copas" | "";
 type VantagemCategoria = "Combate" | "Pericia" | "Sorte" | "Geral" | "Eter";
+type DesvantagemCategoria =
+  | "Combate"
+  | "Eter"
+  | "Comportamental"
+  | "Fisica"
+  | "Psicologica"
+  | "Condicao";
+type DesvantagemNivel = "Leve" | "Moderada" | "Severa";
+type ResistancePowerSource =
+  | ""
+  | "Protecao"
+  | "Campo de Forca"
+  | "Blindagem"
+  | "Conversao";
+
+type Atributo =
+  | "Forca"
+  | "Agilidade"
+  | "Tecnica"
+  | "Intelecto"
+  | "Presenca"
+  | "Vontade"
+  | "Constituicao";
 
 type CharacterAdvantage = {
   id: string;
@@ -20,7 +43,54 @@ type CharacterAdvantage = {
   categoria: VantagemCategoria;
   graduacao: number;
   temGraduacao: boolean;
+  custoPorGraduacao: number;
+  resumo: string;
   efeito: string;
+};
+
+type AdvantageDefinition = {
+  id: string;
+  nome: string;
+  categoria: VantagemCategoria;
+  temGraduacao: boolean;
+  custoPorGraduacao: number;
+  resumo: string;
+  efeito: string;
+};
+
+type CharacterDisadvantage = {
+  id: string;
+  catalogId: string;
+  nome: string;
+  categoria: DesvantagemCategoria;
+  nivel: DesvantagemNivel;
+  graduacao: number;
+  temGraduacao: boolean;
+  ppPorGraduacao: number;
+  resumo: string;
+  efeito: string;
+};
+
+type DisadvantageDefinition = {
+  id: string;
+  nome: string;
+  categoria: DesvantagemCategoria;
+  nivel: DesvantagemNivel;
+  temGraduacao: boolean;
+  ppPorGraduacao: number;
+  resumo: string;
+  efeito: string;
+};
+
+type BasicTechniqueDefinition = {
+  nome: string;
+  tipo: string;
+  custoPPPorGraduacao: number;
+  acao: string;
+  duracao: string;
+  basePE: number;
+  descricao: string;
+  limitacoes: string;
 };
 
 type CharacterPower = {
@@ -41,12 +111,11 @@ type CharacterSheet = {
   naipe: Naipe;
   carga: string;
   mov: string;
-  atributos: Record<string, Dice>;
+  atributos: Record<Atributo, Dice>;
   combate: {
     ataqueCac: CombatDice;
     disparo: CombatDice;
-    resistenciaComprada: string;
-    resistenciaPoderes: string;
+    resistenciaPoderFonte: ResistancePowerSource;
     defesa: string;
   };
   pericias: Record<string, string>;
@@ -54,19 +123,47 @@ type CharacterSheet = {
     area: string;
     graduacoes: string;
   }>;
-  manipulacoes: Record<
-    string,
-    {
-      graduacao: string;
-      custo: string;
-    }
-  >;
+  tecnicasBasicas: Record<string, { graduacao: string }>;
   vantagens: CharacterAdvantage[];
+  desvantagens: CharacterDisadvantage[];
   poderes: CharacterPower[];
   equipamentos: string;
 };
 
-const TOTAL_PP = 160;
+type EditorTabId =
+  | "identidade"
+  | "base"
+  | "pericias"
+  | "tecnicas"
+  | "vantagens"
+  | "desvantagens"
+  | "poderes"
+  | "equipamentos";
+
+type EditorTabDefinition = {
+  id: EditorTabId;
+  label: string;
+  descricao: string;
+};
+
+type SheetSummary = {
+  id: string;
+  nome: string;
+  nivel: string;
+  jogador: string;
+  updatedAt: string;
+};
+
+const TOTAL_PP = 180;
+const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL?.trim() ||
+  "https://ficha-rpg-server.onrender.com/api"
+).replace(/\/$/, "");
+const HOME_ROUTE = "/";
+const CREATE_SHEET_ROUTE = "/criar-ficha";
+
+const getScreenFromPathname = (pathname: string): "home" | "editor" =>
+  pathname === CREATE_SHEET_ROUTE ? "editor" : "home";
 
 const ATRIBUTOS = [
   "Forca",
@@ -74,23 +171,26 @@ const ATRIBUTOS = [
   "Tecnica",
   "Intelecto",
   "Presenca",
-  "Percepcao",
+  "Vontade",
   "Constituicao",
-] as const;
+] as const satisfies readonly Atributo[];
 
 const PERICIAS = [
   "Acrobacia",
+  "Analise de Eter",
   "Atletismo",
-  "Entendimento do Eter",
+  "Concentracao",
+  "Controle de Eter",
+  "Enganacao",
   "Furtividade",
   "Intimidacao",
   "Intuicao",
   "Investigacao",
+  "Ladinagem",
   "Medicina",
   "Percepcao",
   "Persuasao",
   "Sobrevivencia",
-  "Tecnologia",
 ] as const;
 
 const VANTAGEM_CATEGORIAS: VantagemCategoria[] = [
@@ -101,104 +201,136 @@ const VANTAGEM_CATEGORIAS: VantagemCategoria[] = [
   "Eter",
 ];
 
-const VANTAGENS_CATALOGO = [
+const DESVANTAGEM_CATEGORIAS: DesvantagemCategoria[] = [
+  "Combate",
+  "Eter",
+  "Comportamental",
+  "Fisica",
+  "Psicologica",
+  "Condicao",
+];
+
+const DESVANTAGEM_PP_POR_NIVEL: Record<DesvantagemNivel, number> = {
+  Leve: 1,
+  Moderada: 2,
+  Severa: 4,
+};
+
+const DESVANTAGENS_MAX_PP = 10;
+const DESVANTAGENS_MAX_SEVERAS = 1;
+const DESVANTAGENS_MAX_LEVES = 6;
+
+const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
   {
     id: "acao-em-movimento",
     nome: "Acao em Movimento",
     categoria: "Combate",
     temGraduacao: false,
-    efeito: "Permite mover-se antes e depois da acao principal.",
+    custoPorGraduacao: 3,
+    resumo: "Divide deslocamento antes e depois de atacar.",
+    efeito: "Permite dividir o deslocamento antes e depois de atacar.",
   },
   {
     id: "ataque-poderoso",
     nome: "Ataque Poderoso",
     categoria: "Combate",
     temGraduacao: false,
-    efeito: "Troca ate -5 no ataque por +5 no dano.",
+    custoPorGraduacao: 3,
+    resumo: "-3 no ataque para +3 no dano.",
+    efeito: "Sofre -3 no ataque para receber +3 no dano.",
   },
   {
     id: "ataque-defensivo",
     nome: "Ataque Defensivo",
     categoria: "Combate",
     temGraduacao: false,
+    custoPorGraduacao: 3,
+    resumo: "-3 no ataque para +3 em Defesa contra o proximo ataque.",
     efeito:
-      "Troca ate -5 no ataque por +5 em Defesa contra o proximo ataque recebido.",
+      "Sofre -3 no ataque para receber +3 em Defesa contra o proximo ataque.",
   },
   {
     id: "ataque-imprudente",
     nome: "Ataque Imprudente",
     categoria: "Combate",
     temGraduacao: false,
-    efeito: "Troca ate -5 em Defesa por +5 no ataque.",
+    custoPorGraduacao: 3,
+    resumo: "-3 em Defesa para +3 no ataque.",
+    efeito: "Sofre -3 em Defesa para receber +3 no ataque.",
   },
   {
     id: "critico-aprimorado",
     nome: "Critico Aprimorado",
     categoria: "Combate",
     temGraduacao: true,
+    custoPorGraduacao: 4,
+    resumo: "+1 no alcance critico por graduacao.",
     efeito: "Aumenta alcance critico em +1 por graduacao.",
   },
   {
-    id: "saque-rapido",
-    nome: "Saque Rapido",
+    id: "acuidade",
+    nome: "Acuidade",
     categoria: "Combate",
     temGraduacao: false,
-    efeito: "Sacar armas passa a ser acao livre.",
+    custoPorGraduacao: 3,
+    resumo: "Usa Agilidade no lugar de Forca para dano com armas leves.",
+    efeito:
+      "Permite usar Agilidade no lugar de Forca para dano com armas leves.",
   },
   {
     id: "iniciativa-aprimorada",
     nome: "Iniciativa Aprimorada",
     categoria: "Combate",
     temGraduacao: false,
+    custoPorGraduacao: 3,
+    resumo: "Compra duas cartas de iniciativa e escolhe uma.",
     efeito: "Compra duas cartas de iniciativa e escolhe uma.",
-  },
-  {
-    id: "esquiva-instintiva",
-    nome: "Esquiva Instintiva",
-    categoria: "Combate",
-    temGraduacao: false,
-    efeito: "Nao fica vulneravel quando surpreendido.",
   },
   {
     id: "ataque-domino",
     nome: "Ataque Domino",
     categoria: "Combate",
     temGraduacao: false,
-    efeito: "Apos derrotar um inimigo, pode atacar outro adjacente.",
+    custoPorGraduacao: 3,
+    resumo:
+      "Apos derrotar um inimigo, ataca outro adjacente (1 vez por turno).",
+    efeito:
+      "Apos derrotar um inimigo, pode atacar outro adjacente (1 vez por turno).",
   },
   {
     id: "mira-aprimorada",
     nome: "Mira Aprimorada",
     categoria: "Combate",
     temGraduacao: false,
-    efeito: "Dobra o bonus obtido ao usar Mirar.",
+    custoPorGraduacao: 2,
+    resumo: "A acao Mirar concede +3 no ataque.",
+    efeito: "A acao Mirar concede +3 no ataque.",
   },
   {
     id: "defesa-aprimorada",
     nome: "Defesa Aprimorada",
     categoria: "Combate",
     temGraduacao: false,
-    efeito: "Recebe +4 em Defesa ao usar a acao Defender.",
+    custoPorGraduacao: 3,
+    resumo: "A acao Defender concede +3 em Defesa.",
+    efeito: "A acao Defender concede +3 em Defesa.",
   },
   {
     id: "luta-no-chao",
     nome: "Luta no Chao",
     categoria: "Combate",
     temGraduacao: false,
+    custoPorGraduacao: 2,
+    resumo: "Nao sofre penalidades ao lutar caido.",
     efeito: "Nao sofre penalidades por lutar caido.",
-  },
-  {
-    id: "rolamento-defensivo",
-    nome: "Rolamento Defensivo",
-    categoria: "Combate",
-    temGraduacao: true,
-    efeito: "+1 Resistencia contra dano por graduacao.",
   },
   {
     id: "ataque-preciso",
     nome: "Ataque Preciso",
     categoria: "Combate",
     temGraduacao: false,
+    custoPorGraduacao: 2,
+    resumo: "Ignora cobertura leve e camuflagem.",
     efeito: "Ignora penalidades de cobertura ou camuflagem leve.",
   },
   {
@@ -206,13 +338,18 @@ const VANTAGENS_CATALOGO = [
     nome: "Arma Improvisada",
     categoria: "Combate",
     temGraduacao: false,
-    efeito: "Permite usar objetos como armas sem penalidade.",
+    custoPorGraduacao: 2,
+    resumo: "Objetos improvisados sem penalidade e com dano adequado.",
+    efeito:
+      "Objetos improvisados nao sofrem penalidade e causam dano adequado.",
   },
   {
     id: "maestria-em-arremesso",
     nome: "Maestria em Arremesso",
     categoria: "Combate",
     temGraduacao: true,
+    custoPorGraduacao: 2,
+    resumo: "+1 no dano com armas arremessadas por graduacao.",
     efeito: "+1 dano com armas arremessadas por graduacao.",
   },
   {
@@ -220,34 +357,37 @@ const VANTAGENS_CATALOGO = [
     nome: "Prender Arma",
     categoria: "Combate",
     temGraduacao: false,
-    efeito: "Permite tentar desarmar inimigo que falhe ataque.",
-  },
-  {
-    id: "quebrar-aprimorado",
-    nome: "Quebrar Aprimorado",
-    categoria: "Combate",
-    temGraduacao: false,
-    efeito: "Remove penalidade ao tentar quebrar objetos.",
-  },
-  {
-    id: "quebrar-arma",
-    nome: "Quebrar Arma",
-    categoria: "Combate",
-    temGraduacao: false,
-    efeito: "Permite atacar arma inimiga ao defender.",
+    custoPorGraduacao: 3,
+    resumo: "Pode tentar desarmar inimigo que falhe CaC.",
+    efeito: "Pode tentar desarmar inimigo que falhe ataque corpo a corpo.",
   },
   {
     id: "redirecionar",
     nome: "Redirecionar",
     categoria: "Combate",
     temGraduacao: false,
-    efeito: "Permite redirecionar ataque inimigo que falhe.",
+    custoPorGraduacao: 4,
+    resumo: "Redireciona ataque que falhe por 5+ (1 vez por turno).",
+    efeito: "Redireciona ataque que falhe por 5 ou mais (1 vez por turno).",
+  },
+  {
+    id: "adaptado",
+    nome: "Adaptado",
+    categoria: "Pericia",
+    temGraduacao: false,
+    custoPorGraduacao: 3,
+    resumo:
+      "Permite usar uma pericia com atributo diferente em casos justificados.",
+    efeito:
+      "Permite usar uma pericia com atributo diferente em situacoes justificadas.",
   },
   {
     id: "maestria-em-pericia",
     nome: "Maestria em Pericia",
     categoria: "Pericia",
     temGraduacao: false,
+    custoPorGraduacao: 3,
+    resumo: "Permite escolher 10 em testes mesmo sob pressao.",
     efeito: "Permite testes de rotina mesmo sob pressao.",
   },
   {
@@ -255,62 +395,86 @@ const VANTAGENS_CATALOGO = [
     nome: "Contatos",
     categoria: "Pericia",
     temGraduacao: false,
-    efeito: "Rede de contatos que fornece informacoes.",
+    custoPorGraduacao: 2,
+    resumo: "+2 em investigacoes sociais e menos tempo para informacoes.",
+    efeito:
+      "Concede +2 em investigacoes sociais e reduz tempo para obter informacoes.",
   },
   {
     id: "bem-informado",
     nome: "Bem Informado",
     categoria: "Pericia",
     temGraduacao: false,
-    efeito: "Pode saber informacoes sobre pessoas ou grupos.",
+    custoPorGraduacao: 2,
+    resumo:
+      "Permite obter informacoes relevantes sobre pessoas e organizacoes.",
+    efeito:
+      "Permite obter informacoes relevantes ao encontrar pessoas ou organizacoes.",
   },
   {
     id: "rastreador",
     nome: "Rastreador",
     categoria: "Pericia",
     temGraduacao: false,
-    efeito: "Usa Percepcao para seguir rastros.",
+    custoPorGraduacao: 2,
+    resumo: "Usa Percepcao para rastrear com +2 e ignora penalidades leves.",
+    efeito:
+      "Permite usar Percepcao para rastrear com +2 e ignorar penalidades leves.",
   },
   {
     id: "finta-agil",
     nome: "Finta Agil",
     categoria: "Pericia",
     temGraduacao: false,
-    efeito: "Usa Acrobacia para fintar em combate.",
+    custoPorGraduacao: 2,
+    resumo: "Permite usar Acrobacia para fintar em combate.",
+    efeito:
+      "Permite usar Acrobacia no lugar de Enganacao para fintas em combate.",
   },
   {
     id: "assustar",
     nome: "Assustar",
     categoria: "Pericia",
     temGraduacao: false,
-    efeito: "Usa Intimidacao para fintar inimigos.",
+    custoPorGraduacao: 2,
+    resumo: "Permite usar Intimidacao para fintas em combate.",
+    efeito: "Permite usar Intimidacao para realizar fintas em combate.",
   },
   {
     id: "faz-tudo",
     nome: "Faz-Tudo",
     categoria: "Pericia",
     temGraduacao: false,
-    efeito: "Permite usar pericias sem treinamento.",
+    custoPorGraduacao: 3,
+    resumo: "Usa pericias sem treinamento sem penalidade.",
+    efeito: "Permite usar pericias sem treinamento sem sofrer penalidade.",
   },
   {
     id: "ferramentas-improvisadas",
     nome: "Ferramentas Improvisadas",
     categoria: "Pericia",
     temGraduacao: false,
-    efeito: "Ignora penalidades por falta de ferramentas.",
+    custoPorGraduacao: 2,
+    resumo: "Ignora falta de ferramentas e recebe +1 em testes tecnicos.",
+    efeito:
+      "Ignora penalidades por falta de ferramentas e recebe +1 em testes tecnicos.",
   },
   {
     id: "idiomas",
     nome: "Idiomas",
     categoria: "Pericia",
     temGraduacao: true,
-    efeito: "Permite falar idiomas adicionais.",
+    custoPorGraduacao: 2,
+    resumo: "Cada graduacao concede um idioma adicional.",
+    efeito: "Cada graduacao concede um idioma adicional.",
   },
   {
     id: "inventor",
     nome: "Inventor",
     categoria: "Pericia",
     temGraduacao: false,
+    custoPorGraduacao: 3,
+    resumo: "Permite criar dispositivos tecnologicos temporarios.",
     efeito: "Permite criar dispositivos tecnologicos temporarios.",
   },
   {
@@ -318,27 +482,39 @@ const VANTAGENS_CATALOGO = [
     nome: "Empatia com Animais",
     categoria: "Pericia",
     temGraduacao: false,
-    efeito: "Permite interacao social com animais.",
+    custoPorGraduacao: 2,
+    resumo: "Permite interacao social com animais via Persuasao ou Intuicao.",
+    efeito:
+      "Permite interacao social com animais usando Persuasao ou Intuicao.",
   },
   {
     id: "zombar",
     nome: "Zombar",
     categoria: "Pericia",
     temGraduacao: false,
-    efeito: "Usa Enganacao para desmoralizar inimigos.",
+    custoPorGraduacao: 2,
+    resumo: "Enganacao causa -2 em testes do alvo ate o fim do proximo turno.",
+    efeito:
+      "Permite causar -2 em testes de um alvo com Enganacao (nao acumula).",
   },
   {
     id: "tontear",
     nome: "Tontear",
     categoria: "Pericia",
     temGraduacao: false,
-    efeito: "Pode atordoar inimigos com interacao.",
+    custoPorGraduacao: 3,
+    resumo:
+      "Intimidacao/Enganacao causa -2 em testes do alvo (1 vez por cena).",
+    efeito:
+      "Permite causar -2 em testes de um alvo com interacao social (1 vez por cena).",
   },
   {
     id: "sorte",
     nome: "Sorte",
     categoria: "Sorte",
     temGraduacao: false,
+    custoPorGraduacao: 2,
+    resumo: "Recebe +1 Pedra de Eter no inicio de cada sessao.",
     efeito: "+1 Pedra de Eter no inicio da sessao.",
   },
   {
@@ -346,13 +522,19 @@ const VANTAGENS_CATALOGO = [
     nome: "Esforco Supremo",
     categoria: "Sorte",
     temGraduacao: false,
-    efeito: "Gasta Pedra de Eter para tratar teste como 20.",
+    custoPorGraduacao: 4,
+    resumo:
+      "Gasta 1 Pedra de Eter para receber +10 em um teste (1 vez por cena).",
+    efeito:
+      "Gasta 1 Pedra de Eter para receber +10 em um teste (1 vez por cena).",
   },
   {
     id: "tomar-a-iniciativa",
     nome: "Tomar a Iniciativa",
     categoria: "Sorte",
     temGraduacao: false,
+    custoPorGraduacao: 2,
+    resumo: "Descarta carta de iniciativa abaixo de 5 e compra outra.",
     efeito: "Pode trocar carta de iniciativa abaixo de 5.",
   },
   {
@@ -360,48 +542,54 @@ const VANTAGENS_CATALOGO = [
     nome: "Sorte de Principiante",
     categoria: "Sorte",
     temGraduacao: false,
-    efeito: "Gasta Pedra de Eter para ganhar +5 em uma pericia.",
+    custoPorGraduacao: 3,
+    resumo: "Gasta 1 Pedra de Eter para +3 em teste de pericia.",
+    efeito: "Gasta 1 Pedra de Eter para receber +3 em um teste de pericia.",
   },
   {
     id: "inspirar",
     nome: "Inspirar",
     categoria: "Sorte",
     temGraduacao: false,
-    efeito: "Gasta Pedra de Eter para conceder bonus a aliados.",
-  },
-  {
-    id: "lideranca",
-    nome: "Lideranca",
-    categoria: "Sorte",
-    temGraduacao: false,
-    efeito: "Remove condicao negativa de um aliado.",
+    custoPorGraduacao: 3,
+    resumo: "Gasta 1 Pedra de Eter para conceder +2 em teste de um aliado.",
+    efeito: "Gasta 1 Pedra de Eter para conceder +2 em um teste de um aliado.",
   },
   {
     id: "beneficio",
     nome: "Beneficio",
     categoria: "Geral",
     temGraduacao: true,
-    efeito: "Concede recurso narrativo ou vantagem social.",
+    custoPorGraduacao: 2,
+    resumo: "Concede recurso narrativo ou social definido com o mestre.",
+    efeito: "Concede recurso narrativo ou social definido com o mestre.",
   },
   {
     id: "memoria-eidetica",
     nome: "Memoria Eidetica",
     categoria: "Geral",
     temGraduacao: false,
-    efeito: "+5 em testes para lembrar informacoes.",
+    custoPorGraduacao: 2,
+    resumo: "+3 em testes para lembrar informacoes.",
+    efeito: "+3 em testes para lembrar informacoes.",
   },
   {
     id: "destemido",
     nome: "Destemido",
     categoria: "Geral",
     temGraduacao: false,
-    efeito: "Imune a efeitos de medo.",
+    custoPorGraduacao: 3,
+    resumo: "+3 contra medo e ignora efeitos secundarios leves ao resistir.",
+    efeito:
+      "+3 em testes contra medo e ignora efeitos secundarios leves ao resistir.",
   },
   {
     id: "duro-de-matar",
     nome: "Duro de Matar",
     categoria: "Geral",
     temGraduacao: false,
+    custoPorGraduacao: 4,
+    resumo: "Estabiliza automaticamente ao atingir 0 Vida.",
     efeito: "Estabiliza automaticamente ao chegar a 0 Vida.",
   },
   {
@@ -409,27 +597,53 @@ const VANTAGENS_CATALOGO = [
     nome: "Interpor-se",
     categoria: "Geral",
     temGraduacao: false,
-    efeito: "Pode receber ataque no lugar de aliado.",
+    custoPorGraduacao: 3,
+    resumo: "Pode receber um ataque no lugar de um aliado (1 vez por rodada).",
+    efeito: "Pode receber um ataque no lugar de um aliado (1 vez por rodada).",
+  },
+  {
+    id: "lideranca",
+    nome: "Lideranca",
+    categoria: "Geral",
+    temGraduacao: false,
+    custoPorGraduacao: 3,
+    resumo: "Remove condicao negativa leve de um aliado (1 vez por cena).",
+    efeito: "Remove condicao negativa leve de um aliado (1 vez por cena).",
   },
   {
     id: "trabalho-em-equipe",
     nome: "Trabalho em Equipe",
     categoria: "Geral",
     temGraduacao: false,
-    efeito: "Concede +5 ao ajudar em testes de equipe.",
+    custoPorGraduacao: 2,
+    resumo: "Concede +2 ao ajudar em testes de equipe.",
+    efeito: "Concede +2 ao ajudar em testes de equipe.",
   },
   {
     id: "tolerancia-maior",
     nome: "Tolerancia Maior",
     categoria: "Geral",
     temGraduacao: false,
-    efeito: "+5 contra fadiga, frio, calor e ambientes extremos.",
+    custoPorGraduacao: 2,
+    resumo: "+2 contra condicoes ambientais adversas.",
+    efeito: "+2 em testes contra condicoes ambientais adversas.",
+  },
+  {
+    id: "recuperacao-rapida",
+    nome: "Recuperacao Rapida",
+    categoria: "Geral",
+    temGraduacao: false,
+    custoPorGraduacao: 3,
+    resumo: "Recebe +2 adicional sempre que for curado.",
+    efeito: "Recebe +2 adicional sempre que for curado.",
   },
   {
     id: "reserva-de-eter",
     nome: "Reserva de Eter",
     categoria: "Eter",
     temGraduacao: true,
+    custoPorGraduacao: 3,
+    resumo: "+5 no Eter maximo por graduacao.",
     efeito: "+5 Eter maximo por graduacao.",
   },
   {
@@ -437,46 +651,562 @@ const VANTAGENS_CATALOGO = [
     nome: "Tecnica Eficiente",
     categoria: "Eter",
     temGraduacao: false,
-    efeito: "Reduz custo de tecnicas em 1 Eter.",
+    custoPorGraduacao: 4,
+    resumo: "Reduz custo de tecnicas em 1 PE (minimo 2, 1 vez por turno).",
+    efeito: "Reduz custo de tecnicas em 1 PE (minimo 2, 1 vez por turno).",
   },
   {
     id: "controle-eter",
     nome: "Controle Eter",
     categoria: "Eter",
     temGraduacao: false,
-    efeito: "+1 em testes de Tecnica.",
+    custoPorGraduacao: 3,
+    resumo:
+      "+2 em testes de Tecnica para sustentar, manter ou estabilizar tecnicas.",
+    efeito:
+      "+2 em testes de Tecnica para sustentar, manter ou estabilizar tecnicas.",
   },
   {
     id: "pressao-de-eter",
     nome: "Pressao de Eter",
     categoria: "Eter",
     temGraduacao: false,
-    efeito: "Inimigos sofrem penalidade contra suas tecnicas.",
+    custoPorGraduacao: 4,
+    resumo: "Inimigos proximos sofrem -1 em resistencia contra suas tecnicas.",
+    efeito:
+      "Inimigos proximos sofrem -1 em resistencia contra suas tecnicas (nao acumula).",
   },
   {
     id: "deteccao-de-eter",
     nome: "Deteccao de Eter",
     categoria: "Eter",
     temGraduacao: false,
-    efeito: "+2 para perceber Eter.",
+    custoPorGraduacao: 3,
+    resumo: "+2 ao usar Foco e Campo para detectar Eter.",
+    efeito: "+2 ao usar Foco e Campo para detectar Eter e suas manifestacoes.",
   },
-] as const;
+  {
+    id: "fluxo-reservado",
+    nome: "Fluxo Reservado",
+    categoria: "Eter",
+    temGraduacao: false,
+    custoPorGraduacao: 3,
+    resumo: "Ao chegar a 0 PE, recupera 3 PE automaticamente (1 vez por cena).",
+    efeito: "Ao chegar a 0 PE, recupera 3 PE automaticamente (1 vez por cena).",
+  },
+];
 
-const PERICIA_INFO: Record<string, { atributo: string; uso: string }> = {
+const VANTAGEM_BY_ID = new Map(
+  VANTAGENS_CATALOGO.map((item) => [item.id, item]),
+);
+
+const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
+  {
+    id: "ataque-comprometido",
+    nome: "Ataque Comprometido",
+    categoria: "Combate",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Falha grave em ataque gera penalidade defensiva.",
+    efeito: "Errar ataque por 5+ causa -1 em Defesa ate o proximo turno.",
+  },
+  {
+    id: "defesa-instavel",
+    nome: "Defesa Instavel",
+    categoria: "Combate",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Sofrer dano relevante reduz Defesa temporariamente.",
+    efeito:
+      "Ao sofrer dano >= 8 ou critico, recebe -1 em Defesa ate o proximo turno.",
+  },
+  {
+    id: "postura-exposta",
+    nome: "Postura Exposta",
+    categoria: "Combate",
+    nivel: "Severa",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
+    resumo: "Perde bonus de Defesa sob pressao.",
+    efeito:
+      "Sob pressao, perde bonus ativos de Defesa (ate -3) ate o proximo turno.",
+  },
+  {
+    id: "precisao-reduzida",
+    nome: "Precisao Reduzida",
+    categoria: "Combate",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "-1 em testes de ataque.",
+    efeito: "Sofre -1 em todos os testes de ataque.",
+  },
+  {
+    id: "reacao-lenta",
+    nome: "Reacao Lenta",
+    categoria: "Combate",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "-2 em testes de reacao.",
+    efeito: "Sofre -2 em testes de reacao, esquiva e respostas defensivas.",
+  },
+  {
+    id: "colapso-sensivel",
+    nome: "Colapso Sensivel",
+    categoria: "Eter",
+    nivel: "Severa",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
+    resumo: "Ao zerar PE, fica Atordoado.",
+    efeito: "Ao chegar a 0 PE, fica Atordoado por 1 turno (1 vez por cena).",
+  },
+  {
+    id: "corpo-incompativel",
+    nome: "Corpo Incompativel",
+    categoria: "Eter",
+    nivel: "Severa",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
+    resumo: "Penalidade ao usar tecnicas intensas.",
+    efeito:
+      "Ao usar tecnica com custo >= 4 PE, sofre -1 em Tecnica ate o proximo turno.",
+  },
+  {
+    id: "fluxo-instavel",
+    nome: "Fluxo Instavel",
+    categoria: "Eter",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Pode consumir PE adicional ao usar tecnicas.",
+    efeito:
+      "Ao usar tecnica de custo >= 3 PE, pode perder +1 PE adicional em falha.",
+  },
+  {
+    id: "instabilidade-de-eter",
+    nome: "Instabilidade de Eter",
+    categoria: "Eter",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "-1 em testes de Tecnica sob pressao.",
+    efeito: "Sofre -1 em testes de Tecnica em combate e situacoes de estresse.",
+  },
+  {
+    id: "reserva-reduzida",
+    nome: "Reserva Reduzida",
+    categoria: "Eter",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "-5 PE maximo.",
+    efeito: "Reduce o Eter maximo em 5 pontos.",
+  },
+  {
+    id: "sobrecarga",
+    nome: "Sobrecarga",
+    categoria: "Eter",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Tecnicas fortes podem impedir acoes.",
+    efeito:
+      "Ao usar tecnica de custo >= 5 PE, falha pode remover acao no proximo turno.",
+  },
+  {
+    id: "arrogante",
+    nome: "Arrogante",
+    categoria: "Comportamental",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "Penalidade ao receber ajuda.",
+    efeito: "Ao receber ajuda em testes, sofre -2 no resultado final.",
+  },
+  {
+    id: "codigo-de-honra",
+    nome: "Codigo de Honra",
+    categoria: "Comportamental",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Nao pode violar principios sem penalidade.",
+    efeito:
+      "Violar o codigo causa -2 em testes por 1 cena e bloqueia Vantagens de Sorte.",
+  },
+  {
+    id: "dependente-de-aprovacao",
+    nome: "Dependente de Aprovacao",
+    categoria: "Comportamental",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "-1 geral quando isolado.",
+    efeito: "Quando isolado ou sem apoio, sofre -1 em todos os testes.",
+  },
+  {
+    id: "excesso-de-confianca",
+    nome: "Excesso de Confianca",
+    categoria: "Comportamental",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Penalidade em avaliacao de risco.",
+    efeito: "Sofre -2 em testes de risco, estrategia ou cautela.",
+  },
+  {
+    id: "impaciente",
+    nome: "Impaciente",
+    categoria: "Comportamental",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "Penalidade em acoes que exigem espera.",
+    efeito: "Sofre -2 em testes que exigem preparacao ou espera.",
+  },
+  {
+    id: "ingenuo",
+    nome: "Ingenuo",
+    categoria: "Comportamental",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "Vulneravel a enganacao.",
+    efeito: "Sofre -2 em testes para detectar mentira ou manipulacao.",
+  },
+  {
+    id: "provocador",
+    nome: "Provocador",
+    categoria: "Comportamental",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "Atrai hostilidade e dificulta evitar conflitos.",
+    efeito: "Sofre -2 em testes para evitar conflito e desescalar situacoes.",
+  },
+  {
+    id: "teimoso",
+    nome: "Teimoso",
+    categoria: "Comportamental",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "Dificuldade em mudar decisoes.",
+    efeito: "Sofre -2 em testes para reconsiderar ou adaptar decisoes.",
+  },
+  {
+    id: "temperamental",
+    nome: "Temperamental",
+    categoria: "Comportamental",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Perde controle sob pressao.",
+    efeito:
+      "Sob pressao, pode sofrer -1 geral ou acao impulsiva em falha critica.",
+  },
+  {
+    id: "timido",
+    nome: "Timido",
+    categoria: "Comportamental",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "Penalidade em interacoes sociais ativas.",
+    efeito: "Sofre -2 em Persuasao, Lideranca e negociacao ativa.",
+  },
+  {
+    id: "amputacao-braco",
+    nome: "Amputacao - Braco",
+    categoria: "Fisica",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Nao usa armas de duas maos.",
+    efeito: "Nao pode usar armas de duas maos e sofre -2 em acoes bimanuais.",
+  },
+  {
+    id: "amputacao-perna",
+    nome: "Amputacao - Perna",
+    categoria: "Fisica",
+    nivel: "Severa",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
+    resumo: "Movimento reduzido pela metade.",
+    efeito: "Deslocamento reduzido pela metade e -2 em mobilidade/esquiva.",
+  },
+  {
+    id: "cego",
+    nome: "Cego",
+    categoria: "Fisica",
+    nivel: "Severa",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
+    resumo: "Severas penalidades visuais e combate a distancia.",
+    efeito:
+      "Sofre -5 em percepcao visual e inimigos recebem +2 em ataques a distancia.",
+  },
+  {
+    id: "desnutrido",
+    nome: "Desnutrido",
+    categoria: "Fisica",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "-1 em testes fisicos.",
+    efeito:
+      "Sofre -1 em testes fisicos e pode sofrer penalidade extra apos dano.",
+  },
+  {
+    id: "expressao-transparente",
+    nome: "Expressao Transparente",
+    categoria: "Fisica",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "-2 em Enganacao.",
+    efeito: "Sofre -2 em Enganacao e ocultacao emocional.",
+  },
+  {
+    id: "feio",
+    nome: "Feio",
+    categoria: "Fisica",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "-2 em Persuasao.",
+    efeito: "Sofre -2 em testes de Persuasao.",
+  },
+  {
+    id: "fragil",
+    nome: "Fragil",
+    categoria: "Fisica",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Sofre +1 de dano.",
+    efeito: "Sofre +1 de dano de qualquer fonte e -1 em resistencias fisicas.",
+  },
+  {
+    id: "movimento-pesado",
+    nome: "Movimento Pesado",
+    categoria: "Fisica",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "-2 em furtividade por movimento.",
+    efeito: "Sofre -2 em testes de Furtividade baseados em deslocamento.",
+  },
+  {
+    id: "obeso",
+    nome: "Obeso",
+    categoria: "Fisica",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "-2 Agilidade.",
+    efeito: "Sofre -2 em testes de Agilidade e -1 em Defesa por esquiva.",
+  },
+  {
+    id: "presenca-intimidante",
+    nome: "Presenca Intimidante",
+    categoria: "Fisica",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "+Intimidacao / -Persuasao.",
+    efeito: "Recebe +1 em Intimidacao e sofre -2 em Persuasao.",
+  },
+  {
+    id: "presenca-marcante",
+    nome: "Presenca Marcante",
+    categoria: "Fisica",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "-2 em disfarce e anonimato.",
+    efeito: "Sofre -2 em testes de disfarce, anonimato e infiltracao social.",
+  },
+  {
+    id: "ansiedade",
+    nome: "Ansiedade",
+    categoria: "Psicologica",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "Pode sofrer penalidade antes de testes importantes.",
+    efeito: "Antes de testes importantes, falha em Vontade causa -1 no teste.",
+  },
+  {
+    id: "autodestrutivo",
+    nome: "Autodestrutivo",
+    categoria: "Psicologica",
+    nivel: "Severa",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
+    resumo: "+ataque / -Defesa obrigatorio.",
+    efeito:
+      "Sob gatilho, recebe +1 ataque e sofre -2 Defesa ate o proximo turno.",
+  },
+  {
+    id: "culpa",
+    nome: "Culpa",
+    categoria: "Psicologica",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Penalidade apos causar dano significativo.",
+    efeito:
+      "Apos causar dano significativo, sofre -1 em todos os testes no proximo turno.",
+  },
+  {
+    id: "dependencia-emocional",
+    nome: "Dependencia Emocional",
+    categoria: "Psicologica",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "-1 geral quando isolado.",
+    efeito:
+      "Quando sem vinculo emocional proximo, sofre -1 em todos os testes.",
+  },
+  {
+    id: "depressao",
+    nome: "Depressao",
+    categoria: "Psicologica",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Penalidade em rodadas com iniciativa baixa.",
+    efeito:
+      "Com iniciativa baixa, sofre -1 em testes ate o inicio do proximo turno.",
+  },
+  {
+    id: "fobia",
+    nome: "Fobia",
+    categoria: "Psicologica",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "-2 geral sob gatilho + risco de fuga.",
+    efeito:
+      "Sob gatilho de fobia, sofre -2 geral e pode ser forcado a se afastar.",
+  },
+  {
+    id: "instabilidade-emocional",
+    nome: "Instabilidade Emocional",
+    categoria: "Psicologica",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Penalidades sob pressao.",
+    efeito:
+      "Sob pressao, pode sofrer -1 geral por 1 turno (ou -2 em falha critica).",
+  },
+  {
+    id: "obsessivo",
+    nome: "Obsessivo",
+    categoria: "Psicologica",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Penalidade fora do foco.",
+    efeito:
+      "Sofre -2 em testes que nao estejam relacionados ao foco da obsessao.",
+  },
+  {
+    id: "paranoico",
+    nome: "Paranoico",
+    categoria: "Psicologica",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Penalidade social / resistencia a engano.",
+    efeito:
+      "Sofre -2 em cooperacao social, mas recebe +2 contra blefes e emboscadas.",
+  },
+  {
+    id: "trauma",
+    nome: "Trauma",
+    categoria: "Psicologica",
+    nivel: "Severa",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
+    resumo: "Pode perder acao ou controle.",
+    efeito: "Sob gatilho de trauma, pode ficar Atordoado ou Desorientado.",
+  },
+  {
+    id: "dependencia-fisica",
+    nome: "Dependencia Fisica",
+    categoria: "Condicao",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Penalidade crescente sem recurso.",
+    efeito: "Sem o fator de dependencia, sofre -1 geral cumulativo ate -3.",
+  },
+  {
+    id: "exaustao-progressiva",
+    nome: "Exaustao Progressiva",
+    categoria: "Condicao",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Penalidade cumulativa ao longo do combate.",
+    efeito:
+      "A cada 2 turnos intensos, sofre -1 cumulativo em testes fisicos e de Tecnica (max -3).",
+  },
+  {
+    id: "sensibilidade",
+    nome: "Sensibilidade",
+    categoria: "Condicao",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Penalidade sob estimulo especifico.",
+    efeito:
+      "Sob exposicao ao estimulo, sofre -2 em testes afetados e pode sofrer -1 geral.",
+  },
+];
+
+const DESVANTAGEM_BY_ID = new Map(
+  DESVANTAGENS_CATALOGO.map((item) => [item.id, item]),
+);
+
+const PERICIA_INFO: Record<string, { atributo: Atributo; uso: string }> = {
   Acrobacia: {
     atributo: "Agilidade",
     uso: "Saltos, equilibrio, manobras fisicas e movimentos evasivos.",
   },
+  "Analise de Eter": {
+    atributo: "Tecnica",
+    uso: "Detectar, interpretar e analisar o fluxo de Eter e suas manifestacoes.",
+  },
   Atletismo: {
     atributo: "Forca",
     uso: "Escalar, nadar, correr e realizar feitos fisicos intensos.",
+  },
+  Concentracao: {
+    atributo: "Vontade",
+    uso: "Manter foco sob pressao, sustentar tecnicas e resistir a interrupcoes.",
+  },
+  "Controle de Eter": {
+    atributo: "Tecnica",
+    uso: "Estabilizar, sustentar e manter o fluxo de Eter sob controle.",
+  },
+  Enganacao: {
+    atributo: "Presenca",
+    uso: "Mentir, manipular informacoes e disfarcar intencoes.",
   },
   Furtividade: {
     atributo: "Agilidade",
     uso: "Esconder-se, mover-se silenciosamente e infiltrar-se em locais.",
   },
   Percepcao: {
-    atributo: "Percepcao",
+    atributo: "Vontade",
     uso: "Detectar inimigos, notar detalhes e perceber perigos.",
   },
   Investigacao: {
@@ -484,7 +1214,7 @@ const PERICIA_INFO: Record<string, { atributo: string; uso: string }> = {
     uso: "Analisar pistas, examinar evidencias e resolver misterios.",
   },
   Intuicao: {
-    atributo: "Percepcao",
+    atributo: "Presenca",
     uso: "Interpretar emocoes, detectar mentiras e perceber intencoes ocultas.",
   },
   Persuasao: {
@@ -495,26 +1225,27 @@ const PERICIA_INFO: Record<string, { atributo: string; uso: string }> = {
     atributo: "Presenca",
     uso: "Ameacar, pressionar ou desmoralizar adversarios.",
   },
+  Ladinagem: {
+    atributo: "Agilidade",
+    uso: "Abrir fechaduras, desarmar armadilhas e manipular mecanismos delicados.",
+  },
   Conhecimento: {
     atributo: "Intelecto",
     uso: "Recordar informacoes academicas ou culturais.",
-  },
-  Tecnologia: {
-    atributo: "Intelecto",
-    uso: "Operar, reparar ou construir dispositivos tecnologicos.",
   },
   Medicina: {
     atributo: "Intelecto",
     uso: "Diagnosticar ferimentos, tratar doencas e prestar primeiros socorros.",
   },
   Sobrevivencia: {
-    atributo: "Percepcao",
+    atributo: "Intelecto",
     uso: "Rastrear, orientar-se na natureza e sobreviver em ambientes hostis.",
   },
-  "Entendimento do Eter": {
-    atributo: "Tecnica",
-    uso: "Detectar e analisar energia espiritual e tecnicas.",
-  },
+};
+
+const formatSkillCostText = (graduacoes: number): string => {
+  const custo = graduacoes / 4;
+  return Number.isInteger(custo) ? String(custo) : custo.toFixed(2);
 };
 
 const CONHECIMENTO_OPTIONS = [
@@ -548,6 +1279,11 @@ const CONHECIMENTO_OPTIONS = [
   {
     value: "Ciencias fisicas",
     descricao: "engenharia, fisica, matematica e quimica.",
+  },
+  {
+    value: "Tecnologia",
+    descricao:
+      "operacao, reparo, adaptacao e desenvolvimento de dispositivos tecnologicos.",
   },
   {
     value: "Cultura popular",
@@ -585,56 +1321,133 @@ const CONHECIMENTO_OPTIONS = [
   },
 ] as const;
 
-const MANIPULACOES = [
-  "Ocultacao de Eter",
-  "Percepcao nos Olhos",
-  "Expansao Sensorial",
-  "Protecao Absoluta",
-  "Explosao de Eter",
-  "Endurecimento",
-] as const;
-
-const MANIPULACAO_PP_POR_GRADUACAO: Record<string, number> = {
-  "Ocultacao de Eter": 1,
-  "Percepcao nos Olhos": 1,
-  "Expansao Sensorial": 1,
-  "Protecao Absoluta": 2,
-  "Explosao de Eter": 2,
-  Endurecimento: 2,
-};
-
-const MOD_BONUS_BY_GRADUACAO: Record<number, number> = {
-  0: 0,
-  1: 2,
-  2: 3,
-  3: 4,
-  4: 5,
-  5: 6,
-  6: 7,
-  7: 8,
-  8: 9,
-  9: 10,
-  10: 12,
-};
-
-const EXPANSAO_SENSORIAL_METROS_POR_GRADUACAO: Record<number, number> = {
-  0: 0,
-  1: 5,
-  2: 8,
-  3: 12,
-  4: 16,
-  5: 20,
-  6: 25,
-  7: 30,
-  8: 40,
-  9: 50,
-  10: 60,
-};
+const TECNICAS_BASICAS: BasicTechniqueDefinition[] = [
+  {
+    nome: "Supressao",
+    tipo: "Sensorial",
+    custoPPPorGraduacao: 2,
+    acao: "Livre",
+    duracao: "Sustentada",
+    basePE: 1,
+    descricao:
+      "Comprime o fluxo de Eter no proprio corpo, reduzindo drasticamente sua presenca no ambiente.",
+    limitacoes:
+      "Nao pode realizar acoes ofensivas enquanto ativa e sofre -1 em Resistencia.",
+  },
+  {
+    nome: "Foco",
+    tipo: "Sensorial",
+    custoPPPorGraduacao: 2,
+    acao: "Livre",
+    duracao: "Sustentada",
+    basePE: 1,
+    descricao:
+      "Direciona o Eter para os olhos, tornando sua percepcao mais precisa e capaz de detectar Eter.",
+    limitacoes: "Sofre -2 em Defesa contra alvos fora do foco atual.",
+  },
+  {
+    nome: "Campo",
+    tipo: "Sensorial / Controle",
+    custoPPPorGraduacao: 3,
+    acao: "Livre",
+    duracao: "Sustentada",
+    basePE: 2,
+    descricao:
+      "Expande o Eter ao redor do corpo, percebendo qualquer presenca ou fluxo dentro da area.",
+    limitacoes:
+      "Sofre -2 em Defesa enquanto mantem parte do Eter fora do corpo.",
+  },
+  {
+    nome: "Guarda",
+    tipo: "Defesa",
+    custoPPPorGraduacao: 4,
+    acao: "Livre",
+    duracao: "Sustentada",
+    basePE: 2,
+    descricao:
+      "Distribui o Eter por todo o corpo para absorver impacto e dissipar dano recebido.",
+    limitacoes: "Sofre -2 em Agilidade enquanto a tecnica estiver ativa.",
+  },
+  {
+    nome: "Impulso",
+    tipo: "Fortalecimento",
+    custoPPPorGraduacao: 4,
+    acao: "Livre",
+    duracao: "Sustentada",
+    basePE: 2,
+    descricao:
+      "Forca o Eter a circular em alta intensidade, ampliando ataque ou dano com agressividade.",
+    limitacoes:
+      "Sofre -2 em Defesa e sua aura se torna facilmente perceptivel.",
+  },
+  {
+    nome: "Ruptura",
+    tipo: "Defesa / Ataque",
+    custoPPPorGraduacao: 3,
+    acao: "Reacao ou Padrao",
+    duracao: "Instantanea",
+    basePE: 3,
+    descricao:
+      "Concentra todo o Eter em um ponto unico para reduzir dano em reacao ou ampliar dano em um golpe.",
+    limitacoes:
+      "Apos usar, sofre -2 em testes de Tecnica ate o proximo turno. Cada reacao adicional custa +1 PE.",
+  },
+];
 
 const DICE_OPTIONS: Dice[] = ["D4", "D6", "D8", "D10", "D12"];
 const COMBAT_DICE_OPTIONS: CombatDice[] = ["-", ...DICE_OPTIONS];
 const NAIPE_OPTIONS: Naipe[] = ["", "Espadas", "Ouros", "Paus", "Copas"];
 const NAIPE_PODERES: NaipePoder[] = ["Espadas", "Ouros", "Paus", "Copas"];
+const EDITOR_TABS: EditorTabDefinition[] = [
+  {
+    id: "identidade",
+    label: "Identidade",
+    descricao:
+      "Defina nome, conceito, nivel e naipe. Esta base orienta custos, afinidades e estilo da ficha.",
+  },
+  {
+    id: "base",
+    label: "Atributos",
+    descricao:
+      "Configure atributos, recursos, carga, movimento e combate. Aqui fica o nucleo mecanico do personagem.",
+  },
+  {
+    id: "pericias",
+    label: "Pericias",
+    descricao:
+      "Distribua graduacoes tecnicas e de conhecimento respeitando os limites por nivel.",
+  },
+  {
+    id: "tecnicas",
+    label: "Tecnicas Basicas",
+    descricao:
+      "Ajuste graduacoes das tecnicas fundamentais e acompanhe VE, custo de Eter e limitacoes.",
+  },
+  {
+    id: "vantagens",
+    label: "Vantagens",
+    descricao:
+      "Adicione talentos e especializacoes para montar o perfil estrategico do personagem.",
+  },
+  {
+    id: "desvantagens",
+    label: "Desvantagens",
+    descricao:
+      "Defina limitacoes narrativas e mecanicas para ganhar PP adicional dentro das regras de limite.",
+  },
+  {
+    id: "poderes",
+    label: "Poderes",
+    descricao:
+      "Monte o arsenal por naipe, ajuste graduacoes, extras e falhas e acompanhe custo final.",
+  },
+  {
+    id: "equipamentos",
+    label: "Equipamentos",
+    descricao:
+      "Organize itens, armas, utilitarios e observacoes de carga para consulta rapida em jogo.",
+  },
+];
 const ALL_POWERS: PowerDefinition[] = Object.values(PODERES_POR_NAIPE).flat();
 const POWER_BY_ID = new Map(ALL_POWERS.map((power) => [power.id, power]));
 
@@ -655,12 +1468,61 @@ const COMBAT_PP_BY_DICE: Record<CombatDice, number> = {
   D12: 25,
 };
 
+const ATTRIBUTE_PROGRESS_TOOLTIP =
+  "Custo de atributos por evolucao: D4->D6 = 3 PP, D6->D8 = 4 PP, D8->D10 = 5 PP, D10->D12 = 6 PP.";
+
+const COMBAT_PROGRESS_TOOLTIP =
+  "Custo de CaC/Disparo por evolucao: Sem dado->D4 = 3 PP, D4->D6 = 4 PP, D6->D8 = 5 PP, D8->D10 = 6 PP, D10->D12 = 7 PP.";
+
+const DEFESA_TOTAL_TOOLTIP =
+  "Defesa Total = 7 + bonus de Agilidade + Defesa Comprada. O limite considera apenas Defesa Comprada + Resistencia Total <= Nivel + 12.";
+
+const RESISTENCIA_BASE_TOOLTIP =
+  "Resistencia Base vem do bonus de Constituicao (D4=+1, D6=+2, D8=+3, D10=+4, D12=+5).";
+
+const RESISTENCIA_PODERES_TOOLTIP =
+  "Resistencia de Poderes vem da graduacao do poder selecionado em Resistencia de Poder (ex.: Protecao, Campo de Forca). Excecao: Conversao concede metade da graduacao, arredondada para cima.";
+
+const RESISTENCIA_TOTAL_TOOLTIP =
+  "Resistencia Total = Resistencia Base + Resistencia de Poderes. O limite considera apenas Defesa Comprada + Resistencia Total <= Nivel + 12.";
+
+const DANO_BASE_TOOLTIP =
+  "Dano Base vem do bonus de Forca (D4=+1, D6=+2, D8=+3, D10=+4, D12=+5).";
+
+const VIDA_MAX_TOOLTIP =
+  "Vida Max e derivada da Constituicao: D4=38, D6=46, D8=54, D10=62, D12=70.";
+
+const ETER_MAX_TOOLTIP =
+  "Eter Max e derivado de Tecnica: D4=38, D6=46, D8=54, D10=62, D12=70.";
+
+const CARGA_TOOLTIP =
+  "Carga e derivada de Forca: D4=50 kg, D6=100 kg, D8=200 kg, D10=400 kg, D12=800 kg.";
+
+const MOVIMENTO_TOOLTIP =
+  "Movimento e derivado de Agilidade: D4=6 m, D6=9 m, D8=12 m, D10=15 m, D12=18 m.";
+
 const BONUS_BY_DICE: Record<Dice, number> = {
   D4: 1,
   D6: 2,
   D8: 3,
   D10: 4,
   D12: 5,
+};
+
+const VIDA_BASE_POR_CONSTITUICAO: Record<Dice, number> = {
+  D4: 38,
+  D6: 46,
+  D8: 54,
+  D10: 62,
+  D12: 70,
+};
+
+const ETER_BASE_POR_TECNICA: Record<Dice, number> = {
+  D4: 38,
+  D6: 46,
+  D8: 54,
+  D10: 62,
+  D12: 70,
 };
 
 const MOVIMENTO_BASE_POR_AGILIDADE: Record<Dice, number> = {
@@ -679,8 +1541,13 @@ const CARGA_BASE_POR_FORCA: Record<Dice, number> = {
   D12: 800,
 };
 
-const DEFESA_BASE = 10;
-const LIMITE_DEFESA_RESISTENCIA = 22;
+const DEFESA_BASE = 7;
+const RESISTENCIA_PODERES_POSSIVEIS: Exclude<ResistancePowerSource, "">[] = [
+  "Protecao",
+  "Campo de Forca",
+  "Blindagem",
+  "Conversao",
+];
 
 const parseNatural = (value: string): number => {
   const parsed = Number.parseInt(value, 10);
@@ -707,6 +1574,11 @@ const parsePowerModifierCost = (
   costText: string,
   graduacao: number,
 ): number => {
+  const normalized = costText.toLowerCase();
+  if (normalized.includes("eter")) {
+    return 0;
+  }
+
   const match = costText.match(/([+-]\d+)/);
   if (!match) {
     return 0;
@@ -717,12 +1589,56 @@ const parsePowerModifierCost = (
     return 0;
   }
 
-  const normalized = costText.toLowerCase();
   if (normalized.includes("por graduacao")) {
     return base * graduacao;
   }
 
+  if (
+    !normalized.includes("fixo") &&
+    !normalized.includes("ponto") &&
+    !normalized.includes("pontos")
+  ) {
+    return 0;
+  }
+
   return base;
+};
+
+const normalizePowerName = (name: string): string =>
+  name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const getPowerGraduacaoForResistenciaFonte = (
+  character: CharacterSheet,
+  source: Exclude<ResistancePowerSource, "">,
+): number => {
+  const normalizedSource = normalizePowerName(source);
+  const isConversao = normalizedSource === normalizePowerName("Conversao");
+
+  return character.poderes.reduce((maxGraduacao, powerEntry) => {
+    const power = POWER_BY_ID.get(powerEntry.powerId);
+    if (!power) {
+      return maxGraduacao;
+    }
+
+    if (normalizePowerName(power.nome) !== normalizedSource) {
+      return maxGraduacao;
+    }
+
+    const graduacao = clamp(
+      parseNatural(powerEntry.graduacao),
+      1,
+      MAX_POWER_GRADUATION_LIMIT,
+    );
+    const resistenciaEfetiva = isConversao
+      ? Math.ceil(graduacao / 2)
+      : graduacao;
+
+    return Math.max(maxGraduacao, resistenciaEfetiva);
+  }, 0);
 };
 
 const NAIPE_LOSANGO: Record<
@@ -761,77 +1677,134 @@ const getPowerTotalCost = (
   extrasSelecionados: string[],
   falhasSelecionadas: string[],
 ): number => {
+  const graduacaoValida = Math.max(1, graduacao);
   const baseCost =
     power.custoPontosPorGraduacao !== null
-      ? power.custoPontosPorGraduacao * graduacao
+      ? power.custoPontosPorGraduacao * graduacaoValida
       : 0;
 
   const extrasCost = power.extras
     .filter((extra) => extrasSelecionados.includes(extra.nome))
     .reduce(
-      (total, extra) => total + parsePowerModifierCost(extra.custo, graduacao),
+      (total, extra) =>
+        total + parsePowerModifierCost(extra.custo, graduacaoValida),
       0,
     );
 
   const falhasCost = power.falhas
     .filter((falha) => falhasSelecionadas.includes(falha.nome))
     .reduce(
-      (total, falha) => total + parsePowerModifierCost(falha.custo, graduacao),
+      (total, falha) =>
+        total + parsePowerModifierCost(falha.custo, graduacaoValida),
       0,
     );
 
-  return Math.max(0, baseCost + extrasCost + falhasCost);
+  return Math.max(graduacaoValida, baseCost + extrasCost + falhasCost);
 };
 
-const formatSigned = (value: number): string => {
-  if (value > 0) {
-    return `+${value}`;
+const formatVantagemCusto = (
+  custoPorGraduacao: number,
+  temGraduacao: boolean,
+): string => `[${custoPorGraduacao} PP${temGraduacao ? "/grad" : ""}]`;
+
+const formatDesvantagemBonus = (
+  ppPorGraduacao: number,
+  temGraduacao: boolean,
+): string => `[+${ppPorGraduacao} PP${temGraduacao ? "/grad" : ""}]`;
+
+const getTecnicaBasicaVE = (graduacao: number): number => {
+  if (graduacao <= 0) {
+    return 0;
   }
 
-  return String(value);
+  if (graduacao <= 5) {
+    return graduacao;
+  }
+
+  return 5 + Math.floor((graduacao - 5) / 2);
 };
 
-const getManipulacaoDerived = (name: string, graduacaoRaw: string) => {
-  const graduacao = clamp(parseNatural(graduacaoRaw), 0, 10);
-  const bonusEscalonado = MOD_BONUS_BY_GRADUACAO[graduacao] ?? 0;
+const getCampoRaio = (graduacao: number): string => {
+  if (graduacao <= 0) {
+    return "0 m";
+  }
+  if (graduacao <= 2) {
+    return "3 m";
+  }
+  if (graduacao <= 4) {
+    return "7 m";
+  }
+  if (graduacao <= 6) {
+    return "15 m";
+  }
+  if (graduacao <= 8) {
+    return "25 m";
+  }
+  if (graduacao <= 10) {
+    return "50 m";
+  }
 
-  switch (name) {
-    case "Ocultacao de Eter":
+  return "70 m";
+};
+
+const getTecnicaBasicaDerived = (
+  tecnica: BasicTechniqueDefinition,
+  graduacaoRaw: string,
+  limite: number,
+) => {
+  const graduacao = clamp(parseNatural(graduacaoRaw), 0, limite);
+  const ve = getTecnicaBasicaVE(graduacao);
+  const custoPE = tecnica.basePE + Math.ceil(ve / 2);
+
+  switch (tecnica.nome) {
+    case "Supressao":
       return {
-        modificador: `Furtividade ${formatSigned(bonusEscalonado)}`,
-        custo: "2 por turno",
+        graduacao,
+        ve,
+        custoPE,
+        efeito: `+${ve} em Furtividade e -${ve} para perceber sua presenca.`,
       };
-    case "Percepcao nos Olhos":
+    case "Foco":
       return {
-        modificador: `Percepcao de Eter ${formatSigned(bonusEscalonado)}`,
-        custo: "1 por turno",
+        graduacao,
+        ve,
+        custoPE,
+        efeito: `+${ve} em Percepcao e detecta presenca de Eter.`,
       };
-    case "Protecao Absoluta":
+    case "Campo":
       return {
-        modificador: `Absorcao de dano +${graduacao}`,
-        custo: `${5 + graduacao} por turno`,
+        graduacao,
+        ve,
+        custoPE,
+        efeito: `+${ve} em Percepcao na area e revela Supressao inferior. Raio: ${getCampoRaio(graduacao)}.`,
       };
-    case "Explosao de Eter":
+    case "Guarda":
       return {
-        modificador: `Dano +${graduacao} / Intimidacao +${graduacao}`,
-        custo: `${3 + graduacao} por turno`,
+        graduacao,
+        ve,
+        custoPE,
+        efeito: `Reduz em ${ve} o dano do primeiro ataque sofrido no turno.`,
       };
-    case "Endurecimento":
+    case "Impulso":
       return {
-        modificador: `Ataque/Bloqueio +${graduacao}`,
-        custo: `${2 + graduacao} por uso`,
+        graduacao,
+        ve,
+        custoPE,
+        efeito: `+${ve} em Ataque ou +${ve} no Dano, conforme o foco escolhido ao ativar.`,
       };
-    case "Expansao Sensorial":
-      const raioMetros =
-        EXPANSAO_SENSORIAL_METROS_POR_GRADUACAO[graduacao] ?? 0;
+    case "Ruptura":
       return {
-        modificador: `Raio sensorial: ${raioMetros} m`,
-        custo: `${8 + graduacao} por turno`,
+        graduacao,
+        ve,
+        custoPE,
+        efeito: `Como Reacao, reduz dano em ${ve}; como Acao, recebe +${ve} no dano causado.`,
       };
     default:
       return {
-        modificador: `+${graduacao}`,
-        custo: "0",
+        graduacao,
+        ve,
+        custoPE,
+        efeito: `VE ${ve}`,
       };
   }
 };
@@ -848,13 +1821,12 @@ const createEmptyCharacter = (): CharacterSheet => ({
   mov: "",
   atributos: Object.fromEntries(
     ATRIBUTOS.map((item) => [item, "D4"]),
-  ) as Record<string, Dice>,
+  ) as Record<Atributo, Dice>,
   combate: {
     ataqueCac: "-",
     disparo: "-",
-    resistenciaComprada: "0",
-    resistenciaPoderes: "0",
-    defesa: "10",
+    resistenciaPoderFonte: "",
+    defesa: "7",
   },
   pericias: Object.fromEntries(PERICIAS.map((item) => [item, "0"])) as Record<
     string,
@@ -865,10 +1837,11 @@ const createEmptyCharacter = (): CharacterSheet => ({
     { area: "", graduacoes: "0" },
     { area: "", graduacoes: "0" },
   ],
-  manipulacoes: Object.fromEntries(
-    MANIPULACOES.map((item) => [item, { graduacao: "", custo: "" }]),
-  ) as Record<string, { graduacao: string; custo: string }>,
+  tecnicasBasicas: Object.fromEntries(
+    TECNICAS_BASICAS.map((item) => [item.nome, { graduacao: "" }]),
+  ) as Record<string, { graduacao: string }>,
   vantagens: [],
+  desvantagens: [],
   poderes: [],
   equipamentos: "",
 });
@@ -878,24 +1851,318 @@ function App() {
     createEmptyCharacter(),
   ]);
   const [selectedId, setSelectedId] = useState<string>(characters[0].id);
+  const [screen, setScreen] = useState<"home" | "editor">(() =>
+    getScreenFromPathname(window.location.pathname),
+  );
+  const [savedSheets, setSavedSheets] = useState<SheetSummary[]>([]);
+  const [isLoadingSheets, setIsLoadingSheets] = useState(false);
+  const [isSavingSheet, setIsSavingSheet] = useState(false);
+  const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
+  const [activeSheetPassword, setActiveSheetPassword] = useState("");
+  const [apiError, setApiError] = useState<string | null>(null);
   const [vantagemCategoriaSelecionada, setVantagemCategoriaSelecionada] =
     useState<VantagemCategoria | "">("");
   const [vantagemSelecionadaId, setVantagemSelecionadaId] = useState("");
   const [vantagemGraduacao, setVantagemGraduacao] = useState("1");
+  const [desvantagemCategoriaSelecionada, setDesvantagemCategoriaSelecionada] =
+    useState<DesvantagemCategoria | "">("");
+  const [desvantagemSelecionadaId, setDesvantagemSelecionadaId] = useState("");
+  const [desvantagemGraduacao, setDesvantagemGraduacao] = useState("1");
   const [poderesPanelAtivo, setPoderesPanelAtivo] = useState<
     "catalogo" | "arsenal"
   >("arsenal");
+  const [activeEditorTab, setActiveEditorTab] =
+    useState<EditorTabId>("identidade");
   const [naipePoderSelecionado, setNaipePoderSelecionado] =
     useState<NaipePoder>("Espadas");
+  const [detalhesPoderId, setDetalhesPoderId] = useState<string | null>(null);
 
   const selectedCharacter = useMemo(
     () => characters.find((character) => character.id === selectedId),
     [characters, selectedId],
   );
 
+  const navigateToScreen = (nextScreen: "home" | "editor") => {
+    const nextPath = nextScreen === "editor" ? CREATE_SHEET_ROUTE : HOME_ROUTE;
+
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({}, "", nextPath);
+    }
+
+    setScreen(nextScreen);
+  };
+
+  const fetchSheetList = async () => {
+    setIsLoadingSheets(true);
+    setApiError(null);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/sheets`);
+      const payload = (await response.json()) as {
+        sheets?: SheetSummary[];
+        message?: string;
+      };
+
+      if (!response.ok) {
+        setApiError(payload.message ?? "Falha ao carregar fichas do banco.");
+        return;
+      }
+
+      setSavedSheets(payload.sheets ?? []);
+    } catch {
+      setApiError(
+        "Nao foi possivel conectar ao backend. Verifique se o server esta rodando.",
+      );
+    } finally {
+      setIsLoadingSheets(false);
+    }
+  };
+
+  useEffect(() => {
+    void fetchSheetList();
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      setScreen(getScreenFromPathname(window.location.pathname));
+    };
+
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (characters.length === 0) {
+      return;
+    }
+
+    const exists = characters.some((character) => character.id === selectedId);
+    if (!exists) {
+      setSelectedId(characters[0].id);
+    }
+  }, [characters, selectedId]);
+
+  const createNewSheet = () => {
+    const next = createEmptyCharacter();
+    setCharacters([next]);
+    setSelectedId(next.id);
+    setActiveSheetId(null);
+    setActiveSheetPassword("");
+    setApiError(null);
+    navigateToScreen("editor");
+  };
+
+  const openSheetForEditing = async (summary: SheetSummary) => {
+    const password = window.prompt(
+      `Digite a senha da ficha \"${summary.nome || "Sem nome"}\" para editar:`,
+    );
+
+    if (!password) {
+      return;
+    }
+
+    setApiError(null);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/sheets/${summary.id}/unlock`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ password }),
+        },
+      );
+
+      const payload = (await response.json()) as {
+        character?: CharacterSheet;
+        message?: string;
+      };
+
+      if (!response.ok || !payload.character) {
+        window.alert(payload.message ?? "Nao foi possivel abrir a ficha.");
+        return;
+      }
+
+      setCharacters([payload.character]);
+      setSelectedId(payload.character.id);
+      setActiveSheetId(summary.id);
+      setActiveSheetPassword(password);
+      navigateToScreen("editor");
+    } catch {
+      window.alert("Erro de conexao ao abrir a ficha.");
+    }
+  };
+
+  const goBackToHome = async () => {
+    navigateToScreen("home");
+    setApiError(null);
+    await fetchSheetList();
+  };
+
   if (!selectedCharacter) {
-    return null;
+    return (
+      <div className="home-page">
+        <section className="home-list block">
+          <h2>Carregando ficha...</h2>
+          <p>Aguarde um instante enquanto o editor sincroniza os dados.</p>
+          <button
+            type="button"
+            onClick={() => {
+              const fallback = createEmptyCharacter();
+              setCharacters([fallback]);
+              setSelectedId(fallback.id);
+              navigateToScreen("editor");
+            }}
+          >
+            Recriar ficha em branco
+          </button>
+        </section>
+      </div>
+    );
   }
+
+  const saveSelectedCharacter = async () => {
+    if (!selectedCharacter) {
+      return;
+    }
+
+    setIsSavingSheet(true);
+    setApiError(null);
+
+    try {
+      const isCreating = activeSheetId === null;
+
+      let password = activeSheetPassword;
+      if (isCreating) {
+        const firstInput = window.prompt(
+          "Crie uma senha para proteger esta ficha (minimo 4 caracteres):",
+        );
+
+        if (!firstInput) {
+          setIsSavingSheet(false);
+          return;
+        }
+
+        const confirmInput = window.prompt("Confirme a senha da ficha:");
+        if (confirmInput !== firstInput) {
+          window.alert("As senhas nao conferem.");
+          setIsSavingSheet(false);
+          return;
+        }
+
+        password = firstInput;
+      }
+
+      if (!password || password.trim().length < 4) {
+        window.alert("Senha invalida. Use no minimo 4 caracteres.");
+        setIsSavingSheet(false);
+        return;
+      }
+
+      const endpoint = isCreating
+        ? `${API_BASE_URL}/sheets`
+        : `${API_BASE_URL}/sheets/${activeSheetId}`;
+      const method = isCreating ? "POST" : "PUT";
+
+      const response = await fetch(endpoint, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          password,
+          character: selectedCharacter,
+        }),
+      });
+
+      const payload = (await response.json()) as {
+        id?: string;
+        message?: string;
+      };
+
+      if (!response.ok) {
+        window.alert(payload.message ?? "Falha ao salvar a ficha.");
+        return;
+      }
+
+      const persistedId = isCreating
+        ? (payload.id ?? activeSheetId)
+        : activeSheetId;
+
+      if (persistedId) {
+        setCharacters((current) =>
+          current.map((character) =>
+            character.id === selectedId
+              ? { ...character, id: persistedId }
+              : character,
+          ),
+        );
+        setSelectedId(persistedId);
+        setActiveSheetId(persistedId);
+      }
+
+      setActiveSheetPassword(password);
+      await fetchSheetList();
+      window.alert("Ficha salva com sucesso no banco.");
+    } catch {
+      window.alert("Erro de conexao ao salvar a ficha.");
+    } finally {
+      setIsSavingSheet(false);
+    }
+  };
+
+  if (screen === "home") {
+    return (
+      <div className="home-page">
+        <header className="home-header">
+          <h1>Estrelas Ascendentes</h1>
+          <p>Selecione uma ficha existente ou crie uma nova.</p>
+          <button type="button" onClick={createNewSheet}>
+            Criar ficha
+          </button>
+        </header>
+
+        <section className="home-list block">
+          <h2>Fichas criadas</h2>
+          {isLoadingSheets ? <p>Carregando fichas...</p> : null}
+          {apiError ? <p className="danger-value">{apiError}</p> : null}
+          {!isLoadingSheets && savedSheets.length === 0 ? (
+            <p>Nenhuma ficha cadastrada ainda.</p>
+          ) : null}
+
+          <div className="home-card-grid">
+            {savedSheets.map((sheet) => (
+              <button
+                key={sheet.id}
+                type="button"
+                className="home-card"
+                onClick={() => void openSheetForEditing(sheet)}
+              >
+                <strong>{sheet.nome || "Sem nome"}</strong>
+                <span>Nivel {sheet.nivel || "-"}</span>
+                <span>Jogador: {sheet.jogador || "-"}</span>
+                <small>
+                  Atualizada em{" "}
+                  {new Date(sheet.updatedAt).toLocaleString("pt-BR")}
+                </small>
+              </button>
+            ))}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  const poderDetalhesSelecionado =
+    detalhesPoderId !== null
+      ? (POWER_BY_ID.get(detalhesPoderId) ?? null)
+      : null;
+  const activeTabDefinition =
+    EDITOR_TABS.find((tab) => tab.id === activeEditorTab) ?? EDITOR_TABS[0];
 
   const updateCharacter = (
     updater: (current: CharacterSheet) => CharacterSheet,
@@ -944,15 +2211,11 @@ function App() {
     setSelectedId(cloned.id);
   };
 
-  const vantagensDisponiveis = useMemo(
-    () =>
-      vantagemCategoriaSelecionada
-        ? VANTAGENS_CATALOGO.filter(
-            (vantagem) => vantagem.categoria === vantagemCategoriaSelecionada,
-          )
-        : [],
-    [vantagemCategoriaSelecionada],
-  );
+  const vantagensDisponiveis = vantagemCategoriaSelecionada
+    ? VANTAGENS_CATALOGO.filter(
+        (vantagem) => vantagem.categoria === vantagemCategoriaSelecionada,
+      )
+    : [];
 
   const vantagemSelecionada = vantagensDisponiveis.find(
     (vantagem) => vantagem.id === vantagemSelecionadaId,
@@ -978,6 +2241,8 @@ function App() {
           categoria: vantagemSelecionada.categoria,
           graduacao,
           temGraduacao: vantagemSelecionada.temGraduacao,
+          custoPorGraduacao: vantagemSelecionada.custoPorGraduacao,
+          resumo: vantagemSelecionada.resumo,
           efeito: vantagemSelecionada.efeito,
         },
       ],
@@ -992,6 +2257,95 @@ function App() {
       ...current,
       vantagens: current.vantagens.filter(
         (vantagem) => vantagem.id !== vantagemId,
+      ),
+    }));
+  };
+
+  const desvantagensDisponiveis = desvantagemCategoriaSelecionada
+    ? DESVANTAGENS_CATALOGO.filter(
+        (desvantagem) =>
+          desvantagem.categoria === desvantagemCategoriaSelecionada,
+      )
+    : [];
+
+  const desvantagemSelecionada = desvantagensDisponiveis.find(
+    (desvantagem) => desvantagem.id === desvantagemSelecionadaId,
+  );
+
+  const addDesvantagem = () => {
+    if (!desvantagemSelecionada) {
+      return;
+    }
+
+    const graduacao = desvantagemSelecionada.temGraduacao
+      ? clamp(parseNatural(desvantagemGraduacao), 1, 99)
+      : 1;
+
+    updateCharacter((current) => {
+      const ppAtual = current.desvantagens.reduce(
+        (total, item) => total + item.graduacao * item.ppPorGraduacao,
+        0,
+      );
+      const ppNova = graduacao * desvantagemSelecionada.ppPorGraduacao;
+
+      if (ppAtual + ppNova > DESVANTAGENS_MAX_PP) {
+        window.alert(
+          `Limite de desvantagens excedido: maximo +${DESVANTAGENS_MAX_PP} PP.`,
+        );
+        return current;
+      }
+
+      const severasAtuais = current.desvantagens.filter(
+        (item) => item.nivel === "Severa",
+      ).length;
+      if (
+        desvantagemSelecionada.nivel === "Severa" &&
+        severasAtuais >= DESVANTAGENS_MAX_SEVERAS
+      ) {
+        window.alert("Limite atingido: maximo 1 desvantagem Severa.");
+        return current;
+      }
+
+      const levesAtuais = current.desvantagens.filter(
+        (item) => item.nivel === "Leve",
+      ).length;
+      if (
+        desvantagemSelecionada.nivel === "Leve" &&
+        levesAtuais >= DESVANTAGENS_MAX_LEVES
+      ) {
+        window.alert("Limite atingido: maximo 6 desvantagens Leves.");
+        return current;
+      }
+
+      return {
+        ...current,
+        desvantagens: [
+          ...current.desvantagens,
+          {
+            id: crypto.randomUUID(),
+            catalogId: desvantagemSelecionada.id,
+            nome: desvantagemSelecionada.nome,
+            categoria: desvantagemSelecionada.categoria,
+            nivel: desvantagemSelecionada.nivel,
+            graduacao,
+            temGraduacao: desvantagemSelecionada.temGraduacao,
+            ppPorGraduacao: desvantagemSelecionada.ppPorGraduacao,
+            resumo: desvantagemSelecionada.resumo,
+            efeito: desvantagemSelecionada.efeito,
+          },
+        ],
+      };
+    });
+
+    setDesvantagemSelecionadaId("");
+    setDesvantagemGraduacao("1");
+  };
+
+  const removeDesvantagem = (desvantagemId: string) => {
+    updateCharacter((current) => ({
+      ...current,
+      desvantagens: current.desvantagens.filter(
+        (desvantagem) => desvantagem.id !== desvantagemId,
       ),
     }));
   };
@@ -1024,6 +2378,7 @@ function App() {
 
   const nivel = parseNatural(selectedCharacter.nivel);
   const limitePericia = nivel + 10;
+  const limiteDefesaResistencia = nivel + 12;
 
   const atributosSpent = ATRIBUTOS.reduce(
     (total, atributo) =>
@@ -1051,63 +2406,76 @@ function App() {
   const periciasSpent = periciasPontosTotal / 4;
 
   const vantagensSpent = selectedCharacter.vantagens.reduce(
-    (total, vantagem) => total + vantagem.graduacao * 3,
+    (total, vantagem) => {
+      const catalogo = VANTAGEM_BY_ID.get(vantagem.catalogId);
+      const custoPorGraduacao =
+        catalogo?.custoPorGraduacao ?? vantagem.custoPorGraduacao ?? 3;
+
+      return total + vantagem.graduacao * custoPorGraduacao;
+    },
+    0,
+  );
+
+  const desvantagensBonus = selectedCharacter.desvantagens.reduce(
+    (total, desvantagem) => {
+      const catalogo = DESVANTAGEM_BY_ID.get(desvantagem.catalogId);
+      const ppPorGraduacao =
+        catalogo?.ppPorGraduacao ?? desvantagem.ppPorGraduacao ?? 0;
+
+      return total + desvantagem.graduacao * ppPorGraduacao;
+    },
     0,
   );
 
   const bonusConstituicao =
     BONUS_BY_DICE[selectedCharacter.atributos.Constituicao];
 
-  const resistenciaComprada = clamp(
-    parseNatural(selectedCharacter.combate.resistenciaComprada),
-    0,
-    LIMITE_DEFESA_RESISTENCIA,
-  );
-  const resistenciaPoderes = clamp(
-    parseNatural(selectedCharacter.combate.resistenciaPoderes),
-    0,
-    LIMITE_DEFESA_RESISTENCIA,
+  const resistenciasDePoderDisponiveis = RESISTENCIA_PODERES_POSSIVEIS.map(
+    (fonte) => ({
+      fonte,
+      graduacao: getPowerGraduacaoForResistenciaFonte(selectedCharacter, fonte),
+    }),
   );
 
-  const resistenciaTotal =
-    bonusConstituicao + resistenciaComprada + resistenciaPoderes;
+  const resistenciaPoderFonteSelecionada =
+    selectedCharacter.combate.resistenciaPoderFonte;
+  const resistenciaPoderAtiva =
+    resistenciaPoderFonteSelecionada !== ""
+      ? resistenciasDePoderDisponiveis.find(
+          (item) => item.fonte === resistenciaPoderFonteSelecionada,
+        )
+      : undefined;
+
+  const resistenciaPoderes = resistenciaPoderAtiva?.graduacao ?? 0;
+  const resistenciaTotal = bonusConstituicao + resistenciaPoderes;
+  const bonusAgilidadeDefesa =
+    BONUS_BY_DICE[selectedCharacter.atributos.Agilidade];
 
   const defesaComprada = clamp(
     parseNatural(selectedCharacter.combate.defesa) - DEFESA_BASE,
     0,
-    LIMITE_DEFESA_RESISTENCIA,
+    limiteDefesaResistencia,
   );
 
   const defesaCompradaEfetiva = clamp(
     defesaComprada,
     0,
-    Math.max(0, LIMITE_DEFESA_RESISTENCIA - resistenciaTotal),
+    Math.max(0, limiteDefesaResistencia - resistenciaTotal),
   );
 
-  const defesaAtual = DEFESA_BASE + defesaCompradaEfetiva;
+  const defesaAdicional = bonusAgilidadeDefesa + defesaCompradaEfetiva;
+  const defesaAtual = DEFESA_BASE + defesaAdicional;
   const defesaSpent = defesaCompradaEfetiva * 2;
+  const resistenciaTotalEfetiva = bonusConstituicao + resistenciaPoderes;
 
-  const resistenciaCompradaEfetiva = Math.max(
-    0,
-    Math.min(
-      resistenciaComprada,
-      LIMITE_DEFESA_RESISTENCIA - defesaCompradaEfetiva - bonusConstituicao,
-    ),
-  );
-  const resistenciaTotalEfetiva =
-    bonusConstituicao + resistenciaCompradaEfetiva + resistenciaPoderes;
-
-  const resistenciaCompradaSpent = resistenciaCompradaEfetiva * 2;
-
-  const manipulacoesSpent = MANIPULACOES.reduce((total, manipulacao) => {
+  const tecnicasBasicasSpent = TECNICAS_BASICAS.reduce((total, tecnica) => {
     const graduacao = clamp(
-      parseNatural(selectedCharacter.manipulacoes[manipulacao].graduacao),
+      parseNatural(selectedCharacter.tecnicasBasicas[tecnica.nome].graduacao),
       0,
-      10,
+      limitePericia,
     );
-    const custoPorGraduacao = MANIPULACAO_PP_POR_GRADUACAO[manipulacao] ?? 0;
 
-    return total + graduacao * custoPorGraduacao;
+    return total + graduacao * tecnica.custoPPPorGraduacao;
   }, 0);
 
   const poderesSpent = selectedCharacter.poderes.reduce((total, powerEntry) => {
@@ -1142,50 +2510,50 @@ function App() {
     periciasSpent +
     vantagensSpent +
     defesaSpent +
-    resistenciaCompradaSpent +
-    manipulacoesSpent +
+    tecnicasBasicasSpent +
     poderesSpent;
 
-  const ppRestante = TOTAL_PP - totalSpent;
+  const ppRestante = TOTAL_PP + desvantagensBonus - totalSpent;
   const poderesCatalogo = PODERES_POR_NAIPE[naipePoderSelecionado];
   const catalogoPoderesLiberado = selectedCharacter.naipe !== "";
   const poderesPanelVisivel = catalogoPoderesLiberado
     ? poderesPanelAtivo
     : "arsenal";
 
-  const bonusTecnica = BONUS_BY_DICE[selectedCharacter.atributos.Tecnica];
-  const vidaMaxima = 30 + bonusConstituicao * 5;
-  const eterMaximo = 30 + bonusTecnica * 5;
+  const vidaMaxima =
+    VIDA_BASE_POR_CONSTITUICAO[selectedCharacter.atributos.Constituicao];
+  const eterMaximo = ETER_BASE_POR_TECNICA[selectedCharacter.atributos.Tecnica];
   const danoBase = BONUS_BY_DICE[selectedCharacter.atributos.Forca];
   const movimentoBase =
     MOVIMENTO_BASE_POR_AGILIDADE[selectedCharacter.atributos.Agilidade];
   const cargaBase = CARGA_BASE_POR_FORCA[selectedCharacter.atributos.Forca];
-  const movimentoAtual =
-    selectedCharacter.mov.trim() === ""
-      ? String(movimentoBase)
-      : selectedCharacter.mov;
-  const cargaAtual =
-    selectedCharacter.carga.trim() === ""
-      ? String(cargaBase)
-      : selectedCharacter.carga;
+  const movimentoAtual = String(movimentoBase);
+  const cargaAtual = String(cargaBase);
 
   return (
     <div className="page">
       <aside className="character-list">
         <h1>Estrelas Ascendentes</h1>
-        <p>Criacao de personagem (mockado)</p>
+        <p>Editor de ficha conectado ao banco.</p>
 
         <div className="character-actions">
+          <button type="button" onClick={() => void goBackToHome()}>
+            Inicio
+          </button>
+          <button type="button" onClick={() => void saveSelectedCharacter()}>
+            {isSavingSheet ? "Salvando..." : "Salvar"}
+          </button>
           <button type="button" onClick={addCharacter}>
-            Novo
+            Novo local
           </button>
           <button type="button" onClick={duplicateCharacter}>
-            Duplicar
+            Duplicar local
           </button>
           <button type="button" className="danger" onClick={deleteCharacter}>
-            Excluir
+            Excluir local
           </button>
         </div>
+        {apiError ? <p className="danger-value">{apiError}</p> : null}
 
         <ul>
           {characters.map((character) => (
@@ -1222,233 +2590,285 @@ function App() {
             <p>Atributos: {atributosSpent} PP</p>
             <p>Pericias: {periciasSpent} PP</p>
             <p>Vantagens: {vantagensSpent} PP</p>
+            <p>Desvantagens: +{desvantagensBonus} PP</p>
             <p>CaC + Disparo: {combateSpent} PP</p>
             <p>Defesa: {defesaSpent} PP</p>
-            <p>Resistencia Comprada: {resistenciaCompradaSpent} PP</p>
-            <p>Manipulacoes: {manipulacoesSpent} PP</p>
+            <p>Tecnicas Basicas: {tecnicasBasicasSpent} PP</p>
             <p>Poderes: {poderesSpent} PP</p>
           </div>
         </section>
       </aside>
 
       <main className="sheet-wrapper">
-        <section className="sheet-header block">
-          <h2>Identidade</h2>
-          <div className="grid identity-grid">
-            <label>
-              Nome
-              <input
-                value={selectedCharacter.nome}
-                onChange={(event) =>
-                  updateCharacter((current) => ({
-                    ...current,
-                    nome: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label>
-              Nivel
-              <input
-                type="number"
-                min={0}
-                value={selectedCharacter.nivel}
-                onChange={(event) =>
-                  updateCharacter((current) => ({
-                    ...current,
-                    nivel: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label>
-              Jogador
-              <input
-                value={selectedCharacter.jogador}
-                onChange={(event) =>
-                  updateCharacter((current) => ({
-                    ...current,
-                    jogador: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label>
-              XP
-              <input
-                type="number"
-                min={0}
-                value={selectedCharacter.xp}
-                onChange={(event) =>
-                  updateCharacter((current) => ({
-                    ...current,
-                    xp: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label className="full-width">
-              Conceito
-              <input
-                placeholder="Ex: Espadachim veloz que cria laminas de energia"
-                value={selectedCharacter.conceito}
-                onChange={(event) =>
-                  updateCharacter((current) => ({
-                    ...current,
-                    conceito: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label>
-              Naipe
-              <select
-                value={selectedCharacter.naipe}
-                onChange={(event) =>
-                  updateCharacter((current) => ({
-                    ...current,
-                    naipe: event.target.value as Naipe,
-                  }))
-                }
+        <section className="block editor-tabs-panel">
+          <h2>Criacao por Abas</h2>
+          <div className="editor-tabs">
+            {EDITOR_TABS.map((tab) => (
+              <button
+                type="button"
+                key={tab.id}
+                className={activeEditorTab === tab.id ? "active" : ""}
+                onClick={() => setActiveEditorTab(tab.id)}
               >
-                {NAIPE_OPTIONS.map((naipe) => (
-                  <option key={naipe || "vazio"} value={naipe}>
-                    {naipe || "Selecione"}
-                  </option>
-                ))}
-              </select>
-            </label>
+                {tab.label}
+              </button>
+            ))}
           </div>
+          <p className="rule-note editor-tab-note">
+            {activeTabDefinition.descricao}
+          </p>
         </section>
 
-        <section className="sheet-columns">
-          <div className="stacked">
-            <article className="block compact-card">
-              <h3>Carga</h3>
-              <input
-                type="number"
-                min={0}
-                value={cargaAtual}
-                onChange={(event) =>
-                  updateCharacter((current) => ({
-                    ...current,
-                    carga: event.target.value,
-                  }))
-                }
-              />
-              <p className="rule-note">
-                Base por Forca: {cargaBase} kg (editavel por poderes)
-              </p>
-            </article>
-            <article className="block compact-card">
-              <h3>Mov.</h3>
-              <input
-                type="number"
-                min={0}
-                value={movimentoAtual}
-                onChange={(event) =>
-                  updateCharacter((current) => ({
-                    ...current,
-                    mov: event.target.value,
-                  }))
-                }
-              />
-              <p className="rule-note">
-                Base por Agilidade: {movimentoBase} m (editavel por poderes)
-              </p>
-            </article>
-          </div>
+        {activeEditorTab === "identidade" ? (
+          <section className="sheet-header block">
+            <h2>Identidade</h2>
+            <div className="grid identity-grid">
+              <label>
+                Nome
+                <input
+                  value={selectedCharacter.nome}
+                  onChange={(event) =>
+                    updateCharacter((current) => ({
+                      ...current,
+                      nome: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Nivel
+                <input
+                  type="number"
+                  min={0}
+                  value={selectedCharacter.nivel}
+                  onChange={(event) =>
+                    updateCharacter((current) => ({
+                      ...current,
+                      nivel: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Jogador
+                <input
+                  value={selectedCharacter.jogador}
+                  onChange={(event) =>
+                    updateCharacter((current) => ({
+                      ...current,
+                      jogador: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                XP
+                <input
+                  type="number"
+                  min={0}
+                  value={selectedCharacter.xp}
+                  onChange={(event) =>
+                    updateCharacter((current) => ({
+                      ...current,
+                      xp: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="full-width">
+                Conceito
+                <input
+                  placeholder="Ex: Espadachim veloz que cria laminas de energia"
+                  value={selectedCharacter.conceito}
+                  onChange={(event) =>
+                    updateCharacter((current) => ({
+                      ...current,
+                      conceito: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Naipe
+                <select
+                  value={selectedCharacter.naipe}
+                  onChange={(event) =>
+                    updateCharacter((current) => ({
+                      ...current,
+                      naipe: event.target.value as Naipe,
+                    }))
+                  }
+                >
+                  {NAIPE_OPTIONS.map((naipe) => (
+                    <option key={naipe || "vazio"} value={naipe}>
+                      {naipe || "Selecione"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </section>
+        ) : null}
 
-          <article className="block atributos">
-            <h3>Atributos</h3>
-            <div className="list-grid">
-              {ATRIBUTOS.map((atributo) => (
-                <label key={atributo}>
-                  <span>{atributo}</span>
-                  <select
-                    value={selectedCharacter.atributos[atributo]}
-                    onChange={(event) =>
-                      updateCharacter((current) => {
-                        const novosAtributos = {
-                          ...current.atributos,
-                          [atributo]: event.target.value as Dice,
-                        };
+        {activeEditorTab === "base" ? (
+          <section className="sheet-columns base-layout">
+            <article className="block atributos">
+              <h3>
+                Atributos
+                <span
+                  className="info-dot section-info-dot"
+                  data-tooltip={ATTRIBUTE_PROGRESS_TOOLTIP}
+                >
+                  i
+                </span>
+              </h3>
+              <div className="list-grid">
+                {ATRIBUTOS.map((atributo) => (
+                  <label key={atributo}>
+                    <span>{atributo}</span>
+                    <select
+                      value={selectedCharacter.atributos[atributo]}
+                      onChange={(event) =>
+                        updateCharacter((current) => {
+                          const novosAtributos = {
+                            ...current.atributos,
+                            [atributo]: event.target.value as Dice,
+                          };
 
-                        if (atributo !== "Constituicao") {
+                          if (atributo !== "Constituicao") {
+                            return {
+                              ...current,
+                              atributos: novosAtributos,
+                            };
+                          }
+
+                          const novoBonusConstituicao =
+                            BONUS_BY_DICE[novosAtributos.Constituicao];
+                          const resistenciaPoderFonteAtual =
+                            current.combate.resistenciaPoderFonte;
+                          const resistenciaPoderesAtual =
+                            resistenciaPoderFonteAtual === ""
+                              ? 0
+                              : getPowerGraduacaoForResistenciaFonte(
+                                  current,
+                                  resistenciaPoderFonteAtual,
+                                );
+                          const resistenciaTotalAtual =
+                            novoBonusConstituicao + resistenciaPoderesAtual;
+                          const bonusAgilidadeAtual =
+                            BONUS_BY_DICE[novosAtributos.Agilidade];
+                          const maxDefesaCompradaAtual = Math.max(
+                            0,
+                            parseNatural(current.nivel) +
+                              15 -
+                              resistenciaTotalAtual -
+                              bonusAgilidadeAtual,
+                          );
+                          const defesaCompradaAtual = clamp(
+                            parseNatural(current.combate.defesa) - DEFESA_BASE,
+                            0,
+                            parseNatural(current.nivel) + 15,
+                          );
+
                           return {
                             ...current,
                             atributos: novosAtributos,
+                            combate: {
+                              ...current.combate,
+                              defesa: String(
+                                DEFESA_BASE +
+                                  clamp(
+                                    defesaCompradaAtual,
+                                    0,
+                                    maxDefesaCompradaAtual,
+                                  ),
+                              ),
+                            },
                           };
-                        }
-
-                        const novoBonusConstituicao =
-                          BONUS_BY_DICE[novosAtributos.Constituicao];
-                        const resistenciaCompradaAtual = parseNatural(
-                          current.combate.resistenciaComprada,
-                        );
-                        const resistenciaPoderesAtual = parseNatural(
-                          current.combate.resistenciaPoderes,
-                        );
-                        const resistenciaTotalAtual =
-                          novoBonusConstituicao +
-                          resistenciaCompradaAtual +
-                          resistenciaPoderesAtual;
-                        const maxDefesaCompradaAtual = Math.max(
-                          0,
-                          LIMITE_DEFESA_RESISTENCIA - resistenciaTotalAtual,
-                        );
-                        const defesaCompradaAtual = clamp(
-                          parseNatural(current.combate.defesa) - DEFESA_BASE,
-                          0,
-                          LIMITE_DEFESA_RESISTENCIA,
-                        );
-
-                        return {
-                          ...current,
-                          atributos: novosAtributos,
-                          combate: {
-                            ...current.combate,
-                            defesa: String(
-                              DEFESA_BASE +
-                                clamp(
-                                  defesaCompradaAtual,
-                                  0,
-                                  maxDefesaCompradaAtual,
-                                ),
-                            ),
-                          },
-                        };
-                      })
-                    }
-                  >
-                    {DICE_OPTIONS.map((grade) => (
-                      <option key={grade} value={grade}>
-                        {grade}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ))}
-            </div>
-          </article>
-
-          <div className="stacked wider">
-            <article className="block">
-              <h3>Recursos</h3>
-              <div className="resource-grid">
-                <label>
-                  Vida Max
-                  <input value={String(vidaMaxima)} readOnly />
-                </label>
-                <label>
-                  Eter Max
-                  <input value={String(eterMaximo)} readOnly />
-                </label>
+                        })
+                      }
+                    >
+                      {DICE_OPTIONS.map((grade) => (
+                        <option key={grade} value={grade}>
+                          {grade}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
               </div>
             </article>
 
-            <article className="block">
-              <h3>Combate</h3>
+            <article className="block base-resources-block">
+              <h3>Recursos e Mobilidade</h3>
+              <div className="resource-stat-grid">
+                <div className="resource-stat-card">
+                  <p className="resource-stat-label">
+                    Vida Max
+                    <span className="info-dot" data-tooltip={VIDA_MAX_TOOLTIP}>
+                      i
+                    </span>
+                  </p>
+                  <p className="resource-stat-value">{vidaMaxima}</p>
+                  <p className="resource-stat-note">
+                    Base: Constituicao{" "}
+                    {selectedCharacter.atributos.Constituicao}
+                  </p>
+                </div>
+                <div className="resource-stat-card">
+                  <p className="resource-stat-label">
+                    Eter Max
+                    <span className="info-dot" data-tooltip={ETER_MAX_TOOLTIP}>
+                      i
+                    </span>
+                  </p>
+                  <p className="resource-stat-value">{eterMaximo}</p>
+                  <p className="resource-stat-note">
+                    Base: Tecnica {selectedCharacter.atributos.Tecnica}
+                  </p>
+                </div>
+                <div className="resource-stat-card">
+                  <p className="resource-stat-label">
+                    Carga
+                    <span className="info-dot" data-tooltip={CARGA_TOOLTIP}>
+                      i
+                    </span>
+                  </p>
+                  <p className="resource-stat-value">{cargaAtual} kg</p>
+                  <p className="resource-stat-note">
+                    Base: Forca {selectedCharacter.atributos.Forca}
+                  </p>
+                </div>
+                <div className="resource-stat-card">
+                  <p className="resource-stat-label">
+                    Movimento
+                    <span className="info-dot" data-tooltip={MOVIMENTO_TOOLTIP}>
+                      i
+                    </span>
+                  </p>
+                  <p className="resource-stat-value">{movimentoAtual} m</p>
+                  <p className="resource-stat-note">
+                    Base: Agilidade {selectedCharacter.atributos.Agilidade}
+                  </p>
+                </div>
+              </div>
+              <p className="rule-note">
+                Valores calculados automaticamente pelos atributos: Vida Max por
+                Constituicao, Eter Max por Tecnica, Carga por Forca e Movimento
+                por Agilidade.
+              </p>
+            </article>
+
+            <article className="block combat-panel combat-panel-full">
+              <h3>
+                Combate
+                <span
+                  className="info-dot section-info-dot"
+                  data-tooltip={COMBAT_PROGRESS_TOOLTIP}
+                >
+                  i
+                </span>
+              </h3>
               <div className="resource-grid combat-grid">
                 <label>
                   Ataque CaC
@@ -1492,403 +2912,502 @@ function App() {
                     ))}
                   </select>
                 </label>
-                <div className="defesa-stack">
-                  <span>Defesa</span>
-                  <div className="defesa-line">
-                    <span>Base {DEFESA_BASE} +</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={LIMITE_DEFESA_RESISTENCIA}
-                      value={defesaCompradaEfetiva}
-                      onChange={(event) =>
-                        updateCharacter((current) => {
-                          const resistenciaTotalAtual =
-                            BONUS_BY_DICE[current.atributos.Constituicao] +
-                            parseNatural(current.combate.resistenciaComprada) +
-                            parseNatural(current.combate.resistenciaPoderes);
+                <div className="combat-summary-row">
+                  <div className="defesa-stack emphasis-panel">
+                    <span className="combat-group-title">Defesa</span>
+                    <div className="defesa-line">
+                      <span className="defesa-base-label">
+                        Base {DEFESA_BASE} + Agilidade ({bonusAgilidadeDefesa})
+                        +
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={Math.max(
+                          0,
+                          limiteDefesaResistencia - resistenciaTotal,
+                        )}
+                        value={defesaCompradaEfetiva}
+                        onChange={(event) =>
+                          updateCharacter((current) => {
+                            const limiteAtual =
+                              parseNatural(current.nivel) + 12;
+                            const resistenciaPoderFonteAtual =
+                              current.combate.resistenciaPoderFonte;
+                            const resistenciaPoderAtual =
+                              resistenciaPoderFonteAtual === ""
+                                ? 0
+                                : getPowerGraduacaoForResistenciaFonte(
+                                    current,
+                                    resistenciaPoderFonteAtual,
+                                  );
+                            const resistenciaTotalAtual =
+                              BONUS_BY_DICE[current.atributos.Constituicao] +
+                              resistenciaPoderAtual;
 
-                          const maxDefesaCompradaAtual = clamp(
-                            LIMITE_DEFESA_RESISTENCIA - resistenciaTotalAtual,
-                            0,
-                            LIMITE_DEFESA_RESISTENCIA,
-                          );
+                            const maxDefesaCompradaAtual = clamp(
+                              limiteAtual - resistenciaTotalAtual,
+                              0,
+                              limiteAtual,
+                            );
 
-                          const novaDefesaComprada = clamp(
-                            parseNatural(event.target.value),
-                            0,
-                            maxDefesaCompradaAtual,
-                          );
+                            const novaDefesaComprada = clamp(
+                              parseNatural(event.target.value),
+                              0,
+                              maxDefesaCompradaAtual,
+                            );
 
-                          return {
-                            ...current,
-                            combate: {
-                              ...current.combate,
-                              defesa: String(DEFESA_BASE + novaDefesaComprada),
-                            },
-                          };
-                        })
-                      }
-                    />
-                    <span className="defesa-total">Total: {defesaAtual}</span>
+                            return {
+                              ...current,
+                              combate: {
+                                ...current.combate,
+                                defesa: String(
+                                  DEFESA_BASE + novaDefesaComprada,
+                                ),
+                              },
+                            };
+                          })
+                        }
+                      />
+                      <span className="defesa-total">
+                        Defesa Total
+                        <span
+                          className="info-dot section-info-dot"
+                          data-tooltip={DEFESA_TOTAL_TOOLTIP}
+                        >
+                          i
+                        </span>
+                        : {defesaAtual}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                <div className="resistance-stack">
-                  <label>
-                    Resistencia Base (Constituicao)
-                    <input value={String(bonusConstituicao)} disabled />
-                  </label>
-                  <label>
-                    Resistencia Comprada
-                    <input
-                      type="number"
-                      min={0}
-                      max={LIMITE_DEFESA_RESISTENCIA}
-                      value={resistenciaCompradaEfetiva}
-                      onChange={(event) =>
-                        updateCharacter((current) => {
-                          const bonusBase =
-                            BONUS_BY_DICE[current.atributos.Constituicao];
-                          const defesaCompradaAtual = clamp(
-                            parseNatural(current.combate.defesa) - DEFESA_BASE,
-                            0,
-                            LIMITE_DEFESA_RESISTENCIA,
-                          );
-                          const resistenciaPoderesAtual = parseNatural(
-                            current.combate.resistenciaPoderes,
-                          );
-                          const maxComprada = Math.max(
-                            0,
-                            LIMITE_DEFESA_RESISTENCIA -
-                              defesaCompradaAtual -
-                              bonusBase -
-                              resistenciaPoderesAtual,
-                          );
-                          const novaComprada = clamp(
-                            parseNatural(event.target.value),
-                            0,
-                            maxComprada,
-                          );
-
-                          return {
-                            ...current,
-                            combate: {
-                              ...current.combate,
-                              resistenciaComprada: String(novaComprada),
-                            },
-                          };
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Resistencia de Poderes
-                    <input
-                      type="number"
-                      min={0}
-                      max={LIMITE_DEFESA_RESISTENCIA}
-                      value={resistenciaPoderes}
-                      onChange={(event) =>
-                        updateCharacter((current) => {
-                          const bonusBase =
-                            BONUS_BY_DICE[current.atributos.Constituicao];
-                          const defesaCompradaAtual = clamp(
-                            parseNatural(current.combate.defesa) - DEFESA_BASE,
-                            0,
-                            LIMITE_DEFESA_RESISTENCIA,
-                          );
-                          const resistenciaCompradaAtual = parseNatural(
-                            current.combate.resistenciaComprada,
-                          );
-                          const maxPoderes = Math.max(
-                            0,
-                            LIMITE_DEFESA_RESISTENCIA -
-                              defesaCompradaAtual -
-                              bonusBase -
-                              resistenciaCompradaAtual,
-                          );
-                          const novaResistenciaPoderes = clamp(
-                            parseNatural(event.target.value),
-                            0,
-                            maxPoderes,
-                          );
-
-                          return {
-                            ...current,
-                            combate: {
-                              ...current.combate,
-                              resistenciaPoderes: String(
-                                novaResistenciaPoderes,
-                              ),
-                            },
-                          };
-                        })
-                      }
-                    />
-                  </label>
-                </div>
-                <label>
-                  Resistencia Total
-                  <input value={String(resistenciaTotalEfetiva)} readOnly />
-                </label>
-                <label>
-                  Dano Base
-                  <input value={String(danoBase)} readOnly />
-                </label>
-              </div>
-              <p className="rule-note">
-                Limite: Defesa Comprada + Resistencia Total nao pode passar de
-                22. Defesa base 10 nao entra nesse calculo.
-              </p>
-            </article>
-          </div>
-        </section>
-
-        <section className="block pericias-block">
-          <h3>Pericias</h3>
-          <div className="skills-grid">
-            {PERICIAS.map((pericia) => {
-              const valor = parseNatural(selectedCharacter.pericias[pericia]);
-              const acimaLimite = valor > limitePericia;
-              const info = PERICIA_INFO[pericia];
-              const tooltip = info
-                ? `Atributo: ${info.atributo}. ${info.uso}`
-                : "Sem descricao.";
-
-              return (
-                <label key={pericia} className={acimaLimite ? "warn" : ""}>
-                  <span className="pericia-name">
-                    {pericia}
-                    <span className="info-dot" data-tooltip={tooltip}>
-                      i
-                    </span>
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={limitePericia || undefined}
-                    value={selectedCharacter.pericias[pericia]}
-                    onChange={(event) =>
-                      updateCharacter((current) => ({
-                        ...current,
-                        pericias: {
-                          ...current.pericias,
-                          [pericia]: event.target.value,
-                        },
-                      }))
-                    }
-                  />
-                </label>
-              );
-            })}
-          </div>
-          <div className="conhecimentos-stack">
-            {selectedCharacter.conhecimentos.map((conhecimento, index) => {
-              const valor = parseNatural(conhecimento.graduacoes);
-              const acimaLimite = valor > limitePericia;
-
-              return (
-                <div
-                  key={`conhecimento-${index}`}
-                  className={`conhecimento-row ${acimaLimite ? "warn" : ""}`}
-                >
-                  <span className="pericia-name">
-                    Conhecimento
-                    <span
-                      className="info-dot"
-                      data-tooltip={`Atributo: ${PERICIA_INFO.Conhecimento.atributo}. ${PERICIA_INFO.Conhecimento.uso}`}
-                    >
-                      i
-                    </span>
-                  </span>
-                  <select
-                    value={conhecimento.area}
-                    onChange={(event) =>
-                      updateCharacter((current) => {
-                        const novosConhecimentos = [...current.conhecimentos];
-                        novosConhecimentos[index] = {
-                          ...novosConhecimentos[index],
-                          area: event.target.value,
-                        };
-
-                        return {
-                          ...current,
-                          conhecimentos: novosConhecimentos,
-                        };
-                      })
-                    }
-                  >
-                    <option value="">Selecione</option>
-                    {CONHECIMENTO_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.value}: {option.descricao}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    min={0}
-                    max={limitePericia || undefined}
-                    value={conhecimento.graduacoes}
-                    onChange={(event) =>
-                      updateCharacter((current) => {
-                        const novosConhecimentos = [...current.conhecimentos];
-                        novosConhecimentos[index] = {
-                          ...novosConhecimentos[index],
-                          graduacoes: event.target.value,
-                        };
-
-                        return {
-                          ...current,
-                          conhecimentos: novosConhecimentos,
-                        };
-                      })
-                    }
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <p className="rule-note">
-            Limite por pericia: Nivel + 10 = {limitePericia}
-          </p>
-        </section>
-
-        <section className="sheet-columns bottom-grid">
-          <article className="block manipulacoes">
-            <h3>Poderes / Manipulacoes</h3>
-            <div className="manip-grid">
-              {MANIPULACOES.map((manipulacao) => (
-                <div className="manip-card" key={manipulacao}>
-                  <h4>{manipulacao}</h4>
-                  {(() => {
-                    const graduacao =
-                      selectedCharacter.manipulacoes[manipulacao].graduacao;
-                    const derived = getManipulacaoDerived(
-                      manipulacao,
-                      graduacao,
-                    );
-
-                    return (
-                      <>
-                        <label>
-                          Graduacao
-                          <input
-                            type="number"
-                            min={0}
-                            max={10}
-                            value={graduacao}
+                  <div className="resistance-stack emphasis-panel passive-panel">
+                    <span className="combat-group-title">Resistencia</span>
+                    <div className="resistance-row">
+                      <span className="resistance-stat">
+                        <span className="metric-label-with-tip">
+                          Base
+                          <span
+                            className="info-dot"
+                            data-tooltip={RESISTENCIA_BASE_TOOLTIP}
+                          >
+                            i
+                          </span>
+                        </span>
+                        <span className="resistance-value">
+                          {bonusConstituicao}
+                        </span>
+                      </span>
+                      <span className="resistance-op">+</span>
+                      <label className="resistance-poder-group">
+                        <span className="metric-label-with-tip">
+                          Fonte de Poder
+                          <span
+                            className="info-dot"
+                            data-tooltip={RESISTENCIA_PODERES_TOOLTIP}
+                          >
+                            i
+                          </span>
+                        </span>
+                        <div className="resistance-poder-inline">
+                          <select
+                            value={resistenciaPoderFonteSelecionada}
                             onChange={(event) =>
                               updateCharacter((current) => ({
                                 ...current,
-                                manipulacoes: {
-                                  ...current.manipulacoes,
-                                  [manipulacao]: {
-                                    ...current.manipulacoes[manipulacao],
-                                    graduacao: event.target.value,
-                                  },
+                                combate: {
+                                  ...current.combate,
+                                  resistenciaPoderFonte: event.target
+                                    .value as ResistancePowerSource,
                                 },
                               }))
                             }
-                          />
-                        </label>
-                        <label>
-                          Modificador
-                          <input value={derived.modificador} disabled />
-                        </label>
-                        <label>
-                          Custo de Eter
-                          <input value={derived.custo} disabled />
-                        </label>
-                      </>
-                    );
-                  })()}
+                          >
+                            <option value="">Nenhum</option>
+                            {resistenciasDePoderDisponiveis.map((item) => {
+                              const label =
+                                item.graduacao > 0
+                                  ? `${item.fonte} (+${item.graduacao})`
+                                  : `${item.fonte} (nao comprado)`;
+                              return (
+                                <option
+                                  key={item.fonte}
+                                  value={item.fonte}
+                                  disabled={item.graduacao === 0}
+                                >
+                                  {label}
+                                </option>
+                              );
+                            })}
+                          </select>
+                          {resistenciaPoderes > 0 && (
+                            <span className="resistance-value poder-value">
+                              +{resistenciaPoderes}
+                            </span>
+                          )}
+                        </div>
+                      </label>
+                      <span className="resistance-op">=</span>
+                      <span className="resistance-stat resistance-total-stat">
+                        <span className="metric-label-with-tip">
+                          Total
+                          <span
+                            className="info-dot"
+                            data-tooltip={RESISTENCIA_TOTAL_TOOLTIP}
+                          >
+                            i
+                          </span>
+                        </span>
+                        <span className="resistance-value total-value">
+                          {resistenciaTotalEfetiva}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                  <div className="dano-base-panel emphasis-panel passive-panel">
+                    <span className="combat-group-title">Dano Base</span>
+                    <div className="dano-base-content">
+                      <span className="resistance-stat">
+                        <span className="metric-label-with-tip">
+                          Forca
+                          <span
+                            className="info-dot"
+                            data-tooltip={DANO_BASE_TOOLTIP}
+                          >
+                            i
+                          </span>
+                        </span>
+                        <span className="resistance-value total-value">
+                          +{danoBase}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </article>
+              </div>
+              <p className="rule-note">
+                Limite: Defesa Comprada + Resistencia Total {"<="} Nivel + 12 (
+                {limiteDefesaResistencia}). O bonus de Agilidade e a base fixa 7
+                nao entram nesse calculo.
+              </p>
+            </article>
+          </section>
+        ) : null}
 
-          <div className="stacked wider">
-            <article className="block vantagens-panel">
-              <h3>Vantagens</h3>
-              <div className="vantagens-controls">
-                <label>
-                  Tipo de Vantagem
-                  <select
-                    value={vantagemCategoriaSelecionada}
-                    onChange={(event) => {
-                      setVantagemCategoriaSelecionada(
-                        event.target.value as VantagemCategoria | "",
+        {activeEditorTab === "pericias" ? (
+          <section className="block pericias-block">
+            <h3>Pericias</h3>
+            <div className="pericias-intro-card">
+              <p>
+                Pericias e Conhecimentos compartilham o mesmo bloco de custo.
+                Some todas as graduacoes investidas e divida por 4 para chegar
+                ao gasto em PP.
+              </p>
+              <p>
+                Cada 1 graduacao vale 0,25 PP. Cada pericia individual tambem
+                respeita o limite de Nivel + 10, que nesta ficha e{" "}
+                {limitePericia}.
+              </p>
+              <p>
+                Total atual: {periciasPontosTotal} graduacoes = {periciasSpent}{" "}
+                PP. Desse total, {periciasPontos} graduacoes estao em Pericias e{" "}
+                {conhecimentosPontos} em Conhecimentos.
+              </p>
+            </div>
+            <div className="skills-grid">
+              {PERICIAS.map((pericia) => {
+                const valor = parseNatural(selectedCharacter.pericias[pericia]);
+                const acimaLimite = valor > limitePericia;
+                const info = PERICIA_INFO[pericia];
+                const tooltip = info
+                  ? `Atributo-base: ${info.atributo}. Uso: ${info.uso} Custo: cada graduacao vale 0,25 PP no total de Pericias/Conhecimentos. Valor atual: ${valor} graduacoes = ${formatSkillCostText(valor)} PP. Limite individual: Nivel + 10 = ${limitePericia}.`
+                  : "Sem descricao.";
+
+                return (
+                  <label key={pericia} className={acimaLimite ? "warn" : ""}>
+                    <span className="pericia-name">
+                      {pericia}
+                      <span className="info-dot" data-tooltip={tooltip}>
+                        i
+                      </span>
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={limitePericia || undefined}
+                      value={selectedCharacter.pericias[pericia]}
+                      onChange={(event) =>
+                        updateCharacter((current) => ({
+                          ...current,
+                          pericias: {
+                            ...current.pericias,
+                            [pericia]: event.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+                );
+              })}
+            </div>
+            <div className="conhecimentos-stack">
+              {selectedCharacter.conhecimentos.map((conhecimento, index) => {
+                const valor = parseNatural(conhecimento.graduacoes);
+                const acimaLimite = valor > limitePericia;
+                const areaLabel = conhecimento.area || "Area nao selecionada";
+
+                return (
+                  <div
+                    key={`conhecimento-${index}`}
+                    className={`conhecimento-row ${acimaLimite ? "warn" : ""}`}
+                  >
+                    <span className="pericia-name">
+                      Conhecimento
+                      <span
+                        className="info-dot"
+                        data-tooltip={`Atributo-base: ${PERICIA_INFO.Conhecimento.atributo}. Uso: ${PERICIA_INFO.Conhecimento.uso} Area atual: ${areaLabel}. Custo: cada graduacao vale 0,25 PP no total de Pericias/Conhecimentos. Valor atual: ${valor} graduacoes = ${formatSkillCostText(valor)} PP. Limite individual: Nivel + 10 = ${limitePericia}.`}
+                      >
+                        i
+                      </span>
+                    </span>
+                    <select
+                      value={conhecimento.area}
+                      onChange={(event) =>
+                        updateCharacter((current) => {
+                          const novosConhecimentos = [...current.conhecimentos];
+                          novosConhecimentos[index] = {
+                            ...novosConhecimentos[index],
+                            area: event.target.value,
+                          };
+
+                          return {
+                            ...current,
+                            conhecimentos: novosConhecimentos,
+                          };
+                        })
+                      }
+                    >
+                      <option value="">Selecione</option>
+                      {CONHECIMENTO_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.value}: {option.descricao}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min={0}
+                      max={limitePericia || undefined}
+                      value={conhecimento.graduacoes}
+                      onChange={(event) =>
+                        updateCharacter((current) => {
+                          const novosConhecimentos = [...current.conhecimentos];
+                          novosConhecimentos[index] = {
+                            ...novosConhecimentos[index],
+                            graduacoes: event.target.value,
+                          };
+
+                          return {
+                            ...current,
+                            conhecimentos: novosConhecimentos,
+                          };
+                        })
+                      }
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <p className="rule-note">
+              Limite por pericia ou conhecimento: Nivel + 10 = {limitePericia}.
+              O custo final da aba e a soma de todas as graduacoes dividida por
+              4.
+            </p>
+          </section>
+        ) : null}
+
+        {activeEditorTab === "tecnicas" ? (
+          <section>
+            <article className="block manipulacoes tecnicas-basicas-wide">
+              <h3>Tecnicas Basicas</h3>
+              <div className="manip-grid">
+                {TECNICAS_BASICAS.map((tecnica) => (
+                  <div className="manip-card" key={tecnica.nome}>
+                    <h4>{tecnica.nome}</h4>
+                    <p className="manip-meta">
+                      {tecnica.tipo} | {tecnica.acao} | {tecnica.duracao}
+                    </p>
+                    <p className="manip-description">{tecnica.descricao}</p>
+                    {(() => {
+                      const graduacao =
+                        selectedCharacter.tecnicasBasicas[tecnica.nome]
+                          .graduacao;
+                      const derived = getTecnicaBasicaDerived(
+                        tecnica,
+                        graduacao,
+                        limitePericia,
                       );
-                      setVantagemSelecionadaId("");
-                      setVantagemGraduacao("1");
-                    }}
-                  >
-                    <option value="">Selecione</option>
-                    {VANTAGEM_CATEGORIAS.map((categoria) => (
-                      <option key={categoria} value={categoria}>
-                        {categoria}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Vantagem
-                  <select
-                    value={vantagemSelecionadaId}
-                    onChange={(event) => {
-                      setVantagemSelecionadaId(event.target.value);
-                      setVantagemGraduacao("1");
-                    }}
-                    disabled={!vantagemCategoriaSelecionada}
-                  >
-                    <option value="">Selecione</option>
-                    {vantagensDisponiveis.map((vantagem) => (
-                      <option key={vantagem.id} value={vantagem.id}>
-                        {vantagem.nome}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+
+                      return (
+                        <>
+                          <div className="manip-stats-grid">
+                            <label className="manip-input-field">
+                              <span>Graduacao</span>
+                              <input
+                                type="number"
+                                min={0}
+                                max={limitePericia}
+                                value={graduacao}
+                                onChange={(event) =>
+                                  updateCharacter((current) => ({
+                                    ...current,
+                                    tecnicasBasicas: {
+                                      ...current.tecnicasBasicas,
+                                      [tecnica.nome]: {
+                                        graduacao: event.target.value,
+                                      },
+                                    },
+                                  }))
+                                }
+                              />
+                            </label>
+                            <div className="manip-stat-chip">
+                              <span className="manip-stat-label">
+                                Valor Efetivo
+                              </span>
+                              <span className="manip-stat-value">
+                                {derived.ve}
+                              </span>
+                            </div>
+                            <div className="manip-stat-chip">
+                              <span className="manip-stat-label">
+                                Consumo de Eter
+                              </span>
+                              <span className="manip-stat-value manip-stat-value-text">
+                                {derived.custoPE} PE{" "}
+                                {tecnica.duracao === "Sustentada"
+                                  ? "por turno"
+                                  : "por uso"}
+                              </span>
+                            </div>
+                            <div className="manip-stat-chip">
+                              <span className="manip-stat-label">
+                                Custo em PP
+                              </span>
+                              <span className="manip-stat-value manip-stat-value-text">
+                                {tecnica.custoPPPorGraduacao} PP/grad
+                              </span>
+                            </div>
+                          </div>
+                          <p className="manip-effect">
+                            Efeito: {derived.efeito}
+                          </p>
+                          <p className="manip-limitation">
+                            Limitacoes: {tecnica.limitacoes}
+                          </p>
+                        </>
+                      );
+                    })()}
+                  </div>
+                ))}
+              </div>
+              <p className="rule-note">
+                Limite de graduacao: Nivel + 10 = {limitePericia}. VE usa
+                rendimento decrescente a partir da graduacao 6. Tecnicas
+                sustentadas consomem PE por turno, tecnicas instantaneas por
+                uso, e apenas 1 tecnica sustentada pode ficar ativa por vez.
+              </p>
+            </article>
+          </section>
+        ) : null}
+
+        {activeEditorTab === "vantagens" ? (
+          <section className="block vantagens-panel vantagens-wide">
+            <h3>Vantagens</h3>
+            <div
+              className={`vantagens-controls ${vantagemSelecionada?.temGraduacao ? "with-graduacao" : "without-graduacao"}`}
+            >
+              <label>
+                Tipo de Vantagem
+                <select
+                  value={vantagemCategoriaSelecionada}
+                  onChange={(event) => {
+                    setVantagemCategoriaSelecionada(
+                      event.target.value as VantagemCategoria | "",
+                    );
+                    setVantagemSelecionadaId("");
+                    setVantagemGraduacao("1");
+                  }}
+                >
+                  <option value="">Selecione</option>
+                  {VANTAGEM_CATEGORIAS.map((categoria) => (
+                    <option key={categoria} value={categoria}>
+                      {categoria}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Vantagem
+                <select
+                  className="vantagem-select"
+                  value={vantagemSelecionadaId}
+                  onChange={(event) => {
+                    setVantagemSelecionadaId(event.target.value);
+                    setVantagemGraduacao("1");
+                  }}
+                  disabled={!vantagemCategoriaSelecionada}
+                >
+                  <option value="">Selecione</option>
+                  {vantagensDisponiveis.map((vantagem) => (
+                    <option key={vantagem.id} value={vantagem.id}>
+                      {`${formatVantagemCusto(vantagem.custoPorGraduacao, vantagem.temGraduacao)} ${vantagem.nome} - ${vantagem.resumo}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {vantagemSelecionada?.temGraduacao ? (
                 <label>
                   Graduacao
                   <input
                     type="number"
                     min={1}
-                    value={
-                      vantagemSelecionada?.temGraduacao
-                        ? vantagemGraduacao
-                        : "1"
-                    }
+                    value={vantagemGraduacao}
                     onChange={(event) =>
                       setVantagemGraduacao(event.target.value)
                     }
-                    disabled={!vantagemSelecionada?.temGraduacao}
                   />
                 </label>
-                <button
-                  type="button"
-                  className="add-vantagem"
-                  onClick={addVantagem}
-                  disabled={!vantagemSelecionada}
-                >
-                  Adicionar vantagem
-                </button>
-              </div>
-
-              {vantagemSelecionada ? (
-                <p className="rule-note vantagem-preview">
-                  {vantagemSelecionada.efeito}
-                </p>
               ) : null}
+              <button
+                type="button"
+                className="add-vantagem"
+                onClick={addVantagem}
+                disabled={!vantagemSelecionada}
+              >
+                Adicionar vantagem
+              </button>
+            </div>
 
-              <div className="vantagens-list">
-                {selectedCharacter.vantagens.length === 0 ? (
-                  <p className="empty-vantagens">
-                    Nenhuma vantagem adicionada.
-                  </p>
-                ) : (
-                  selectedCharacter.vantagens.map((vantagem) => (
+            {vantagemSelecionada ? (
+              <p className="rule-note vantagem-preview">
+                {`${formatVantagemCusto(vantagemSelecionada.custoPorGraduacao, vantagemSelecionada.temGraduacao)} ${vantagemSelecionada.resumo}`}
+                {` ${vantagemSelecionada.efeito}`}
+              </p>
+            ) : null}
+
+            <div className="vantagens-list">
+              {selectedCharacter.vantagens.length === 0 ? (
+                <p className="empty-vantagens">Nenhuma vantagem adicionada.</p>
+              ) : (
+                selectedCharacter.vantagens.map((vantagem) => {
+                  const catalogo = VANTAGEM_BY_ID.get(vantagem.catalogId);
+                  const custoPorGraduacao =
+                    catalogo?.custoPorGraduacao ??
+                    vantagem.custoPorGraduacao ??
+                    3;
+
+                  return (
                     <div className="vantagem-item" key={vantagem.id}>
                       <div>
                         <strong>{vantagem.nome}</strong>
@@ -1897,7 +3416,7 @@ function App() {
                           {vantagem.temGraduacao
                             ? ` | Graduacao ${vantagem.graduacao}`
                             : ""}
-                          {` | ${vantagem.graduacao * 3} PP`}
+                          {` | ${vantagem.graduacao * custoPorGraduacao} PP`}
                         </span>
                         <p>{vantagem.efeito}</p>
                       </div>
@@ -1912,303 +3431,122 @@ function App() {
                         </svg>
                       </button>
                     </div>
-                  ))
-                )}
-              </div>
-            </article>
+                  );
+                })
+              )}
+            </div>
+          </section>
+        ) : null}
 
-            <article className="block lined-textarea">
-              <h3>Equipamentos</h3>
-              <textarea
-                value={selectedCharacter.equipamentos}
-                onChange={(event) =>
-                  updateCharacter((current) => ({
-                    ...current,
-                    equipamentos: event.target.value,
-                  }))
-                }
-              />
-            </article>
-          </div>
-        </section>
-
-        <section className="powers-wide">
-          <div className="powers-header">
-            <h3>Poderes</h3>
-          </div>
-
-          <div className="powers-main-tabs">
-            <button
-              type="button"
-              className={
-                poderesPanelVisivel === "catalogo"
-                  ? "active"
-                  : catalogoPoderesLiberado
-                    ? ""
-                    : "locked"
-              }
-              onClick={() => setPoderesPanelAtivo("catalogo")}
-              disabled={!catalogoPoderesLiberado}
-              title={
-                catalogoPoderesLiberado
-                  ? ""
-                  : "Selecione o Naipe em Identidade para liberar o catalogo"
-              }
+        {activeEditorTab === "desvantagens" ? (
+          <section className="block desvantagens-panel desvantagens-wide">
+            <h3>Desvantagens</h3>
+            <div
+              className={`desvantagens-controls ${desvantagemSelecionada?.temGraduacao ? "with-graduacao" : "without-graduacao"}`}
             >
-              Catalogo por naipe
-            </button>
-            <button
-              type="button"
-              className={poderesPanelVisivel === "arsenal" ? "active" : ""}
-              onClick={() => setPoderesPanelAtivo("arsenal")}
-            >
-              Arsenal de poderes
-            </button>
-          </div>
+              <label>
+                Tipo de Desvantagem
+                <select
+                  value={desvantagemCategoriaSelecionada}
+                  onChange={(event) => {
+                    setDesvantagemCategoriaSelecionada(
+                      event.target.value as DesvantagemCategoria | "",
+                    );
+                    setDesvantagemSelecionadaId("");
+                    setDesvantagemGraduacao("1");
+                  }}
+                >
+                  <option value="">Selecione</option>
+                  {DESVANTAGEM_CATEGORIAS.map((categoria) => (
+                    <option key={categoria} value={categoria}>
+                      {categoria}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Desvantagem
+                <select
+                  className="desvantagem-select"
+                  value={desvantagemSelecionadaId}
+                  onChange={(event) => {
+                    setDesvantagemSelecionadaId(event.target.value);
+                    setDesvantagemGraduacao("1");
+                  }}
+                  disabled={!desvantagemCategoriaSelecionada}
+                >
+                  <option value="">Selecione</option>
+                  {desvantagensDisponiveis.map((desvantagem) => (
+                    <option key={desvantagem.id} value={desvantagem.id}>
+                      {`${formatDesvantagemBonus(desvantagem.ppPorGraduacao, desvantagem.temGraduacao)} ${desvantagem.nome} (${desvantagem.nivel}) - ${desvantagem.resumo}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {desvantagemSelecionada?.temGraduacao ? (
+                <label>
+                  Graduacao
+                  <input
+                    type="number"
+                    min={1}
+                    value={desvantagemGraduacao}
+                    onChange={(event) =>
+                      setDesvantagemGraduacao(event.target.value)
+                    }
+                  />
+                </label>
+              ) : null}
+              <button
+                type="button"
+                className="add-desvantagem"
+                onClick={addDesvantagem}
+                disabled={!desvantagemSelecionada}
+              >
+                Adicionar desvantagem
+              </button>
+            </div>
 
-          {!catalogoPoderesLiberado ? (
-            <p className="rule-note powers-lock-note">
-              Selecione o Naipe em Identidade para liberar o Catalogo.
+            <p className="rule-note desvantagens-limits">
+              {`Limites: +${DESVANTAGENS_MAX_PP} PP maximo | 1 Severa maximo | 6 Leves maximo.`}
             </p>
-          ) : null}
 
-          {poderesPanelVisivel === "catalogo" ? (
-            <>
-              <div className="powers-suit-tabs">
-                {NAIPE_PODERES.map((naipe) => (
-                  <button
-                    type="button"
-                    key={naipe}
-                    className={naipePoderSelecionado === naipe ? "active" : ""}
-                    onClick={() => setNaipePoderSelecionado(naipe)}
-                  >
-                    {naipe}
-                  </button>
-                ))}
-              </div>
+            {desvantagemSelecionada ? (
+              <p className="rule-note desvantagem-preview">
+                {`${formatDesvantagemBonus(desvantagemSelecionada.ppPorGraduacao, desvantagemSelecionada.temGraduacao)} ${desvantagemSelecionada.nome} (${desvantagemSelecionada.nivel}) - ${desvantagemSelecionada.resumo}`}
+                {` ${desvantagemSelecionada.efeito}`}
+              </p>
+            ) : null}
 
-              <div className="power-catalog-grid">
-                {poderesCatalogo.map((power) => {
-                  const jaNoArsenal = selectedCharacter.poderes.some(
-                    (item) => item.powerId === power.id,
-                  );
-                  const multiplicadorNaipe = getPowerNaipeMultiplier(
-                    selectedCharacter.naipe,
-                    power.naipe,
-                  );
-                  const tierClasse =
-                    multiplicadorNaipe === 1
-                      ? "normal"
-                      : multiplicadorNaipe === 2
-                        ? "adjacente"
-                        : "oposto";
-                  const tierLabel =
-                    multiplicadorNaipe === 1
-                      ? "Custo normal"
-                      : multiplicadorNaipe === 2
-                        ? "Custo x2"
-                        : "Custo x3";
-
-                  return (
-                    <div
-                      className={`power-catalog-card power-cost-${tierClasse}`}
-                      key={power.id}
-                    >
-                      <h4>{power.nome}</h4>
-                      <span className={`power-tier-badge ${tierClasse}`}>
-                        {tierLabel}
-                      </span>
-                      <p>
-                        {power.tipo} | {power.acao} | {power.alcance}
-                      </p>
-                      <p>
-                        Custo: {power.custoPontosTexto} | Eter:{" "}
-                        {power.custoEterBase}
-                      </p>
-                      <p>
-                        Multiplicador por naipe: x{multiplicadorNaipe}
-                        {multiplicadorNaipe > 1
-                          ? ` (${selectedCharacter.naipe || "Sem Naipe"} -> ${power.naipe})`
-                          : ""}
-                      </p>
-                      <p>
-                        Extras: {power.extras.length} | Falhas:{" "}
-                        {power.falhas.length}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => adicionarPoder(power)}
-                        disabled={jaNoArsenal}
-                      >
-                        {jaNoArsenal ? "Ja no arsenal" : "Adicionar ao arsenal"}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          ) : (
-            <div className="powers-arsenal-list">
-              {selectedCharacter.poderes.length === 0 ? (
-                <p className="empty-vantagens">Nenhum poder no arsenal.</p>
+            <div className="desvantagens-list">
+              {selectedCharacter.desvantagens.length === 0 ? (
+                <p className="empty-desvantagens">
+                  Nenhuma desvantagem adicionada.
+                </p>
               ) : (
-                selectedCharacter.poderes.map((powerEntry) => {
-                  const power = POWER_BY_ID.get(powerEntry.powerId);
-
-                  if (!power) {
-                    return null;
-                  }
-
-                  const graduacao = clamp(
-                    parseNatural(powerEntry.graduacao),
-                    1,
-                    limitePericia,
-                  );
-                  const custoPoder = getPowerTotalCost(
-                    power,
-                    graduacao,
-                    powerEntry.extrasSelecionados,
-                    powerEntry.falhasSelecionadas,
-                  );
-                  const multiplicadorNaipe = getPowerNaipeMultiplier(
-                    selectedCharacter.naipe,
-                    power.naipe,
-                  );
-                  const custoPoderFinal = custoPoder * multiplicadorNaipe;
+                selectedCharacter.desvantagens.map((desvantagem) => {
+                  const catalogo = DESVANTAGEM_BY_ID.get(desvantagem.catalogId);
+                  const ppPorGraduacao =
+                    catalogo?.ppPorGraduacao ?? desvantagem.ppPorGraduacao ?? 0;
 
                   return (
-                    <div className="power-arsenal-item" key={powerEntry.id}>
+                    <div className="desvantagem-item" key={desvantagem.id}>
                       <div>
-                        <strong>
-                          {power.nome} ({power.naipe})
-                        </strong>
+                        <strong>{desvantagem.nome}</strong>
                         <span>
-                          Tipo: {power.tipo} | Duracao: {power.duracao}
-                        </span>
-                        <span>
-                          {custoPoderFinal} PP
-                          {multiplicadorNaipe > 1
-                            ? ` (${custoPoder} x ${multiplicadorNaipe})`
+                          {desvantagem.categoria}
+                          {` | ${desvantagem.nivel}`}
+                          {desvantagem.temGraduacao
+                            ? ` | Graduacao ${desvantagem.graduacao}`
                             : ""}
+                          {` | +${desvantagem.graduacao * ppPorGraduacao} PP`}
                         </span>
+                        <p>{desvantagem.efeito}</p>
                       </div>
-
-                      <label>
-                        Graduacao
-                        <input
-                          type="number"
-                          min={1}
-                          max={MAX_POWER_GRADUATION_LIMIT}
-                          value={powerEntry.graduacao}
-                          onChange={(event) =>
-                            updateCharacter((current) => ({
-                              ...current,
-                              poderes: current.poderes.map((item) =>
-                                item.id === powerEntry.id
-                                  ? {
-                                      ...item,
-                                      graduacao: event.target.value,
-                                    }
-                                  : item,
-                              ),
-                            }))
-                          }
-                        />
-                      </label>
-
-                      {power.extras.length > 0 ? (
-                        <div className="power-mod-list">
-                          <h5>Extras</h5>
-                          {power.extras.map((extra) => (
-                            <label key={`${powerEntry.id}-extra-${extra.nome}`}>
-                              <input
-                                type="checkbox"
-                                checked={powerEntry.extrasSelecionados.includes(
-                                  extra.nome,
-                                )}
-                                onChange={(event) =>
-                                  updateCharacter((current) => ({
-                                    ...current,
-                                    poderes: current.poderes.map((item) => {
-                                      if (item.id !== powerEntry.id) {
-                                        return item;
-                                      }
-
-                                      const extrasSelecionados = event.target
-                                        .checked
-                                        ? [
-                                            ...item.extrasSelecionados,
-                                            extra.nome,
-                                          ]
-                                        : item.extrasSelecionados.filter(
-                                            (nome) => nome !== extra.nome,
-                                          );
-
-                                      return {
-                                        ...item,
-                                        extrasSelecionados,
-                                      };
-                                    }),
-                                  }))
-                                }
-                              />
-                              <span>
-                                {extra.nome} ({extra.custo})
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      {power.falhas.length > 0 ? (
-                        <div className="power-mod-list">
-                          <h5>Falhas</h5>
-                          {power.falhas.map((falha) => (
-                            <label key={`${powerEntry.id}-falha-${falha.nome}`}>
-                              <input
-                                type="checkbox"
-                                checked={powerEntry.falhasSelecionadas.includes(
-                                  falha.nome,
-                                )}
-                                onChange={(event) =>
-                                  updateCharacter((current) => ({
-                                    ...current,
-                                    poderes: current.poderes.map((item) => {
-                                      if (item.id !== powerEntry.id) {
-                                        return item;
-                                      }
-
-                                      const falhasSelecionadas = event.target
-                                        .checked
-                                        ? [
-                                            ...item.falhasSelecionadas,
-                                            falha.nome,
-                                          ]
-                                        : item.falhasSelecionadas.filter(
-                                            (nome) => nome !== falha.nome,
-                                          );
-
-                                      return {
-                                        ...item,
-                                        falhasSelecionadas,
-                                      };
-                                    }),
-                                  }))
-                                }
-                              />
-                              <span>
-                                {falha.nome} ({falha.custo})
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-                      ) : null}
-
                       <button
                         type="button"
                         className="trash-button"
-                        onClick={() => removerPoder(powerEntry.id)}
-                        aria-label={`Remover ${power.nome}`}
+                        onClick={() => removeDesvantagem(desvantagem.id)}
+                        aria-label={`Remover ${desvantagem.nome}`}
                       >
                         <svg viewBox="0 0 24 24" aria-hidden="true">
                           <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9z" />
@@ -2218,125 +3556,453 @@ function App() {
                   );
                 })
               )}
-              <p className="rule-note powers-note">
-                Limite de graduacao por poder: {MAX_POWER_GRADUATION_RULE}
-              </p>
             </div>
-          )}
-        </section>
+          </section>
+        ) : null}
 
-        <section className="block rules-reference">
-          <h3>Referencias de Custo</h3>
-          <div className="rules-grid">
-            <article>
-              <h4>Custo de Atributos</h4>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Evolucao</th>
-                    <th>Custo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>D4 -&gt; D6</td>
-                    <td>3 PP</td>
-                  </tr>
-                  <tr>
-                    <td>D6 -&gt; D8</td>
-                    <td>4 PP</td>
-                  </tr>
-                  <tr>
-                    <td>D8 -&gt; D10</td>
-                    <td>5 PP</td>
-                  </tr>
-                  <tr>
-                    <td>D10 -&gt; D12</td>
-                    <td>6 PP</td>
-                  </tr>
-                </tbody>
-              </table>
-            </article>
+        {activeEditorTab === "equipamentos" ? (
+          <section className="block lined-textarea equipamentos-wide">
+            <h3>Equipamentos</h3>
+            <textarea
+              value={selectedCharacter.equipamentos}
+              onChange={(event) =>
+                updateCharacter((current) => ({
+                  ...current,
+                  equipamentos: event.target.value,
+                }))
+              }
+            />
+          </section>
+        ) : null}
 
-            <article>
-              <h4>Custo de Melhoria (CaC / Disparo)</h4>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Evolucao</th>
-                    <th>Custo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Sem dado -&gt; D4</td>
-                    <td>3 PP</td>
-                  </tr>
-                  <tr>
-                    <td>D4 -&gt; D6</td>
-                    <td>4 PP</td>
-                  </tr>
-                  <tr>
-                    <td>D6 -&gt; D8</td>
-                    <td>5 PP</td>
-                  </tr>
-                  <tr>
-                    <td>D8 -&gt; D10</td>
-                    <td>6 PP</td>
-                  </tr>
-                  <tr>
-                    <td>D10 -&gt; D12</td>
-                    <td>7 PP</td>
-                  </tr>
-                </tbody>
-              </table>
-            </article>
+        {activeEditorTab === "poderes" ? (
+          <section className="powers-wide">
+            <div className="powers-header">
+              <h3>Poderes</h3>
+            </div>
 
-            <article>
-              <h4>Bonus de Constituicao</h4>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Constituicao</th>
-                    <th>Resistencia</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {DICE_OPTIONS.map((dice) => (
-                    <tr key={dice}>
-                      <td>{dice}</td>
-                      <td>+{BONUS_BY_DICE[dice]}</td>
-                    </tr>
+            <div className="powers-main-tabs">
+              <button
+                type="button"
+                className={
+                  poderesPanelVisivel === "catalogo"
+                    ? "active"
+                    : catalogoPoderesLiberado
+                      ? ""
+                      : "locked"
+                }
+                onClick={() => setPoderesPanelAtivo("catalogo")}
+                disabled={!catalogoPoderesLiberado}
+                title={
+                  catalogoPoderesLiberado
+                    ? ""
+                    : "Selecione o Naipe em Identidade para liberar o catalogo"
+                }
+              >
+                Catalogo por naipe
+              </button>
+              <button
+                type="button"
+                className={poderesPanelVisivel === "arsenal" ? "active" : ""}
+                onClick={() => setPoderesPanelAtivo("arsenal")}
+              >
+                Arsenal de poderes
+              </button>
+            </div>
+
+            {!catalogoPoderesLiberado ? (
+              <p className="rule-note powers-lock-note">
+                Selecione o Naipe em Identidade para liberar o Catalogo.
+              </p>
+            ) : null}
+
+            {poderesPanelVisivel === "catalogo" ? (
+              <>
+                <div className="powers-suit-tabs">
+                  {NAIPE_PODERES.map((naipe) => (
+                    <button
+                      type="button"
+                      key={naipe}
+                      className={
+                        naipePoderSelecionado === naipe ? "active" : ""
+                      }
+                      onClick={() => setNaipePoderSelecionado(naipe)}
+                    >
+                      {naipe}
+                    </button>
                   ))}
-                </tbody>
-              </table>
-            </article>
+                </div>
 
-            <article>
-              <h4>Dano Base por Forca</h4>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Forca</th>
-                    <th>Dano</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {DICE_OPTIONS.map((dice) => (
-                    <tr key={dice}>
-                      <td>{dice}</td>
-                      <td>+{BONUS_BY_DICE[dice]}</td>
-                    </tr>
+                <div className="power-catalog-grid">
+                  {poderesCatalogo.map((power) => {
+                    const jaNoArsenal = selectedCharacter.poderes.some(
+                      (item) => item.powerId === power.id,
+                    );
+                    const multiplicadorNaipe = getPowerNaipeMultiplier(
+                      selectedCharacter.naipe,
+                      power.naipe,
+                    );
+                    const tierClasse =
+                      multiplicadorNaipe === 1
+                        ? "normal"
+                        : multiplicadorNaipe === 2
+                          ? "adjacente"
+                          : "oposto";
+                    const tierLabel =
+                      multiplicadorNaipe === 1
+                        ? "Custo normal"
+                        : multiplicadorNaipe === 2
+                          ? "Custo x2"
+                          : "Custo x3";
+
+                    return (
+                      <div
+                        className={`power-catalog-card power-cost-${tierClasse}`}
+                        key={power.id}
+                      >
+                        <h4>{power.nome}</h4>
+                        <span className={`power-tier-badge ${tierClasse}`}>
+                          {tierLabel}
+                        </span>
+                        <p>
+                          {power.tipo} | {power.acao} | {power.alcance}
+                        </p>
+                        <p>
+                          Custo: {power.custoPontosTexto} | Eter:{" "}
+                          {power.custoEterBase}
+                        </p>
+                        {power.efeitoPrincipal ? (
+                          <p>{power.efeitoPrincipal}</p>
+                        ) : null}
+                        <p>
+                          Multiplicador por naipe: x{multiplicadorNaipe}
+                          {multiplicadorNaipe > 1
+                            ? ` (${selectedCharacter.naipe || "Sem Naipe"} -> ${power.naipe})`
+                            : ""}
+                        </p>
+                        <p>
+                          Extras: {power.extras.length} | Falhas:{" "}
+                          {power.falhas.length}
+                        </p>
+                        <div className="power-card-actions">
+                          <button
+                            type="button"
+                            className="power-detail-button"
+                            onClick={() => setDetalhesPoderId(power.id)}
+                          >
+                            Detalhes
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => adicionarPoder(power)}
+                            disabled={jaNoArsenal}
+                          >
+                            {jaNoArsenal
+                              ? "Ja no arsenal"
+                              : "Adicionar ao arsenal"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <div className="powers-arsenal-list">
+                {selectedCharacter.poderes.length === 0 ? (
+                  <p className="empty-vantagens">Nenhum poder no arsenal.</p>
+                ) : (
+                  selectedCharacter.poderes.map((powerEntry) => {
+                    const power = POWER_BY_ID.get(powerEntry.powerId);
+
+                    if (!power) {
+                      return null;
+                    }
+
+                    const graduacao = clamp(
+                      parseNatural(powerEntry.graduacao),
+                      1,
+                      limitePericia,
+                    );
+                    const custoPoder = getPowerTotalCost(
+                      power,
+                      graduacao,
+                      powerEntry.extrasSelecionados,
+                      powerEntry.falhasSelecionadas,
+                    );
+                    const multiplicadorNaipe = getPowerNaipeMultiplier(
+                      selectedCharacter.naipe,
+                      power.naipe,
+                    );
+                    const custoPoderFinal = custoPoder * multiplicadorNaipe;
+
+                    return (
+                      <div className="power-arsenal-item" key={powerEntry.id}>
+                        <div>
+                          <strong>
+                            {power.nome} ({power.naipe})
+                          </strong>
+                          <span>
+                            Tipo: {power.tipo} | Duracao: {power.duracao}
+                          </span>
+                          <span>
+                            {custoPoderFinal} PP
+                            {multiplicadorNaipe > 1
+                              ? ` (${custoPoder} x ${multiplicadorNaipe})`
+                              : ""}
+                          </span>
+                        </div>
+
+                        <label>
+                          Graduacao
+                          <input
+                            type="number"
+                            min={1}
+                            max={MAX_POWER_GRADUATION_LIMIT}
+                            value={powerEntry.graduacao}
+                            onChange={(event) =>
+                              updateCharacter((current) => ({
+                                ...current,
+                                poderes: current.poderes.map((item) =>
+                                  item.id === powerEntry.id
+                                    ? {
+                                        ...item,
+                                        graduacao: event.target.value,
+                                      }
+                                    : item,
+                                ),
+                              }))
+                            }
+                          />
+                        </label>
+
+                        {power.extras.length > 0 ? (
+                          <div className="power-mod-list">
+                            <h5>Extras</h5>
+                            {power.extras.map((extra) => (
+                              <label
+                                key={`${powerEntry.id}-extra-${extra.nome}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={powerEntry.extrasSelecionados.includes(
+                                    extra.nome,
+                                  )}
+                                  onChange={(event) =>
+                                    updateCharacter((current) => ({
+                                      ...current,
+                                      poderes: current.poderes.map((item) => {
+                                        if (item.id !== powerEntry.id) {
+                                          return item;
+                                        }
+
+                                        const extrasSelecionados = event.target
+                                          .checked
+                                          ? [
+                                              ...item.extrasSelecionados,
+                                              extra.nome,
+                                            ]
+                                          : item.extrasSelecionados.filter(
+                                              (nome) => nome !== extra.nome,
+                                            );
+
+                                        return {
+                                          ...item,
+                                          extrasSelecionados,
+                                        };
+                                      }),
+                                    }))
+                                  }
+                                />
+                                <span>
+                                  {extra.nome} ({extra.custo})
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        {power.falhas.length > 0 ? (
+                          <div className="power-mod-list">
+                            <h5>Falhas</h5>
+                            {power.falhas.map((falha) => (
+                              <label
+                                key={`${powerEntry.id}-falha-${falha.nome}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={powerEntry.falhasSelecionadas.includes(
+                                    falha.nome,
+                                  )}
+                                  onChange={(event) =>
+                                    updateCharacter((current) => ({
+                                      ...current,
+                                      poderes: current.poderes.map((item) => {
+                                        if (item.id !== powerEntry.id) {
+                                          return item;
+                                        }
+
+                                        const falhasSelecionadas = event.target
+                                          .checked
+                                          ? [
+                                              ...item.falhasSelecionadas,
+                                              falha.nome,
+                                            ]
+                                          : item.falhasSelecionadas.filter(
+                                              (nome) => nome !== falha.nome,
+                                            );
+
+                                        return {
+                                          ...item,
+                                          falhasSelecionadas,
+                                        };
+                                      }),
+                                    }))
+                                  }
+                                />
+                                <span>
+                                  {falha.nome} ({falha.custo})
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        <div className="power-item-actions">
+                          <button
+                            type="button"
+                            className="power-detail-button"
+                            onClick={() => setDetalhesPoderId(power.id)}
+                          >
+                            Detalhes
+                          </button>
+                          <button
+                            type="button"
+                            className="trash-button"
+                            onClick={() => removerPoder(powerEntry.id)}
+                            aria-label={`Remover ${power.nome}`}
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                <p className="rule-note powers-note">
+                  Limite de graduacao por poder: {MAX_POWER_GRADUATION_RULE}
+                </p>
+              </div>
+            )}
+          </section>
+        ) : null}
+
+        {activeEditorTab === "poderes" && poderDetalhesSelecionado ? (
+          <div
+            className="power-modal-backdrop"
+            role="presentation"
+            onClick={() => setDetalhesPoderId(null)}
+          >
+            <div
+              className="power-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="power-modal-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="power-modal-header">
+                <div>
+                  <h3 id="power-modal-title">
+                    {poderDetalhesSelecionado.nome}
+                  </h3>
+                  <p>
+                    {poderDetalhesSelecionado.tipo} |{" "}
+                    {poderDetalhesSelecionado.acao} |{" "}
+                    {poderDetalhesSelecionado.alcance} |{" "}
+                    {poderDetalhesSelecionado.duracao}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="power-modal-close"
+                  onClick={() => setDetalhesPoderId(null)}
+                  aria-label={`Fechar detalhes de ${poderDetalhesSelecionado.nome}`}
+                >
+                  Fechar
+                </button>
+              </div>
+
+              <div className="power-modal-meta">
+                <span>Custo: {poderDetalhesSelecionado.custoPontosTexto}</span>
+                <span>Eter: {poderDetalhesSelecionado.custoEterBase}</span>
+                <span>
+                  Efeito:{" "}
+                  {poderDetalhesSelecionado.efeitoPrincipal || "Sem resumo"}
+                </span>
+              </div>
+
+              {poderDetalhesSelecionado.resumo ? (
+                <p className="power-modal-summary">
+                  {poderDetalhesSelecionado.resumo}
+                </p>
+              ) : null}
+
+              {poderDetalhesSelecionado.detalhes?.introducao.map(
+                (paragrafo) => (
+                  <p className="power-modal-paragraph" key={paragrafo}>
+                    {paragrafo}
+                  </p>
+                ),
+              )}
+
+              {poderDetalhesSelecionado.detalhes?.tabelas?.map((tabela) => (
+                <section className="power-modal-section" key={tabela.titulo}>
+                  <h4>{tabela.titulo}</h4>
+                  <div className="power-modal-table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          {tabela.colunas.map((coluna) => (
+                            <th key={coluna}>{coluna}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tabela.linhas.map((linha) => (
+                          <tr key={linha.join("|")}>
+                            {linha.map((coluna) => (
+                              <td key={coluna}>{coluna}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              ))}
+
+              {poderDetalhesSelecionado.detalhes?.secoes.map((secao) => (
+                <section className="power-modal-section" key={secao.titulo}>
+                  <h4>{secao.titulo}</h4>
+                  {secao.descricao?.map((paragrafo) => (
+                    <p className="power-modal-paragraph" key={paragrafo}>
+                      {paragrafo}
+                    </p>
                   ))}
-                </tbody>
-              </table>
-            </article>
+                  {secao.itens?.length ? (
+                    <ul className="power-modal-list">
+                      {secao.itens.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </section>
+              ))}
+            </div>
           </div>
-          <p className="rule-note">
-            Regras aplicadas neste passo: atributos, CaC/disparo, resistencia,
-            defesa, vantagem (3 PP por linha), vida/eter automaticos.
-          </p>
-        </section>
+        ) : null}
       </main>
     </div>
   );
