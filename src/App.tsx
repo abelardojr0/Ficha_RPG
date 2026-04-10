@@ -1475,19 +1475,19 @@ const COMBAT_PROGRESS_TOOLTIP =
   "Custo de CaC/Disparo por evolucao: Sem dado->D4 = 3 PP, D4->D6 = 4 PP, D6->D8 = 5 PP, D8->D10 = 6 PP, D10->D12 = 7 PP.";
 
 const DEFESA_TOTAL_TOOLTIP =
-  "Defesa Total = 7 + bonus de Agilidade + Defesa Comprada. O limite considera apenas Defesa Comprada + Resistencia Total <= Nivel + 12.";
+  "Defesa Total = 7 + bonus de Agilidade + Defesa Comprada. Limite: Defesa Total <= 18 + Nivel.";
 
 const RESISTENCIA_BASE_TOOLTIP =
-  "Resistencia Base vem do bonus de Constituicao (D4=+1, D6=+2, D8=+3, D10=+4, D12=+5).";
+  "Resistencia Base vem do bonus de Constituicao (D4=+0, D6=+1, D8=+2, D10=+3, D12=+4).";
 
 const RESISTENCIA_PODERES_TOOLTIP =
-  "Resistencia de Poderes vem da graduacao do poder selecionado em Resistencia de Poder (ex.: Protecao, Campo de Forca). Excecao: Conversao concede metade da graduacao, arredondada para cima.";
+  "Resistencia de Poderes vem de metade da graduacao do poder selecionado em Resistencia de Poder, arredondada para cima (ex.: Protecao, Campo de Forca, Blindagem, Conversao).";
 
 const RESISTENCIA_TOTAL_TOOLTIP =
-  "Resistencia Total = Resistencia Base + Resistencia de Poderes. O limite considera apenas Defesa Comprada + Resistencia Total <= Nivel + 12.";
+  "Resistencia Total = Resistencia Base + Resistencia de Poderes. Limite: Resistencia Total <= 6 + Nivel.";
 
 const DANO_BASE_TOOLTIP =
-  "Dano Base vem do bonus de Forca (D4=+1, D6=+2, D8=+3, D10=+4, D12=+5).";
+  "Dano Base vem do bonus de Forca (D4=+0, D6=+1, D8=+2, D10=+3, D12=+4).";
 
 const VIDA_MAX_TOOLTIP =
   "Vida Max e derivada da Constituicao: D4=38, D6=46, D8=54, D10=62, D12=70.";
@@ -1502,11 +1502,11 @@ const MOVIMENTO_TOOLTIP =
   "Movimento e derivado de Agilidade: D4=6 m, D6=9 m, D8=12 m, D10=15 m, D12=18 m.";
 
 const BONUS_BY_DICE: Record<Dice, number> = {
-  D4: 1,
-  D6: 2,
-  D8: 3,
-  D10: 4,
-  D12: 5,
+  D4: 0,
+  D6: 1,
+  D8: 2,
+  D10: 3,
+  D12: 4,
 };
 
 const VIDA_BASE_POR_CONSTITUICAO: Record<Dice, number> = {
@@ -1616,7 +1616,6 @@ const getPowerGraduacaoForResistenciaFonte = (
   source: Exclude<ResistancePowerSource, "">,
 ): number => {
   const normalizedSource = normalizePowerName(source);
-  const isConversao = normalizedSource === normalizePowerName("Conversao");
 
   return character.poderes.reduce((maxGraduacao, powerEntry) => {
     const power = POWER_BY_ID.get(powerEntry.powerId);
@@ -1633,9 +1632,7 @@ const getPowerGraduacaoForResistenciaFonte = (
       1,
       MAX_POWER_GRADUATION_LIMIT,
     );
-    const resistenciaEfetiva = isConversao
-      ? Math.ceil(graduacao / 2)
-      : graduacao;
+    const resistenciaEfetiva = Math.ceil(graduacao / 2);
 
     return Math.max(maxGraduacao, resistenciaEfetiva);
   }, 0);
@@ -2378,7 +2375,8 @@ function App() {
 
   const nivel = parseNatural(selectedCharacter.nivel);
   const limitePericia = nivel + 10;
-  const limiteDefesaResistencia = nivel + 12;
+  const limiteDefesaTotal = nivel + 18;
+  const limiteResistenciaTotal = nivel + 6;
 
   const atributosSpent = ATRIBUTOS.reduce(
     (total, atributo) =>
@@ -2448,25 +2446,33 @@ function App() {
 
   const resistenciaPoderes = resistenciaPoderAtiva?.graduacao ?? 0;
   const resistenciaTotal = bonusConstituicao + resistenciaPoderes;
+  const resistenciaTotalEfetiva = clamp(
+    resistenciaTotal,
+    0,
+    limiteResistenciaTotal,
+  );
   const bonusAgilidadeDefesa =
     BONUS_BY_DICE[selectedCharacter.atributos.Agilidade];
 
+  const maxDefesaComprada = Math.max(
+    0,
+    limiteDefesaTotal - DEFESA_BASE - bonusAgilidadeDefesa,
+  );
   const defesaComprada = clamp(
     parseNatural(selectedCharacter.combate.defesa) - DEFESA_BASE,
     0,
-    limiteDefesaResistencia,
+    maxDefesaComprada,
   );
 
-  const defesaCompradaEfetiva = clamp(
-    defesaComprada,
-    0,
-    Math.max(0, limiteDefesaResistencia - resistenciaTotal),
-  );
+  const defesaCompradaEfetiva = defesaComprada;
 
   const defesaAdicional = bonusAgilidadeDefesa + defesaCompradaEfetiva;
-  const defesaAtual = DEFESA_BASE + defesaAdicional;
+  const defesaAtual = clamp(
+    DEFESA_BASE + defesaAdicional,
+    0,
+    limiteDefesaTotal,
+  );
   const defesaSpent = defesaCompradaEfetiva * 2;
-  const resistenciaTotalEfetiva = bonusConstituicao + resistenciaPoderes;
 
   const tecnicasBasicasSpent = TECNICAS_BASICAS.reduce((total, tecnica) => {
     const graduacao = clamp(
@@ -2735,39 +2741,29 @@ function App() {
                             [atributo]: event.target.value as Dice,
                           };
 
-                          if (atributo !== "Constituicao") {
+                          if (
+                            atributo !== "Constituicao" &&
+                            atributo !== "Agilidade"
+                          ) {
                             return {
                               ...current,
                               atributos: novosAtributos,
                             };
                           }
 
-                          const novoBonusConstituicao =
-                            BONUS_BY_DICE[novosAtributos.Constituicao];
-                          const resistenciaPoderFonteAtual =
-                            current.combate.resistenciaPoderFonte;
-                          const resistenciaPoderesAtual =
-                            resistenciaPoderFonteAtual === ""
-                              ? 0
-                              : getPowerGraduacaoForResistenciaFonte(
-                                  current,
-                                  resistenciaPoderFonteAtual,
-                                );
-                          const resistenciaTotalAtual =
-                            novoBonusConstituicao + resistenciaPoderesAtual;
                           const bonusAgilidadeAtual =
                             BONUS_BY_DICE[novosAtributos.Agilidade];
                           const maxDefesaCompradaAtual = Math.max(
                             0,
                             parseNatural(current.nivel) +
-                              15 -
-                              resistenciaTotalAtual -
+                              18 -
+                              DEFESA_BASE -
                               bonusAgilidadeAtual,
                           );
                           const defesaCompradaAtual = clamp(
                             parseNatural(current.combate.defesa) - DEFESA_BASE,
                             0,
-                            parseNatural(current.nivel) + 15,
+                            maxDefesaCompradaAtual,
                           );
 
                           return {
@@ -2925,28 +2921,16 @@ function App() {
                         min={0}
                         max={Math.max(
                           0,
-                          limiteDefesaResistencia - resistenciaTotal,
+                          maxDefesaComprada,
                         )}
                         value={defesaCompradaEfetiva}
                         onChange={(event) =>
                           updateCharacter((current) => {
-                            const limiteAtual =
-                              parseNatural(current.nivel) + 12;
-                            const resistenciaPoderFonteAtual =
-                              current.combate.resistenciaPoderFonte;
-                            const resistenciaPoderAtual =
-                              resistenciaPoderFonteAtual === ""
-                                ? 0
-                                : getPowerGraduacaoForResistenciaFonte(
-                                    current,
-                                    resistenciaPoderFonteAtual,
-                                  );
-                            const resistenciaTotalAtual =
-                              BONUS_BY_DICE[current.atributos.Constituicao] +
-                              resistenciaPoderAtual;
-
+                            const limiteAtual = parseNatural(current.nivel) + 18;
+                            const bonusAgilidadeAtual =
+                              BONUS_BY_DICE[current.atributos.Agilidade];
                             const maxDefesaCompradaAtual = clamp(
-                              limiteAtual - resistenciaTotalAtual,
+                              limiteAtual - DEFESA_BASE - bonusAgilidadeAtual,
                               0,
                               limiteAtual,
                             );
@@ -3086,9 +3070,8 @@ function App() {
                 </div>
               </div>
               <p className="rule-note">
-                Limite: Defesa Comprada + Resistencia Total {"<="} Nivel + 12 (
-                {limiteDefesaResistencia}). O bonus de Agilidade e a base fixa 7
-                nao entram nesse calculo.
+                Limites: Defesa Total {"<="} 18 + Nivel ({limiteDefesaTotal}) e
+                Resistencia Total {"<="} 6 + Nivel ({limiteResistenciaTotal}).
               </p>
             </article>
           </section>
