@@ -1,7 +1,7 @@
-﻿import { PODERES_ESPADAS } from "./powers-espadas";
-import { PODERES_OUROS } from "./powers-ouros";
-import { PODERES_PAUS } from "./powers-paus";
-import { PODERES_COPAS } from "./powers-copas";
+﻿import { PODERES_ESPADAS } from "./powers-espadas.ts";
+import { PODERES_OUROS } from "./powers-ouros.ts";
+import { PODERES_PAUS } from "./powers-paus.ts";
+import { PODERES_COPAS } from "./powers-copas.ts";
 export type NaipePoder = "Espadas" | "Ouros" | "Paus" | "Copas";
 
 export type PowerAction =
@@ -24,7 +24,6 @@ export type PowerRange =
 
 export type PowerDuration =
   | "Instantanea"
-  | "Instantaneo"
   | "Sustentado"
   | "Continuo"
   | "Temporaria"
@@ -50,8 +49,8 @@ export type PowerDetailTable = {
 };
 
 export type PowerDetails = {
-  introducao: string[];
-  secoes: PowerDetailSection[];
+  introducao?: string[];
+  secoes?: PowerDetailSection[];
   tabelas?: PowerDetailTable[];
 };
 
@@ -81,13 +80,9 @@ export const MAX_POWER_GRADUATION_RULE = `${MAX_POWER_GRADUATION_LIMIT}`;
 export const getEterCostByGraduacao = (graduacao: number): number =>
   Math.ceil(Math.max(1, graduacao) / 2);
 
-
-
 export const PODERES_POR_NAIPE: Record<NaipePoder, PowerDefinition[]> = {
   Espadas: PODERES_ESPADAS,
   Ouros: PODERES_OUROS,
   Paus: PODERES_PAUS,
   Copas: PODERES_COPAS,
 };
-
-

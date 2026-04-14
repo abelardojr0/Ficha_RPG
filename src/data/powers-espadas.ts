@@ -1,6 +1,106 @@
-﻿import type { PowerDefinition } from "./powers";
+import type { PowerDefinition } from "./powers";
 
 export const PODERES_ESPADAS: PowerDefinition[] = [
+  {
+    id: "espadas-absorcao",
+    nome: "Absorcao",
+    naipe: "Espadas",
+    tipo: "Defesa / Fortalecimento",
+    acao: "Reacao",
+    alcance: "Pessoal",
+    duracao: "Sustentado",
+    custoPontosPorGraduacao: 4,
+    custoPontosTexto: "4 pontos por graduacao",
+    custoEterBase: "+2",
+    resumo:
+      "Converte parte do dano recebido em cargas para ataque ou dano corpo a corpo.",
+    efeitoPrincipal:
+      "A cada 2 graduacoes: reduz 1 dano e gera 1 carga (arredondado para baixo).",
+    extras: [
+      { nome: "Amplificacao", custo: "+1 fixo" },
+      { nome: "Explosao", custo: "+1 por graduacao" },
+      { nome: "Armazenamento Expandido", custo: "+1 por graduacao" },
+      { nome: "Conversao Imediata", custo: "+1 por graduacao" },
+    ],
+    falhas: [
+      { nome: "Limitado (Fisico)", custo: "-1 por graduacao" },
+      { nome: "Instavel", custo: "-1 por graduacao" },
+      { nome: "Exposicao Necessaria", custo: "-1 por graduacao" },
+    ],
+    detalhes: {
+      introducao: [
+        "Absorcao redireciona o impacto recebido para gerar recurso ofensivo imediato.",
+        "Em Espadas, sofrer dano tambem pode gerar vantagem tatica.",
+      ],
+      secoes: [
+        {
+          titulo: "Funcionamento",
+          itens: [
+            "Ativa ao sofrer dano, depois da aplicacao da Resistencia.",
+            "Cada 2 graduacoes reduzem 1 dano e geram 1 Carga.",
+            "Cargas geradas nao podem exceder o dano final recebido.",
+          ],
+        },
+        {
+          titulo: "Cargas",
+          itens: [
+            "Cada Carga concede +1 dano ou +1 ataque corpo a corpo.",
+            "Limite maximo de Cargas armazenadas: igual a graduacao do poder.",
+            "Duram ate uso ou fim da cena.",
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: "espadas-aura",
+    nome: "Aura",
+    naipe: "Espadas",
+    tipo: "Ataque / Controle",
+    acao: "Reacao",
+    alcance: "Area",
+    duracao: "Sustentado",
+    custoPontosPorGraduacao: 5,
+    custoPontosTexto: "5 pontos por graduacao",
+    custoEterBase: "+2",
+    resumo:
+      "Campo reativo de 2 metros que pune aproximacao e contato corpo a corpo.",
+    efeitoPrincipal:
+      "Alvo testa Constituicao (CD 10 + graduacao): falha sofre dano e penalidade fisica.",
+    extras: [
+      { nome: "Area", custo: "+1 por graduacao" },
+      { nome: "Repulsao", custo: "+1 por graduacao" },
+      { nome: "Aura Continua", custo: "+1 por graduacao" },
+    ],
+    falhas: [
+      { nome: "Alcance Reduzido", custo: "-1 por graduacao" },
+      { nome: "Consumo Elevado", custo: "-1 por graduacao" },
+      { nome: "Sobrecarga", custo: "-1 por graduacao" },
+    ],
+    observacoes: "Alcance base do campo: 2 metros ao redor do usuario.",
+    detalhes: {
+      introducao: [
+        "Aura transforma o espaco proximo em zona de risco constante.",
+      ],
+      secoes: [
+        {
+          titulo: "Ativacao",
+          itens: [
+            "Reage a inimigos que entram no alcance ou atacam corpo a corpo.",
+            "Cada inimigo pode ser afetado apenas uma vez por turno.",
+          ],
+        },
+        {
+          titulo: "Efeito",
+          itens: [
+            "Falha: dano igual a metade da graduacao (para cima) e -1 em testes fisicos.",
+            "Sucesso: metade do dano (para baixo), sem penalidade.",
+            "Funciona apenas com usuario consciente.",
+          ],
+        },
+      ],
+    },
+  },
   {
     id: "espadas-canalizar",
     nome: "Canalizar",
@@ -13,39 +113,420 @@ export const PODERES_ESPADAS: PowerDefinition[] = [
     custoPontosTexto: "2 pontos por graduacao",
     custoEterBase: "padrao",
     resumo:
-      "Converte Eter em reforco fisico imediato no impacto corpo a corpo.",
+      "Concentra Eter no impacto fisico para aumentar dano de ataques corpo a corpo.",
     efeitoPrincipal:
-      "O ataque recebe +graduacao no dano e, se causar dano apos resistencia, o alvo sofre -1 Defesa ate o inicio do proximo turno.",
+      "No acerto, adiciona dano igual a graduacao; em margem alta, aplica -1 Defesa.",
     extras: [
       { nome: "Area", custo: "+1 por graduacao" },
       { nome: "Multi Ataque", custo: "+1 por graduacao" },
       { nome: "Impacto Devastador", custo: "+1 por graduacao" },
     ],
     falhas: [
-      { nome: "Limitado (Desarmado)", custo: "-1 por graduacao" },
+      { nome: "Limitado (Desarmado)", custo: "-1 fixo" },
       { nome: "Limitado (Arma Especifica)", custo: "-1 por graduacao" },
       { nome: "Preparacao", custo: "-1 por graduacao" },
     ],
     detalhes: {
       introducao: [
-        "Canalizar converte Eter em reforco fisico imediato no momento do impacto corpo a corpo.",
-        "A tecnica amplia potencia sem alterar a forma base do ataque, servindo como referencia ofensiva de Espadas.",
+        "Canalizar e a base ofensiva de Espadas para dano direto por contato.",
       ],
       secoes: [
         {
           titulo: "Funcionamento",
           itens: [
-            "Ao realizar ataque corpo a corpo, aplique Canalizar sem alterar o teste de acerto.",
-            "Se acertar, soma bonus de dano igual a graduacao.",
-            "Se houver dano apos mitigacao, alvo sofre -1 em Defesa ate o inicio do proximo turno dele.",
+            "Nao altera teste de ataque; so adiciona dano no acerto.",
+            "Dano final: dano base + graduacao de Canalizar.",
+            "Se causar dano e superar Defesa por 5+, alvo sofre -1 Defesa ate o inicio do proximo turno.",
+          ],
+        },
+        {
+          titulo: "Limites",
+          itens: [
+            "Nao acumula com multiplas ativacoes no mesmo ataque.",
+            "Respeita limite de dano do sistema.",
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: "espadas-caracteristica-aumentada",
+    nome: "Caracteristica Aumentada",
+    naipe: "Espadas",
+    tipo: "Fortalecimento",
+    acao: "Livre",
+    alcance: "Pessoal",
+    duracao: "Sustentado",
+    custoPontosPorGraduacao: 3,
+    custoPontosTexto: "3 pontos por graduacao",
+    custoEterBase: "padrao",
+    resumo:
+      "Amplifica um atributo fisico (Forca, Agilidade ou Constituicao) enquanto sustentado.",
+    efeitoPrincipal:
+      "A cada 2 graduacoes (para cima), concede bonus derivados do atributo escolhido.",
+    extras: [
+      { nome: "Aumento Massivo", custo: "+1 por graduacao" },
+      { nome: "Explosao de Poder", custo: "+1 fixo" },
+      { nome: "Sobrecarga Controlada", custo: "+1 por graduacao" },
+    ],
+    falhas: [
+      { nome: "Limitado (Atributo)", custo: "-1 por graduacao" },
+      { nome: "Instavel", custo: "-1 por graduacao" },
+      { nome: "Sobrecarga Fisica", custo: "-1 por graduacao" },
+    ],
+    detalhes: {
+      introducao: [
+        "Caracteristica Aumentada representa controle corporal preciso atraves do Eter.",
+      ],
+      secoes: [
+        {
+          titulo: "Escolha de Atributo",
+          itens: [
+            "Forca: +1 dano base, +1 Forca e +1 carga por degrau.",
+            "Agilidade: +1 Defesa, +1 Agilidade e +1 m de deslocamento por degrau.",
+            "Constituicao: +1 Resistencia, +2 Vida maxima e +1 Constituicao por degrau.",
           ],
         },
         {
           titulo: "Regras",
           itens: [
-            "Dano final: Dano Base + graduacao de Canalizar.",
-            "Nao acumula multiplas ativacoes no mesmo ataque.",
-            "Interage normalmente com criticos e respeita limite de dano do sistema.",
+            "Degarus em +1 a cada 2 graduacoes, arredondado para cima.",
+            "Nao altera dado base de atributo.",
+            "Nao acumula com varias ativacoes simultaneas.",
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: "espadas-colapso",
+    nome: "Colapso",
+    naipe: "Espadas",
+    tipo: "Ataque",
+    acao: "Padrao",
+    alcance: "Toque",
+    duracao: "Instantanea",
+    custoPontosPorGraduacao: 4,
+    custoPontosTexto: "4 pontos por graduacao",
+    custoEterBase: "+2",
+    resumo:
+      "Golpe de precisao que ignora resistencia e aplica um efeito tecnico adicional.",
+    efeitoPrincipal:
+      "Causa dano igual a graduacao, ignora resistencia por escala e ativa um efeito de Colapso.",
+    extras: [
+      { nome: "Dupla Aplicacao", custo: "+2 por graduacao" },
+      { nome: "Execucao Perfeita", custo: "+1 por graduacao" },
+    ],
+    falhas: [
+      { nome: "Instavel", custo: "-1 por graduacao" },
+      { nome: "Limitado (Seres Vivos)", custo: "-1 por graduacao" },
+    ],
+    detalhes: {
+      introducao: ["Colapso e o ataque de ruptura pontual de Espadas."],
+      secoes: [
+        {
+          titulo: "Base",
+          itens: [
+            "Ataque corpo a corpo por toque.",
+            "Dano igual a graduacao.",
+            "Ignora 1 Resistencia a cada 2 graduacoes (para cima).",
+          ],
+        },
+        {
+          titulo: "Efeitos Disponiveis",
+          itens: [
+            "Colapso Fisico: -1 em testes fisicos a cada 2 graduacoes.",
+            "Ruptura Interna: +1 Machucado (+1 adicional a cada 4 graduacoes).",
+            "Dreno de Eter: drena 1 Eter por 2 graduacoes e recupera metade para o usuario.",
+            "Paralisia Parcial: teste de Constituicao para evitar penalidades/imobilizacao.",
+            "Quebra de Defesa: -1 Resistencia a cada 3 graduacoes ate proximo turno.",
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: "espadas-contra-ataque",
+    nome: "Contra-Ataque",
+    naipe: "Espadas",
+    tipo: "Ataque",
+    acao: "Reacao",
+    alcance: "Corpo a Corpo",
+    duracao: "Instantanea",
+    custoPontosPorGraduacao: 3,
+    custoPontosTexto: "3 pontos por graduacao",
+    custoEterBase: "padrao",
+    resumo:
+      "Retaliacao reativa quando um inimigo falha ataque corpo a corpo contra voce.",
+    efeitoPrincipal:
+      "Ao erro inimigo, realiza contra-golpe (1d20 + CaC) com dano igual a graduacao.",
+    extras: [
+      { nome: "Reflexo Instintivo", custo: "+2 por graduacao" },
+      { nome: "Retaliacao Violenta", custo: "+1 por graduacao" },
+      { nome: "Campo Reativo", custo: "+2 por graduacao" },
+    ],
+    falhas: [
+      { nome: "Janela Restrita", custo: "-1 por graduacao" },
+      { nome: "Exigente", custo: "-1 por graduacao" },
+      { nome: "Consumo Elevado", custo: "-1 por graduacao" },
+      { nome: "Resposta Limitada", custo: "-1 por graduacao" },
+    ],
+    detalhes: {
+      introducao: [
+        "Contra-Ataque converte abertura defensiva inimiga em resposta imediata.",
+      ],
+      secoes: [
+        {
+          titulo: "Regras",
+          itens: [
+            "Ativa apenas uma vez por rodada.",
+            "Consome a reacao do turno.",
+            "Nao dispara novos Contra-Ataques em cadeia.",
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: "espadas-corrosao",
+    nome: "Corrosao",
+    naipe: "Espadas",
+    tipo: "Ataque",
+    acao: "Padrao",
+    alcance: "Toque",
+    duracao: "Instantanea",
+    custoPontosPorGraduacao: 5,
+    custoPontosTexto: "5 pontos por graduacao",
+    custoEterBase: "+2",
+    resumo:
+      "Golpe de ruptura que causa alto dano e reduz temporariamente a resistencia do alvo.",
+    efeitoPrincipal:
+      "No acerto, recebe dano adicional igual a graduacao e aplica reducao de Resistencia.",
+    extras: [
+      { nome: "Area", custo: "+2 por graduacao" },
+      { nome: "Seletivo", custo: "+1 por graduacao" },
+      { nome: "Alcance", custo: "+2 por graduacao" },
+    ],
+    falhas: [
+      { nome: "Limitado", custo: "-1 por graduacao" },
+      { nome: "Dependente de Precisao", custo: "-1 por graduacao" },
+      { nome: "Efeito Colateral", custo: "-1 por graduacao" },
+    ],
+    detalhes: {
+      introducao: [
+        "Corrosao combina precisao e explosao para abrir brechas defensivas no alvo.",
+      ],
+      secoes: [
+        {
+          titulo: "Efeito de Corrosao",
+          itens: [
+            "Reduz Resistencia em metade da graduacao (para cima).",
+            "Reducao nao acumula e dura ate inicio do proximo turno do alvo.",
+            "Nunca reduz abaixo de 0 de Resistencia.",
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: "espadas-desgaste",
+    nome: "Desgaste",
+    naipe: "Espadas",
+    tipo: "Ataque",
+    acao: "Padrao",
+    alcance: "Toque",
+    duracao: "Sustentado",
+    custoPontosPorGraduacao: 2,
+    custoPontosTexto: "2 pontos por graduacao",
+    custoEterBase: "padrao",
+    resumo:
+      "Interferencia progressiva que acumula niveis de penalidade fisica no alvo.",
+    efeitoPrincipal:
+      "No acerto, alvo testa Constituicao; falha aplica niveis de Desgaste cumulativos.",
+    extras: [
+      { nome: "Incuravel", custo: "+1 por graduacao" },
+      { nome: "Reversivel", custo: "+1 fixo" },
+      { nome: "Pressao Intensa", custo: "+1 por graduacao" },
+      { nome: "Salvamento Alternativo", custo: "+1 fixo" },
+    ],
+    falhas: [
+      { nome: "Limitado", custo: "-1 por graduacao" },
+      { nome: "Dependente de Condicao", custo: "-1 por graduacao" },
+      { nome: "Concentracao", custo: "-1 por graduacao" },
+    ],
+    detalhes: {
+      introducao: [
+        "Desgaste nao causa dano direto; ele degrada desempenho ao longo da cena.",
+      ],
+      secoes: [
+        {
+          titulo: "Niveis",
+          itens: [
+            "Cada nivel impõe -1 em testes fisicos (Forca, Agilidade, ataque e Defesa).",
+            "Acumula ate maximo de 3 niveis.",
+            "No maximo, aplica -1 adicional em Defesa.",
+          ],
+        },
+        {
+          titulo: "Remocao",
+          itens: [
+            "No inicio do turno, alvo testa Constituicao (CD 10 + graduacao).",
+            "Sucesso remove 1 nivel; falha critica aplica penalidade temporaria adicional.",
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: "espadas-enfraquecer",
+    nome: "Enfraquecer",
+    naipe: "Espadas",
+    tipo: "Ataque / Controle",
+    acao: "Padrao",
+    alcance: "Corpo a Corpo",
+    duracao: "Sustentado",
+    custoPontosPorGraduacao: 3,
+    custoPontosTexto: "3 pontos por graduacao",
+    custoEterBase: "padrao",
+    resumo:
+      "Reduz progressivamente Forca, Agilidade ou Constituicao do alvo sem dano direto.",
+    efeitoPrincipal:
+      "No acerto, alvo testa Constituicao; falha recebe penalidade na caracteristica escolhida.",
+    extras: [
+      { nome: "Drenagem Espiritual", custo: "+2 por graduacao" },
+      { nome: "Enfraquecimento Duplo", custo: "+1 por graduacao" },
+      { nome: "Golpe Incapacitante", custo: "+2 por graduacao" },
+    ],
+    falhas: [
+      { nome: "Limitado (Fisico)", custo: "-1 por graduacao" },
+      { nome: "Contato Preciso", custo: "-1 por graduacao" },
+      { nome: "Efeito Instavel", custo: "-1 por graduacao" },
+    ],
+    detalhes: {
+      introducao: [
+        "Enfraquecer pressiona o fluxo corporal do alvo para reduzir sua eficiencia.",
+      ],
+      secoes: [
+        {
+          titulo: "Escala",
+          itens: [
+            "Penalidade: -1 a cada 2 graduacoes (para cima).",
+            "Limite por caracteristica: -3.",
+            "Acumula com novas aplicacoes e renova duracao.",
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: "espadas-imunidade",
+    nome: "Imunidade",
+    naipe: "Espadas",
+    tipo: "Defesa",
+    acao: "Nenhuma",
+    alcance: "Pessoal",
+    duracao: "Permanente",
+    custoPontosPorGraduacao: null,
+    custoPontosTexto: "variavel (por efeito)",
+    custoEterBase: "padrao",
+    resumo:
+      "Anula completamente interacao com descritores especificos escolhidos.",
+    efeitoPrincipal:
+      "Cada imunidade e comprada separadamente por faixa de custo e ignora o efeito sem teste.",
+    extras: [
+      { nome: "Afeta Outros", custo: "+2 por efeito" },
+      { nome: "Area", custo: "+3 por efeito" },
+      { nome: "Seletivo", custo: "+1 fixo" },
+      { nome: "Sustentado", custo: "-1 por efeito" },
+    ],
+    falhas: [
+      { nome: "Limitado", custo: "-1 por efeito" },
+      { nome: "Condicional", custo: "-1 por efeito" },
+      { nome: "Ativacao", custo: "-1 fixo" },
+    ],
+    detalhes: {
+      introducao: [
+        "Imunidade representa adaptacao extrema: o corpo deixa de responder ao efeito escolhido.",
+      ],
+      secoes: [
+        {
+          titulo: "Regras",
+          itens: [
+            "Cada imunidade exige descritor claro e objetivo.",
+            "Nao e possivel imunidade total a todo dano.",
+            "Nao acumula com Resistencia: o efeito e simplesmente ignorado.",
+          ],
+        },
+      ],
+      tabelas: [
+        {
+          titulo: "Imunidade por Escopo",
+          colunas: ["Custo", "Escopo"],
+          linhas: [
+            ["2 PP", "efeitos muito especificos"],
+            ["4 PP", "efeitos incomuns"],
+            ["8 PP", "efeitos relevantes"],
+            ["12 PP", "dano especifico"],
+            ["16 PP", "descritor comum completo"],
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: "espadas-pressao",
+    nome: "Pressao",
+    naipe: "Espadas",
+    tipo: "Controle",
+    acao: "Padrao",
+    alcance: "Area",
+    duracao: "Sustentado",
+    custoPontosPorGraduacao: 3,
+    custoPontosTexto: "3 pontos por graduacao",
+    custoEterBase: "+2",
+    resumo:
+      "Campo opressivo centrado no usuario que reduz mobilidade e desempenho inimigo.",
+    efeitoPrincipal:
+      "Alvos na area testam Vontade; falha aplica penalidades e reducao de deslocamento.",
+    extras: [
+      { nome: "Pressao Devastadora", custo: "+2 por graduacao" },
+      { nome: "Foco Direcionado", custo: "+1 fixo" },
+      { nome: "Campo Intenso", custo: "+1 por graduacao" },
+    ],
+    falhas: [
+      { nome: "Pressao Instavel", custo: "-1 por graduacao" },
+      { nome: "Foco Necessario", custo: "-1 por graduacao" },
+      { nome: "Alcance Reduzido", custo: "-1 por graduacao" },
+    ],
+    detalhes: {
+      introducao: [
+        "Pressao e controle de area por opressao energetica continua.",
+      ],
+      secoes: [
+        {
+          titulo: "Penalidades",
+          itens: [
+            "A cada 2 graduacoes (para cima): -1 em testes fisicos e ataque.",
+            "Reduz deslocamento em 1 metro por graduacao (minimo 1 metro).",
+            "Se penalidade total atingir -4, pode causar Lento ou Imobilizado.",
+          ],
+        },
+      ],
+      tabelas: [
+        {
+          titulo: "Raio de Pressao",
+          colunas: ["Graduacao", "Raio"],
+          linhas: [
+            ["1", "2 m"],
+            ["2", "4 m"],
+            ["3", "6 m"],
+            ["4", "8 m"],
+            ["5", "10 m"],
+            ["6", "12 m"],
+            ["7", "15 m"],
+            ["8", "18 m"],
+            ["9", "22 m"],
+            ["10", "25 m"],
           ],
         },
       ],
@@ -59,12 +540,12 @@ export const PODERES_ESPADAS: PowerDefinition[] = [
     acao: "Nenhuma",
     alcance: "Pessoal",
     duracao: "Permanente",
-    custoPontosPorGraduacao: 2,
-    custoPontosTexto: "2 pontos por graduacao",
+    custoPontosPorGraduacao: 3,
+    custoPontosTexto: "3 pontos por graduacao",
     custoEterBase: "especial",
-    resumo: "Camada invisivel de Eter que reforca o corpo continuamente.",
-    efeitoPrincipal:
-      "Concede +1 Resistencia por graduacao; quando reduzir dano (minimo 1), recebe +1 no proximo ataque contra o agressor.",
+    resumo:
+      "Reforco corporal passivo e permanente que dissipa impactos fisicos.",
+    efeitoPrincipal: "Concede +1 Resistencia a cada 2 graduacoes (para cima).",
     extras: [
       { nome: "Protecao Adaptativa", custo: "+1 por graduacao" },
       { nome: "Camada Reforcada", custo: "+1 por graduacao" },
@@ -72,77 +553,70 @@ export const PODERES_ESPADAS: PowerDefinition[] = [
     ],
     falhas: [
       { nome: "Limitado (Fisico)", custo: "-1 por graduacao" },
-      { nome: "Ativacao", custo: "-2 fixo" },
+      { nome: "Ativacao", custo: "-1 por graduacao" },
       { nome: "Rigidez Corporal", custo: "-1 por graduacao" },
     ],
     detalhes: {
       introducao: [
-        "Protecao mantem circulacao continua de Eter pelo corpo para reduzir impacto direto.",
-        "Diferente de barreira externa, reforca a estrutura corporal de forma passiva.",
+        "Protecao fortalece o corpo por dentro, sem criar barreira externa.",
       ],
       secoes: [
         {
-          titulo: "Funcionamento",
+          titulo: "Custo Especial de Eter",
           itens: [
-            "Sempre ativo, concede +1 Resistencia por graduacao.",
-            "Quando reduzir dano efetivo (minimo 1), recebe +1 no proximo ataque contra o agressor.",
-          ],
-        },
-        {
-          titulo: "Custo de Eter",
-          itens: [
-            "Sempre que reduzir dano efetivo, consome graduacao/2 de Eter por instancia de dano.",
-            "Se dano foi totalmente absorvido por atributos base, nao ha consumo.",
+            "Sempre que Protecao reduzir dano efetivamente, consome 2 de Eter por ataque.",
+            "Custo so ocorre quando ha reducao real de dano.",
+            "Uma aplicacao por instancia de dano.",
           ],
         },
       ],
     },
   },
   {
-    id: "espadas-absorcao",
-    nome: "Absorcao",
+    id: "espadas-rapidez",
+    nome: "Rapidez",
     naipe: "Espadas",
-    tipo: "Defesa / Fortalecimento",
-    acao: "Reacao",
+    tipo: "Fortalecimento",
+    acao: "Livre",
     alcance: "Pessoal",
     duracao: "Sustentado",
-    custoPontosPorGraduacao: 4,
-    custoPontosTexto: "4 pontos por graduacao",
+    custoPontosPorGraduacao: 5,
+    custoPontosTexto: "5 pontos por graduacao",
     custoEterBase: "+2",
-    resumo: "Converte parte do impacto recebido em cargas de energia.",
+    resumo:
+      "Acelera ritmo de combate, concedendo acoes adicionais e bonus de Agilidade.",
     efeitoPrincipal:
-      "A cada 2 graduacoes: reduz 1 dano e gera 1 carga; cargas podem virar bonus de dano ou acerto em ataques corpo a corpo.",
+      "A cada 2 graduacoes (para cima): +1 Agilidade e desbloqueio de acoes extras por faixa.",
     extras: [
-      { nome: "Amplificacao", custo: "+1 por graduacao" },
-      { nome: "Explosao", custo: "+2 por graduacao" },
-      { nome: "Armazenamento Expandido", custo: "+1 por graduacao" },
-      { nome: "Conversao Imediata", custo: "+2 por graduacao" },
+      { nome: "Acao Precisa", custo: "+2 por graduacao" },
+      { nome: "Fluxo Continuo", custo: "+2 por graduacao" },
+      { nome: "Reflexo Avancado", custo: "+1 por graduacao" },
+      { nome: "Movimento Instantaneo", custo: "+2 por graduacao" },
     ],
     falhas: [
-      { nome: "Limitado (Fisico)", custo: "-1 por graduacao" },
+      { nome: "Exaustivo", custo: "-1 por graduacao" },
+      { nome: "Sobrecarga Neural", custo: "-1 por graduacao" },
       { nome: "Instavel", custo: "-1 por graduacao" },
-      { nome: "Exposicao Necessaria", custo: "-1 por graduacao" },
     ],
     detalhes: {
       introducao: [
-        "Absorcao redireciona parte do impacto recebido para gerar cargas de energia.",
-        "A tecnica transforma pressao sofrida em vantagem tatico-ofensiva.",
+        "Rapidez reduz o intervalo entre percepcao e acao, sem fortalecer o corpo diretamente.",
       ],
       secoes: [
         {
-          titulo: "Funcionamento",
+          titulo: "Acoes Adicionais",
           itens: [
-            "Apos calcular dano e Resistencia, pode ativar Absorcao como reacao.",
-            "Cada 2 graduacoes: reduz 1 dano e gera 1 carga (arredondado para baixo).",
-            "Se gerar ao menos 1 carga, proximo ataque corpo a corpo contra o mesmo alvo recebe +1 no teste.",
+            "Graduacao 3-6: 1 acao adicional.",
+            "Graduacao 7-10: 2 acoes adicionais.",
+            "Penalidades: -3 na primeira acao adicional, -5 na segunda.",
           ],
         },
         {
-          titulo: "Cargas",
+          titulo: "Limitacoes",
           itens: [
-            "Limite maximo de cargas igual a graduacao do poder.",
-            "Cargas duram ate uso ou fim da cena.",
-            "Cada carga pode virar +1 dano ou +1 no teste de ataque corpo a corpo.",
+            "Nao permite poder com custo de Eter +2 ou maior nas acoes extras.",
+            "Nao permite preparar acoes ou sustentar efeitos adicionais.",
+            "Iniciativa por cartas: compra 2 cartas e escolhe 1 enquanto ativa.",
           ],
         },
       ],
@@ -159,437 +633,92 @@ export const PODERES_ESPADAS: PowerDefinition[] = [
     custoPontosPorGraduacao: 5,
     custoPontosTexto: "5 pontos por graduacao",
     custoEterBase: "padrao",
-    resumo: "Recuperacao continua de Vida por fluxo constante de Eter.",
+    resumo:
+      "Recupera Vida automaticamente por turno atraves de fluxo de reconstrucao corporal.",
     efeitoPrincipal:
-      "No inicio do turno, consome Eter padrao e recupera 1 Vida por graduacao se estiver consciente.",
+      "No inicio de cada turno, consome Eter padrao e recupera Vida igual a graduacao.",
     extras: [
       { nome: "Regeneracao Rapida", custo: "+1 por graduacao" },
       { nome: "Regeneracao de Membros", custo: "+2 por graduacao" },
-      { nome: "Regeneracao Ativa", custo: "+1 por graduacao" },
+      { nome: "Regeneracao Ativa", custo: "+2 por graduacao" },
       { nome: "Fluxo Ininterrupto", custo: "+1 por graduacao" },
     ],
     falhas: [
-      { nome: "Limitado (Ferimentos graves)", custo: "-1 por graduacao" },
-      { nome: "Dependente de Eter", custo: "-1 por graduacao" },
+      { nome: "Limitado (Dano Massivo)", custo: "-2 por graduacao" },
+      { nome: "Fluxo Instavel", custo: "-1 por graduacao" },
       { nome: "Regeneracao Lenta", custo: "-1 por graduacao" },
     ],
     detalhes: {
       introducao: [
-        "Regeneracao representa reconstrucao corporal continua via fluxo de Eter.",
-        "Nao impede dano, mas sustenta recuperacao constante em combate prolongado.",
+        "Regeneracao nao evita dano; ela reconstroi depois do impacto.",
       ],
       secoes: [
         {
-          titulo: "Funcionamento",
-          itens: [
-            "No inicio de cada turno, consome Eter padrao e recupera 1 Vida por graduacao.",
-            "A recuperacao e automatica, sem acao, e requer usuario consciente.",
-            "Sem Eter suficiente, nao regenera naquele turno.",
-          ],
-        },
-        {
-          titulo: "Interacoes",
+          titulo: "Interacao com Estados",
           itens: [
             "A cada 5 Vida recuperada acumulada, remove 1 Machucado.",
-            "Nao remove automaticamente Ferimentos, mutilacoes ou condicoes especiais.",
-            "Apos dano massivo unico, a regeneracao do proximo turno e reduzida pela metade.",
+            "Nao remove automaticamente Ferido, Gravemente Ferido ou condicoes especiais.",
+            "Dano intenso pode reduzir a regeneracao do proximo turno pela metade.",
           ],
         },
       ],
     },
   },
   {
-    id: "espadas-desgaste",
-    nome: "Desgaste",
-    naipe: "Espadas",
-    tipo: "Ataque",
-    acao: "Padrao",
-    alcance: "Toque",
-    duracao: "Temporaria",
-    custoPontosPorGraduacao: 2,
-    custoPontosTexto: "2 pontos por graduacao",
-    custoEterBase: "padrao",
-    resumo: "Aplica niveis progressivos de penalidade fisica por contato.",
-    efeitoPrincipal:
-      "Falha no teste de Constituicao aplica Desgaste; cada nivel causa -1 em testes fisicos e acumula ate o limite do poder.",
-    extras: [
-      { nome: "Incuravel", custo: "+1 por graduacao" },
-      { nome: "Reversivel", custo: "+1 fixo" },
-      { nome: "Pressao Intensa", custo: "+1 por graduacao" },
-      { nome: "Salvamento Alternativo", custo: "+0" },
-    ],
-    falhas: [
-      { nome: "Limitado", custo: "-1 por graduacao" },
-      { nome: "Dependente de Condicao", custo: "-1 por graduacao" },
-      { nome: "Concentracao", custo: "-1 por graduacao" },
-    ],
-    detalhes: {
-      introducao: [
-        "Desgaste injeta Eter por contato para deteriorar progressivamente desempenho fisico.",
-        "A tecnica acumula pressao e enfraquece o alvo ao longo dos turnos.",
-      ],
-      secoes: [
-        {
-          titulo: "Funcionamento",
-          itens: [
-            "Ataque corpo a corpo seguido de teste do alvo: 1d20 + Constituicao vs CD 10 + graduacao.",
-            "Falha aplica 1 nivel de Desgaste; falha critica aplica 2 niveis.",
-            "Cada nivel aplica -1 em testes fisicos, ataque e defesa.",
-          ],
-        },
-        {
-          titulo: "Acumulo e Duracao",
-          itens: [
-            "Niveis acumulam ate graduacao/2 (arredondado para cima).",
-            "No maximo, alvo sofre -1 adicional em Defesa.",
-            "Cada aplicacao dura graduacao/2 turnos e renova duracao.",
-          ],
-        },
-      ],
-    },
-  },
-  {
-    id: "espadas-corrosao",
-    nome: "Corrosao",
-    naipe: "Espadas",
-    tipo: "Ataque",
-    acao: "Padrao",
-    alcance: "Toque",
-    duracao: "Instantanea",
-    custoPontosPorGraduacao: 5,
-    custoPontosTexto: "5 pontos por graduacao",
-    custoEterBase: "padrao +2",
-    resumo:
-      "Golpe de ruptura que reduz temporariamente a Resistencia na area atingida.",
-    efeitoPrincipal:
-      "Causa dano com bonus igual a graduacao e reduz Resistencia da area atingida em metade da graduacao (para cima).",
-    extras: [
-      { nome: "Area", custo: "+2 por graduacao" },
-      { nome: "Seletivo", custo: "+1 por graduacao" },
-      { nome: "Alcance", custo: "+2 por graduacao" },
-      { nome: "Ruptura Prolongada", custo: "+1 por graduacao" },
-    ],
-    falhas: [
-      { nome: "Limitado", custo: "-1 por graduacao" },
-      { nome: "Dependente de Precisao", custo: "-1 por graduacao" },
-      { nome: "Efeito Colateral", custo: "-1 por graduacao" },
-    ],
-    detalhes: {
-      introducao: [
-        "Corrosao concentra Eter em ponto especifico para abrir brecha defensiva momentanea.",
-        "Combina dano alto com ruptura localizada de Resistencia.",
-      ],
-      secoes: [
-        {
-          titulo: "Funcionamento",
-          itens: [
-            "Em acerto corpo a corpo, causa dano normal + bonus igual a graduacao.",
-            "Aplica reducao de Resistencia na area atingida: metade da graduacao (para cima).",
-            "A reducao vale no proprio ataque que a gerou.",
-          ],
-        },
-        {
-          titulo: "Regras",
-          itens: [
-            "Duracao da reducao: ate inicio do proximo turno do alvo.",
-            "Aplicacoes nao acumulam, mantem apenas maior valor.",
-            "Se margem de acerto for menor que 2, reducao de Resistencia cai pela metade (para baixo).",
-          ],
-        },
-      ],
-    },
-  },
-  {
-    id: "espadas-aura",
-    nome: "Aura",
+    id: "espadas-repelir",
+    nome: "Repelir",
     naipe: "Espadas",
     tipo: "Ataque / Controle",
-    acao: "Reacao",
+    acao: "Padrao",
     alcance: "Perto",
-    duracao: "Sustentado",
-    custoPontosPorGraduacao: 5,
-    custoPontosTexto: "5 pontos por graduacao",
-    custoEterBase: "padrao +2",
-    resumo: "Campo reativo que pune aproximacao hostil automaticamente.",
-    efeitoPrincipal:
-      "Alvos proximos testam Constituicao; falha sofre dano (metade da graduacao, para cima) e -1 em testes fisicos ate o fim do turno.",
-    extras: [
-      { nome: "Area", custo: "+1 por graduacao" },
-      { nome: "Repulsao", custo: "+1 por graduacao" },
-      { nome: "Penetrante", custo: "+1 por graduacao" },
-      { nome: "Aura Continua", custo: "+1 por graduacao" },
-    ],
-    falhas: [
-      { nome: "Visivel", custo: "-1 fixo" },
-      { nome: "Consome Energia", custo: "-1 por graduacao" },
-      { nome: "Contato Direto", custo: "-1 por graduacao" },
-    ],
-    detalhes: {
-      introducao: [
-        "Aura cria campo instavel de Eter que reage automaticamente a aproximacao hostil.",
-        "Transforma proximidade em risco continuo para inimigos.",
-      ],
-      secoes: [
-        {
-          titulo: "Funcionamento",
-          itens: [
-            "Ativa contra quem entra em corpo a corpo ou realiza ataque fisico contra o usuario.",
-            "Cada inimigo pode ser afetado uma vez por turno.",
-            "Alvo testa Constituicao (CD 10 + graduacao).",
-          ],
-        },
-        {
-          titulo: "Efeito",
-          itens: [
-            "Falha: dano igual a metade da graduacao (para cima) e -1 em testes fisicos ate fim do turno.",
-            "Sucesso: metade do dano (para baixo), sem penalidade.",
-            "Funciona apenas com usuario consciente.",
-          ],
-        },
-      ],
-    },
-  },
-  {
-    id: "espadas-caracteristica-aumentada",
-    nome: "Caracteristica Aumentada",
-    naipe: "Espadas",
-    tipo: "Fortalecimento",
-    acao: "Livre",
-    alcance: "Pessoal",
-    duracao: "Sustentado",
-    custoPontosPorGraduacao: 2,
-    custoPontosTexto: "2 pontos por graduacao",
-    custoEterBase: "padrao",
-    resumo: "Amplifica temporariamente Forca, Constituicao ou Agilidade.",
-    efeitoPrincipal:
-      "Concede +1 por graduacao em testes do atributo escolhido enquanto ativo.",
-    extras: [
-      { nome: "Aumento Massivo", custo: "+1 por graduacao" },
-      { nome: "Explosao de Poder", custo: "+1 fixo" },
-      { nome: "Sobrecarga Controlada", custo: "+1 por graduacao" },
-      { nome: "Conversao em Dado", custo: "+2 por graduacao" },
-    ],
-    falhas: [
-      { nome: "Limitado (Somente Combate)", custo: "-1 por graduacao" },
-      { nome: "Instavel", custo: "-1 por graduacao" },
-      { nome: "Sobrecarga Fisica", custo: "-1 por graduacao" },
-    ],
-    detalhes: {
-      introducao: [
-        "Caracteristica Aumentada direciona Eter para amplificar atributo fisico especifico.",
-        "Permite ajuste dinamico de desempenho conforme situacao.",
-      ],
-      secoes: [
-        {
-          titulo: "Funcionamento",
-          itens: [
-            "Escolha Forca, Constituicao ou Agilidade ao ativar.",
-            "Concede +1 por graduacao em testes do atributo escolhido.",
-            "Afeta apenas um atributo por vez.",
-          ],
-        },
-        {
-          titulo: "Regras",
-          itens: [
-            "Nao altera dado base de atributo, apenas bonus numerico.",
-            "Nao afeta dano base, Defesa passiva ou Vida diretamente.",
-            "Nao acumula com multiplas ativacoes simultaneas do mesmo poder.",
-          ],
-        },
-      ],
-    },
-  },
-  {
-    id: "espadas-rapidez",
-    nome: "Rapidez",
-    naipe: "Espadas",
-    tipo: "Fortalecimento",
-    acao: "Livre",
-    alcance: "Pessoal",
-    duracao: "Sustentado",
-    custoPontosPorGraduacao: 4,
-    custoPontosTexto: "4 pontos por graduacao",
-    custoEterBase: "padrao",
-    resumo: "Acelera reflexos e execucao para multiplicar o ritmo de combate.",
-    efeitoPrincipal:
-      "A cada 2 graduacoes: +1 Agilidade; graduacoes altas liberam acoes adicionais com penalidades especificas.",
-    extras: [
-      { nome: "Acao Perfeita", custo: "+2 por graduacao" },
-      { nome: "Fluxo Continuo", custo: "+2 por graduacao" },
-      { nome: "Reflexo Antecipado", custo: "+1 por graduacao" },
-      { nome: "Movimento Instantaneo", custo: "+2 por graduacao" },
-    ],
-    falhas: [
-      { nome: "Exaustivo", custo: "-1 por graduacao" },
-      { nome: "Sobrecarga Neural", custo: "-1 por graduacao" },
-      { nome: "Instavel", custo: "-1 por graduacao" },
-    ],
-    detalhes: {
-      introducao: [
-        "Rapidez acelera impulsos corporais e mentais para abrir janelas extras de acao.",
-        "O foco e multiplicar ritmo de combate, nao apenas deslocamento.",
-      ],
-      secoes: [
-        {
-          titulo: "Funcionamento",
-          itens: [
-            "Consome Eter igual a metade da graduacao (para cima) por turno enquanto ativo.",
-            "A cada 2 graduacoes: +1 em testes de Agilidade (acoes ativas).",
-            "Graduacoes maiores liberam acoes adicionais com penalidades (-4 na primeira, -6 na segunda).",
-          ],
-        },
-        {
-          titulo: "Regras",
-          itens: [
-            "Acoes adicionais nao repetem a mesma acao no turno sem Extra adequado.",
-            "Nao permitem poderes com custo de Eter +2 ou maior.",
-            "Enquanto ativa, na iniciativa por cartas compra 2 e escolhe 1.",
-          ],
-        },
-      ],
-    },
-  },
-  {
-    id: "espadas-enfraquecer",
-    nome: "Enfraquecer",
-    naipe: "Espadas",
-    tipo: "Ataque / Controle",
-    acao: "Padrao",
-    alcance: "Corpo a Corpo",
-    duracao: "Temporaria",
-    custoPontosPorGraduacao: 3,
-    custoPontosTexto: "3 pontos por graduacao",
-    custoEterBase: "padrao",
-    resumo: "Degrada caracteristicas do alvo por contato com Eter focado.",
-    efeitoPrincipal:
-      "Falha no teste de Constituicao aplica penalidade na caracteristica escolhida: -1 a cada 2 graduacoes (maximo acumulado -4).",
-    extras: [
-      { nome: "Drenagem Espiritual", custo: "+1 por graduacao" },
-      { nome: "Enfraquecimento Total", custo: "+1 por graduacao" },
-      { nome: "Golpe Incapacitante", custo: "+2 por graduacao" },
-    ],
-    falhas: [
-      { nome: "Limitado (Somente fisico)", custo: "-1 por graduacao" },
-      { nome: "Contato Preciso", custo: "-1 por graduacao" },
-      { nome: "Efeito Instavel", custo: "-1 por graduacao" },
-    ],
-    detalhes: {
-      introducao: [
-        "Enfraquecer aplica Eter no ponto de impacto para degradar desempenho do alvo.",
-        "A tecnica prioriza controle progressivo em vez de dano imediato.",
-      ],
-      secoes: [
-        {
-          titulo: "Funcionamento",
-          itens: [
-            "Ao acertar corpo a corpo, escolhe uma caracteristica do alvo.",
-            "Alvo testa Constituicao contra CD 10 + graduacao.",
-            "Falha aplica penalidade de -1 por 2 graduacoes (para cima).",
-          ],
-        },
-        {
-          titulo: "Duracao e Limites",
-          itens: [
-            "Duracao: metade da graduacao em turnos (para cima).",
-            "Aplicacoes acumulam ate maximo de -4 por caracteristica.",
-            "Novas aplicacoes renovam duracao.",
-          ],
-        },
-      ],
-    },
-  },
-  {
-    id: "espadas-imunidade",
-    nome: "Imunidade",
-    naipe: "Espadas",
-    tipo: "Defesa",
-    acao: "Nenhuma",
-    alcance: "Pessoal",
-    duracao: "Permanente",
-    custoPontosPorGraduacao: 2,
-    custoPontosTexto: "2 pontos por graduacao",
-    custoEterBase: "padrao",
-    resumo: "Torna o usuario completamente indiferente a efeitos escolhidos.",
-    efeitoPrincipal:
-      "Efeitos cobertos pela imunidade sao ignorados sem teste; cada descritor exige graduacoes conforme abrangencia.",
-    extras: [
-      { nome: "Afeta Outros", custo: "+1 por graduacao" },
-      { nome: "Area", custo: "+1 por graduacao" },
-      { nome: "Seletivo", custo: "+1 fixo" },
-      { nome: "Sustentado", custo: "+0" },
-    ],
-    falhas: [
-      { nome: "Limitado", custo: "-1 por graduacao" },
-      { nome: "Condicional", custo: "-1 por graduacao" },
-      { nome: "Ativacao", custo: "-1 fixo" },
-    ],
-    detalhes: {
-      introducao: [
-        "Imunidade reforca corpo e fluxo interno para ignorar efeitos de descritores definidos.",
-        "Nao reduz: simplesmente torna o usuario indiferente ao efeito coberto.",
-      ],
-      secoes: [
-        {
-          titulo: "Funcionamento",
-          itens: [
-            "Cada imunidade e comprada por faixas de graduacao conforme abrangencia do efeito.",
-            "Quando atingido por efeito coberto, ele e ignorado automaticamente sem teste.",
-          ],
-        },
-        {
-          titulo: "Regras",
-          itens: [
-            "Descritor deve ser claro e delimitado.",
-            "Nao acumula com resistencia porque o efeito nao chega a ocorrer.",
-            "Nao se aplica a efeitos fora do escopo definido.",
-          ],
-        },
-      ],
-    },
-  },
-  {
-    id: "espadas-contra-ataque",
-    nome: "Contra-Ataque",
-    naipe: "Espadas",
-    tipo: "Ataque",
-    acao: "Reacao",
-    alcance: "Corpo a Corpo",
     duracao: "Instantanea",
     custoPontosPorGraduacao: 2,
     custoPontosTexto: "2 pontos por graduacao",
     custoEterBase: "padrao",
     resumo:
-      "Retaliacao instantanea quando um ataque corpo a corpo falha contra voce.",
+      "Onda cinetica que empurra alvos, causando controle de posicao e risco de colisao.",
     efeitoPrincipal:
-      "Apos falha inimiga em corpo a corpo, realiza contra-golpe (1d20 + CaC) e causa dano igual a graduacao.",
+      "No acerto, alvo testa Forca contra CD 10 + graduacao para reduzir deslocamento forcado.",
     extras: [
-      { nome: "Reflexo Instintivo", custo: "+1 por graduacao" },
-      { nome: "Retaliacao Violenta", custo: "+1 por graduacao" },
-      { nome: "Campo Reativo", custo: "+2 por graduacao" },
+      { nome: "Impacto Massivo", custo: "+1 por graduacao" },
+      { nome: "Repulsao Continua", custo: "+2 por graduacao" },
+      { nome: "Impacto Brutal", custo: "+1 por graduacao" },
     ],
     falhas: [
-      { nome: "Limitado (Desarmado)", custo: "-1 por graduacao" },
-      { nome: "Resposta Instavel", custo: "-1 por graduacao" },
+      { nome: "Somente Controle", custo: "-1 por graduacao" },
+      { nome: "Direcional", custo: "-1 por graduacao" },
+      { nome: "Instavel", custo: "-1 por graduacao" },
     ],
+    observacoes: "Alcance funcional base: 3 metros.",
     detalhes: {
       introducao: [
-        "Contra-Ataque e resposta automatica do Eter a agressao corpo a corpo malsucedida.",
-        "Converte erro ofensivo do inimigo em abertura imediata de retaliacao.",
+        "Repelir e controle espacial direto por deslocamento forcado.",
       ],
       secoes: [
         {
-          titulo: "Funcionamento",
+          titulo: "Ambiente",
           itens: [
-            "Dispara quando inimigo falha ataque corpo a corpo contra sua Defesa.",
-            "Consome Eter padrao para ativar.",
-            "Realiza ataque 1d20 + CaC; acerto causa dano igual a graduacao.",
+            "Colisao causa 1 dano a cada 4 metros restantes (minimo 1).",
+            "Falha critica no teste de Forca deixa o alvo Caido.",
+            "Nao atravessa barreiras solidas.",
           ],
         },
+      ],
+      tabelas: [
         {
-          titulo: "Regras",
-          itens: [
-            "Dano nao soma Forca ou arma por padrao.",
-            "Cada ataque inimigo falho pode gerar uma ativacao separada.",
+          titulo: "Distancia de Repelir",
+          colunas: ["Graduacao", "Distancia"],
+          linhas: [
+            ["1", "2 m"],
+            ["2", "4 m"],
+            ["3", "6 m"],
+            ["4", "8 m"],
+            ["5", "10 m"],
+            ["6", "12 m"],
+            ["7", "14 m"],
+            ["8", "16 m"],
+            ["9", "18 m"],
+            ["10", "20 m"],
           ],
         },
       ],
@@ -607,9 +736,9 @@ export const PODERES_ESPADAS: PowerDefinition[] = [
     custoPontosTexto: "3 pontos por graduacao",
     custoEterBase: "padrao",
     resumo:
-      "Impulso de Eter para reposicionamento extremo no campo de batalha.",
+      "Impulso explosivo para deslocamento vertical e horizontal em um unico movimento.",
     efeitoPrincipal:
-      "Substitui deslocamento normal por salto com distancia/altura escaladas por graduacao.",
+      "Substitui deslocamento do turno por salto escalonado de distancia e altura.",
     extras: [
       { nome: "Salto de Impacto", custo: "+1 por graduacao" },
       { nome: "Salto Direcionado", custo: "+1 fixo" },
@@ -617,28 +746,17 @@ export const PODERES_ESPADAS: PowerDefinition[] = [
       { nome: "Salto Ofensivo", custo: "+1 por graduacao" },
     ],
     falhas: [
-      { nome: "Limitado (Apenas vertical)", custo: "-1 por graduacao" },
-      { nome: "Impulso Rigido", custo: "-1 por graduacao" },
+      { nome: "Limitado (Vertical)", custo: "-1 por graduacao" },
+      { nome: "Trajetoria Rigida", custo: "-1 por graduacao" },
       { nome: "Exposicao Aerea", custo: "-1 por graduacao" },
     ],
     detalhes: {
       introducao: [
-        "Salto concentra Eter nas pernas para deslocamento explosivo e reposicionamento tatico.",
-        "Transforma mobilidade em controle de espaco e angulo de combate.",
-      ],
-      secoes: [
-        {
-          titulo: "Funcionamento",
-          itens: [
-            "Usa acao de movimento para salto impulsionado, com custo de Eter padrao.",
-            "Substitui deslocamento normal e ignora terreno dificil simples.",
-            "Nao atravessa barreiras solidas ou efeitos que bloqueiem movimento.",
-          ],
-        },
+        "Salto e reposicionamento tatio de alta precisao no naipe de Espadas.",
       ],
       tabelas: [
         {
-          titulo: "Salto",
+          titulo: "Escala de Salto",
           colunas: ["Graduacao", "Distancia", "Altura"],
           linhas: [
             ["1", "4 m", "2 m"],
@@ -654,70 +772,19 @@ export const PODERES_ESPADAS: PowerDefinition[] = [
           ],
         },
       ],
-    },
-  },
-  {
-    id: "espadas-supervelocidade",
-    nome: "Supervelocidade",
-    naipe: "Espadas",
-    tipo: "Movimento",
-    acao: "Livre",
-    alcance: "Pessoal",
-    duracao: "Sustentado",
-    custoPontosPorGraduacao: 4,
-    custoPontosTexto: "4 pontos por graduacao",
-    custoEterBase: "padrao",
-    resumo: "Multiplica deslocamento e habilita corrida em sobrecarga.",
-    efeitoPrincipal:
-      "Movimento recebe multiplicador por graduacao; se gastar acao padrao para mover de novo, dobra o multiplicador desse segundo deslocamento.",
-    extras: [
-      { nome: "Arranque Explosivo", custo: "+1 fixo" },
-      { nome: "Movimento Avancado", custo: "+1 por graduacao" },
-      { nome: "Controle Absoluto", custo: "+1 fixo" },
-      { nome: "Rastro de Impacto", custo: "+2 por graduacao" },
-    ],
-    falhas: [
-      { nome: "Dificil de Controlar", custo: "-1 por graduacao" },
-      { nome: "Exaustivo", custo: "-1 por graduacao" },
-      { nome: "Impulso Linear", custo: "-1 por graduacao" },
-    ],
-    detalhes: {
-      introducao: [
-        "Supervelocidade acelera continuamente o corpo para deslocamentos extremos.",
-        "Com foco total em corrida, dobra desempenho do segundo deslocamento no turno.",
-      ],
       secoes: [
         {
-          titulo: "Funcionamento",
+          titulo: "Interacao",
           itens: [
-            "Enquanto ativo, deslocamento recebe multiplicador por graduacao e consome Eter padrao por turno.",
-            "Se gastar acao padrao apenas para mover, o segundo deslocamento dobra o multiplicador.",
-            "Nao concede acoes adicionais nem permite uso de tecnicas durante sobrecarga.",
-          ],
-        },
-      ],
-      tabelas: [
-        {
-          titulo: "Supervelocidade",
-          colunas: ["Graduacao", "Multiplicador"],
-          linhas: [
-            ["1", "x2"],
-            ["2", "x3"],
-            ["3", "x4"],
-            ["4", "x5"],
-            ["5", "x6"],
-            ["6", "x7"],
-            ["7", "x8"],
-            ["8", "x10"],
-            ["9", "x12"],
-            ["10", "x15"],
+            "Ignora terreno dificil e obstaculos simples de ate 1 metro.",
+            "Nao atravessa barreiras solidas.",
           ],
         },
       ],
     },
   },
   {
-    id: "espadas-superforça",
+    id: "espadas-superforca",
     nome: "Superforca",
     naipe: "Espadas",
     tipo: "Fortalecimento",
@@ -727,37 +794,37 @@ export const PODERES_ESPADAS: PowerDefinition[] = [
     custoPontosPorGraduacao: 4,
     custoPontosTexto: "4 pontos por graduacao",
     custoEterBase: "padrao",
-    resumo: "Amplia brutalmente a forca aplicada e a capacidade de carga.",
+    resumo:
+      "Multiplica capacidade fisica e impacto de acoes baseadas em Forca.",
     efeitoPrincipal:
-      "Multiplica a forca por graduacao; concede bonus em dano corpo a corpo e testes de Forca conforme escala.",
+      "Escala multiplicador de carga, bonus de Forca e bonus de dano corpo a corpo.",
     extras: [
       { nome: "Arremesso Gigante", custo: "+1 por graduacao" },
-      { nome: "Impacto Devastador", custo: "+1 por graduacao" },
       { nome: "Forca Aplicada", custo: "+1 fixo" },
+      { nome: "Impacto Devastador", custo: "+1 por graduacao" },
     ],
     falhas: [
-      { nome: "Limitado (Apenas levantar)", custo: "-2 por graduacao" },
+      { nome: "Limitado (Apenas Levantar)", custo: "-2 por graduacao" },
       { nome: "Descontrole", custo: "-1 por graduacao" },
       { nome: "Dependente de Postura", custo: "-1 por graduacao" },
     ],
     detalhes: {
       introducao: [
-        "Superforca reforca estrutura muscular via Eter para esforcos muito acima do natural.",
-        "Nao melhora precisao, mas amplia brutalmente impacto fisico.",
+        "Superforca transforma esforco bruto em ferramenta ofensiva e utilitaria.",
       ],
       secoes: [
         {
-          titulo: "Funcionamento",
+          titulo: "Escalonamento",
           itens: [
-            "Enquanto ativo, multiplica capacidade de carga e consome Eter padrao por turno.",
-            "Dano corpo a corpo recebe +1 a cada 3 graduacoes.",
-            "Testes de Forca recebem +1 a cada 2 graduacoes.",
+            "+1 em testes de Forca a cada 2 graduacoes (para cima).",
+            "+1 de dano corpo a corpo a cada 3 graduacoes (para baixo).",
+            "Acoes de precisao sofrem -2 no teste por padrao.",
           ],
         },
       ],
       tabelas: [
         {
-          titulo: "Superforca",
+          titulo: "Multiplicador de Superforca",
           colunas: ["Graduacao", "Multiplicador"],
           linhas: [
             ["1", "x2"],
@@ -776,115 +843,79 @@ export const PODERES_ESPADAS: PowerDefinition[] = [
     },
   },
   {
-    id: "espadas-pressao",
-    nome: "Pressao",
+    id: "espadas-supervelocidade",
+    nome: "Supervelocidade",
     naipe: "Espadas",
-    tipo: "Controle",
-    acao: "Padrao",
-    alcance: "Area",
+    tipo: "Movimento",
+    acao: "Livre",
+    alcance: "Pessoal",
     duracao: "Sustentado",
-    custoPontosPorGraduacao: 3,
-    custoPontosTexto: "3 pontos por graduacao",
-    custoEterBase: "padrao +2",
-    resumo: "Campo opressivo que reduz deslocamento e eficiencia de combate.",
-    efeitoPrincipal:
-      "Inimigos na area testam Vontade; falha aplica penalidades em testes e reduz movimento por graduacao.",
-    extras: [
-      { nome: "Pressao Devastadora", custo: "+2 por graduacao" },
-      { nome: "Foco Direcionado", custo: "+1 fixo" },
-      { nome: "Campo Intenso", custo: "+1 por graduacao" },
-    ],
-    falhas: [
-      { nome: "Limitado (Alvos mais fracos)", custo: "-1 por graduacao" },
-      { nome: "Area Instavel", custo: "-1 por graduacao" },
-    ],
-    detalhes: {
-      introducao: [
-        "Pressao libera Eter massivo no ambiente para oprimir movimento e reacao inimiga.",
-        "Campo acompanha o usuario e cria controle de area continuo.",
-      ],
-      secoes: [
-        {
-          titulo: "Funcionamento",
-          itens: [
-            "Inimigos que entram ou iniciam turno na area testam Vontade (CD 10 + graduacao).",
-            "Falha aplica penalidade de -1 por 2 graduacoes (para cima) em testes fisicos e de ataque.",
-            "Tambem reduz deslocamento em 1 metro por graduacao.",
-          ],
-        },
-        {
-          titulo: "Escalonamento",
-          itens: [
-            "Ao atingir penalidade total de -4, alvo testa novamente Vontade.",
-            "Falha: fica Lento; falha critica: Imobilizado por 1 turno.",
-            "Usuario pode reduzir raio livremente e efeito cessa fora da area.",
-          ],
-        },
-      ],
-    },
-  },
-  {
-    id: "espadas-repelir",
-    nome: "Repelir",
-    naipe: "Espadas",
-    tipo: "Ataque / Controle",
-    acao: "Padrao",
-    alcance: "Perto",
-    duracao: "Instantanea",
-    custoPontosPorGraduacao: 2,
-    custoPontosTexto: "2 pontos por graduacao",
+    custoPontosPorGraduacao: 4,
+    custoPontosTexto: "4 pontos por graduacao",
     custoEterBase: "padrao",
-    resumo: "Onda cinetica que empurra alvos e cria colisoes taticas.",
+    resumo:
+      "Multiplica deslocamento e permite corrida em sobrecarga para mobilidade extrema.",
     efeitoPrincipal:
-      "Ao acertar, alvo testa Forca; falha e empurrado distancia total da graduacao, com risco de queda/colisao.",
+      "Deslocamento recebe multiplicador por graduacao; em sobrecarga, dobra o multiplicador do segundo movimento.",
     extras: [
-      { nome: "Impacto Massivo", custo: "+1 por graduacao" },
-      { nome: "Repulsao Continua", custo: "+1 por graduacao" },
-      { nome: "Impacto Brutal", custo: "+1 por graduacao" },
+      { nome: "Arranque Explosivo", custo: "+1 fixo" },
+      { nome: "Movimento Avancado", custo: "+1 por graduacao" },
+      { nome: "Controle Absoluto", custo: "+1 fixo" },
+      { nome: "Rastro de Impacto", custo: "+2 por graduacao" },
     ],
     falhas: [
-      { nome: "Somente Controle", custo: "-1 por graduacao" },
-      { nome: "Direcional", custo: "-1 por graduacao" },
-      { nome: "Instavel", custo: "-1 por graduacao" },
+      { nome: "Dificil de Controlar", custo: "-1 por graduacao" },
+      { nome: "Exaustivo", custo: "-1 por graduacao" },
+      { nome: "Impulso Linear", custo: "-1 por graduacao" },
     ],
     detalhes: {
       introducao: [
-        "Repelir projeta onda cinetica de Eter para deslocamento forcado agressivo.",
-        "E uma ferramenta de posicionamento e abertura por colisao/queda.",
+        "Supervelocidade e deslocamento puro: nao concede acoes extras por si.",
       ],
       secoes: [
         {
-          titulo: "Funcionamento",
+          titulo: "Sobrecarga",
           itens: [
-            "Realiza ataque 1d20 + CaC; no acerto, alvo testa Forca contra CD 10 + graduacao.",
-            "Sucesso: empurra metade da distancia; falha: distancia total; falha critica: distancia total + Caido.",
+            "Ao gastar acao padrao exclusivamente para mover, dobra multiplicador do segundo deslocamento.",
+            "Durante sobrecarga, nao pode atacar nem usar tecnicas no turno.",
           ],
         },
+      ],
+      tabelas: [
         {
-          titulo: "Interacao com Ambiente",
-          itens: [
-            "Em colisao, sofre 1 dano a cada 4 metros restantes do deslocamento.",
-            "Quedas aplicam dano normal de queda.",
-            "Nao causa dano direto por padrao sem extras.",
+          titulo: "Multiplicador de Supervelocidade",
+          colunas: ["Graduacao", "Multiplicador"],
+          linhas: [
+            ["1", "x2"],
+            ["2", "x3"],
+            ["3", "x4"],
+            ["4", "x5"],
+            ["5", "x6"],
+            ["6", "x7"],
+            ["7", "x8"],
+            ["8", "x10"],
+            ["9", "x12"],
+            ["10", "x15"],
           ],
         },
       ],
     },
   },
   {
-    id: "espadas-surto-adrenalina",
+    id: "espadas-surto-de-adrenalina",
     nome: "Surto de Adrenalina",
     naipe: "Espadas",
     tipo: "Fortalecimento",
     acao: "Livre",
     alcance: "Pessoal",
     duracao: "Sustentado",
-    custoPontosPorGraduacao: 4,
-    custoPontosTexto: "4 pontos por graduacao",
-    custoEterBase: "padrao +2",
-    resumo: "Modo agressivo extremo com alto ganho ofensivo e custo defensivo.",
+    custoPontosPorGraduacao: 5,
+    custoPontosTexto: "5 pontos por graduacao",
+    custoEterBase: "+2",
+    resumo:
+      "Modo ofensivo extremo com grandes bonus de combate e penalidades defensivas.",
     efeitoPrincipal:
-      "Concede bonus progressivos de ataque, dano, testes de Forca e deslocamento; em troca sofre penalidades de Defesa e controle.",
+      "Concede bonus por faixa de graduacao em ataque, dano, Forca e deslocamento.",
     extras: [
       { nome: "Explosao de Combate", custo: "+2 fixo" },
       { nome: "Furia Incontrolavel", custo: "+1 por graduacao" },
@@ -897,76 +928,38 @@ export const PODERES_ESPADAS: PowerDefinition[] = [
     ],
     detalhes: {
       introducao: [
-        "Surto de Adrenalina eleva o corpo a estado agressivo maximo, trocando defesa por ofensiva.",
-        "Prioriza pressao de combate direto e dominio fisico continuo.",
+        "Surto sacrifica controle e defesa para maximizar agressividade.",
       ],
       secoes: [
         {
-          titulo: "Funcionamento",
+          titulo: "Penalidades e Limites",
           itens: [
-            "Consome Eter padrao +2 por turno enquanto ativo.",
-            "Concede bonus progressivos em ataque, dano, testes de Forca e deslocamento por faixa de graduacao.",
-            "Aplica penalidades de -2 Defesa e -1 em testes de precisao/controle.",
-          ],
-        },
-        {
-          titulo: "Duracao e Risco",
-          itens: [
-            "Mantem por metade da graduacao em turnos (para cima).",
-            "Acima do limite, sofre -2 cumulativo em todos os testes por turno.",
-            "Ao encerrar, sofre penalidade global e nao pode reativar ate recuperar.",
+            "Enquanto ativo: -2 Defesa e -1 em testes de precisao/controle.",
+            "Nao pode usar poderes que exijam precisao (exemplo: Disparo).",
+            "Duracao recomendada: metade da graduacao (para cima) em turnos.",
+            "Ao encerrar, sofre penalidade global e nao pode reativar na cena.",
           ],
         },
       ],
-    },
-  },
-  {
-    id: "espadas-colapso",
-    nome: "Colapso",
-    naipe: "Espadas",
-    tipo: "Ataque",
-    acao: "Padrao",
-    alcance: "Toque",
-    duracao: "Instantanea",
-    custoPontosPorGraduacao: 4,
-    custoPontosTexto: "4 pontos por graduacao",
-    custoEterBase: "padrao +2",
-    resumo:
-      "Impacto localizado que ignora resistencia e aplica efeitos criticos.",
-    efeitoPrincipal:
-      "Causa dano igual a graduacao, ignora 1 Resistencia por 2 graduacoes e aplica um efeito de Colapso escolhido.",
-    extras: [
-      { nome: "Dupla Aplicacao", custo: "+2 por graduacao" },
-      { nome: "Execucao Perfeita", custo: "+1 por graduacao" },
-    ],
-    falhas: [
-      { nome: "Instavel", custo: "-1 por graduacao" },
-      { nome: "Limitado (Seres vivos)", custo: "-1 por graduacao" },
-    ],
-    detalhes: {
-      introducao: [
-        "Colapso concentra Eter em contato direto para dano localizado com efeito tecnico.",
-        "E uma das tecnicas de maior precisao e letalidade em Espadas.",
-      ],
-      secoes: [
+      tabelas: [
         {
-          titulo: "Funcionamento",
-          itens: [
-            "No acerto corpo a corpo, causa dano igual a graduacao.",
-            "Ignora 1 ponto de Resistencia a cada 2 graduacoes (para cima).",
-            "Apos o dano, escolhe um efeito: Colapso Fisico, Ruptura Interna, Dreno de Eter, Paralisia Parcial ou Quebra de Defesa.",
+          titulo: "Escala de Surto de Adrenalina",
+          colunas: [
+            "Graduacao",
+            "Ataque",
+            "Dano",
+            "Forca (testes)",
+            "Deslocamento",
           ],
-        },
-        {
-          titulo: "Regras",
-          itens: [
-            "Afeta um unico alvo por uso e exige toque direto.",
-            "Nao pode ser usado a distancia.",
-            "Quebra de Defesa ja influencia o proprio ataque quando aplicavel.",
+          linhas: [
+            ["1-2", "+1", "+1", "-", "-"],
+            ["3-4", "+2", "+1", "+1", "+1 m"],
+            ["5-6", "+3", "+2", "+1", "+2 m"],
+            ["7-8", "+4", "+3", "+2", "+2 m"],
+            ["9-10", "+5", "+4", "+3", "+3 m"],
           ],
         },
       ],
     },
   },
 ];
-
