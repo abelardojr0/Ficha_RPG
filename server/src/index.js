@@ -118,14 +118,23 @@ const buildPublicFileUrl = (req, filename) => {
   return `${protocol}://${host}/uploads/${filename}`;
 };
 
-const buildSheetSummary = ({ id, data, updatedAt }) => ({
-  id: String(id),
-  nome: data?.nome || "Sem nome",
-  nivel: data?.nivel || "",
-  jogador: data?.jogador || "",
-  imagemUrl: data?.imagemUrl || data?.imageUrl || "",
-  updatedAt: updatedAt || new Date().toISOString(),
-});
+const getSheetImageUrl = (data) =>
+  data?.imagemUrl || data?.imageUrl || data?.fotoUrl || data?.foto || "";
+
+const buildSheetSummary = ({ id, data, updatedAt }) => {
+  const imagemUrl = getSheetImageUrl(data);
+
+  return {
+    id: String(id),
+    nome: data?.nome || "Sem nome",
+    nivel: data?.nivel || "",
+    jogador: data?.jogador || "",
+    imagemUrl,
+    imageUrl: imagemUrl,
+    fotoUrl: imagemUrl,
+    updatedAt: updatedAt || new Date().toISOString(),
+  };
+};
 
 const corsOriginValue = process.env.CORS_ORIGIN?.trim() || "*";
 const allowedOrigins =
@@ -218,11 +227,13 @@ app.post("/api/sheets/:id/image", (req, res) => {
         return;
       }
 
-      const previousImageUrl = auth.sheet.data?.imagemUrl || "";
+      const previousImageUrl = getSheetImageUrl(auth.sheet.data);
       const nextImageUrl = buildPublicFileUrl(req, req.file.filename);
       const nextData = {
         ...(auth.sheet.data ?? {}),
         imagemUrl: nextImageUrl,
+        imageUrl: nextImageUrl,
+        fotoUrl: nextImageUrl,
       };
 
       await query(`UPDATE fichas SET data = $2::jsonb WHERE id = $1::uuid`, [
@@ -258,10 +269,13 @@ app.delete("/api/sheets/:id/image", async (req, res) => {
       return;
     }
 
-    const currentImageUrl = auth.sheet.data?.imagemUrl || "";
+    const currentImageUrl = getSheetImageUrl(auth.sheet.data);
 
     const nextData = { ...(auth.sheet.data ?? {}) };
     delete nextData.imagemUrl;
+    delete nextData.imageUrl;
+    delete nextData.fotoUrl;
+    delete nextData.foto;
 
     await query(`UPDATE fichas SET data = $2::jsonb WHERE id = $1::uuid`, [
       id,
@@ -381,9 +395,16 @@ app.put("/api/sheets/:id", async (req, res) => {
       return res.status(auth.status).json({ message: auth.message });
     }
 
-    const characterWithId = { ...character, id };
-    const previousImageUrl = auth.sheet.data?.imagemUrl || "";
-    const nextImageUrl = characterWithId.imagemUrl || "";
+    const previousImageUrl = getSheetImageUrl(auth.sheet.data);
+    const nextImageUrlFromPayload = getSheetImageUrl(character);
+    const nextImageUrl = nextImageUrlFromPayload || previousImageUrl;
+    const characterWithId = {
+      ...character,
+      id,
+      imagemUrl: nextImageUrl,
+      imageUrl: nextImageUrl,
+      fotoUrl: nextImageUrl,
+    };
 
     await query(`UPDATE fichas SET data = $2::jsonb WHERE id = $1::uuid`, [
       id,
@@ -403,6 +424,31 @@ app.put("/api/sheets/:id", async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Falha ao salvar ficha." });
+  }
+});
+
+app.delete("/api/sheets/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { password } = req.body ?? {};
+
+    const auth = await assertSheetAuth(id, password);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ message: auth.message });
+    }
+
+    const imageUrl = getSheetImageUrl(auth.sheet.data);
+
+    await query(`DELETE FROM fichas WHERE id = $1::uuid`, [id]);
+
+    if (imageUrl) {
+      deleteLocalUploadByUrl(imageUrl);
+    }
+
+    return res.status(200).json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Falha ao excluir ficha." });
   }
 });
 

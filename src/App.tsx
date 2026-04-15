@@ -1,19 +1,24 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
   type FormEvent,
 } from "react";
 import { ToastContainer, toast } from "react-toastify";
+import { FaWeightHanging } from "react-icons/fa6";
+import { GiRollingEnergy, GiWalkingBoot, GiScrollQuill } from "react-icons/gi";
+import { MdOutlineAddPhotoAlternate } from "react-icons/md";
+import { IoMdHeartHalf } from "react-icons/io";
 import "react-toastify/dist/ReactToastify.css";
 import {
   MAX_POWER_GRADUATION_LIMIT,
-  MAX_POWER_GRADUATION_RULE,
   PODERES_POR_NAIPE,
   type NaipePoder,
   type PowerDefinition,
 } from "./data/powers";
+import logoImage from "./assets/logo.png";
 import "./App.css";
 
 type Dice = "D4" | "D6" | "D8" | "D10" | "D12";
@@ -109,6 +114,11 @@ type CharacterPower = {
   falhasSelecionadas: string[];
 };
 
+type ConhecimentoEntry = {
+  area: string;
+  graduacoes: string;
+};
+
 type CharacterSheet = {
   id: string;
   nome: string;
@@ -120,6 +130,7 @@ type CharacterSheet = {
   naipe: Naipe;
   carga: string;
   mov: string;
+  periciasExtra: string;
   atributos: Record<Atributo, Dice>;
   combate: {
     ataqueCac: CombatDice;
@@ -128,10 +139,7 @@ type CharacterSheet = {
     defesa: string;
   };
   pericias: Record<string, string>;
-  conhecimentos: Array<{
-    area: string;
-    graduacoes: string;
-  }>;
+  conhecimentos: ConhecimentoEntry[];
   tecnicasBasicas: Record<string, { graduacao: string }>;
   vantagens: CharacterAdvantage[];
   desvantagens: CharacterDisadvantage[];
@@ -159,10 +167,15 @@ type SheetSummary = {
   id: string;
   nome: string;
   imagemUrl?: string;
+  imageUrl?: string;
+  fotoUrl?: string;
   nivel: string;
   jogador: string;
   updatedAt: string;
 };
+
+const getSheetPreviewImageUrl = (sheet: SheetSummary) =>
+  sheet.imagemUrl || sheet.imageUrl || sheet.fotoUrl || "";
 
 type PendingConfirmation = {
   title: string;
@@ -171,7 +184,7 @@ type PendingConfirmation = {
   variant?: "default" | "danger";
   action:
     | { type: "apply-pretipo"; pretipoId: string }
-    | { type: "delete-character" };
+    | { type: "delete-character"; characterId: string };
 };
 
 const TOTAL_PP = 180;
@@ -196,13 +209,24 @@ const ATRIBUTOS = [
   "Constituicao",
 ] as const satisfies readonly Atributo[];
 
+const ATRIBUTO_SIGLA: Record<Atributo, string> = {
+  Forca: "FOR",
+  Agilidade: "AGI",
+  Tecnica: "TEC",
+  Intelecto: "INT",
+  Presenca: "PRE",
+  Vontade: "VON",
+  Constituicao: "CON",
+};
+
 const PERICIAS = [
   "Acrobacia",
   "Analise de Eter",
   "Atletismo",
   "Concentracao",
   "Controle de Eter",
-  "Enganacao",
+  "Enganar",
+  "Expressao",
   "Furtividade",
   "Intimidacao",
   "Intuicao",
@@ -1197,76 +1221,114 @@ const DESVANTAGEM_BY_ID = new Map(
   DESVANTAGENS_CATALOGO.map((item) => [item.id, item]),
 );
 
-const PERICIA_INFO: Record<string, { atributo: Atributo; uso: string }> = {
-  Acrobacia: {
-    atributo: "Agilidade",
-    uso: "Saltos, equilibrio, manobras fisicas e movimentos evasivos.",
-  },
-  "Analise de Eter": {
-    atributo: "Tecnica",
-    uso: "Detectar, interpretar e analisar o fluxo de Eter e suas manifestacoes.",
-  },
-  Atletismo: {
-    atributo: "Forca",
-    uso: "Escalar, nadar, correr e realizar feitos fisicos intensos.",
-  },
-  Concentracao: {
-    atributo: "Vontade",
-    uso: "Manter foco sob pressao, sustentar tecnicas e resistir a interrupcoes.",
-  },
-  "Controle de Eter": {
-    atributo: "Tecnica",
-    uso: "Estabilizar, sustentar e manter o fluxo de Eter sob controle.",
-  },
-  Enganacao: {
-    atributo: "Presenca",
-    uso: "Mentir, manipular informacoes e disfarcar intencoes.",
-  },
-  Furtividade: {
-    atributo: "Agilidade",
-    uso: "Esconder-se, mover-se silenciosamente e infiltrar-se em locais.",
-  },
-  Percepcao: {
-    atributo: "Vontade",
-    uso: "Detectar inimigos, notar detalhes e perceber perigos.",
-  },
-  Investigacao: {
-    atributo: "Intelecto",
-    uso: "Analisar pistas, examinar evidencias e resolver misterios.",
-  },
-  Intuicao: {
-    atributo: "Presenca",
-    uso: "Interpretar emocoes, detectar mentiras e perceber intencoes ocultas.",
-  },
-  Persuasao: {
-    atributo: "Presenca",
-    uso: "Convencer pessoas, negociar e influenciar atitudes.",
-  },
-  Intimidacao: {
-    atributo: "Presenca",
-    uso: "Ameacar, pressionar ou desmoralizar adversarios.",
-  },
-  Ladinagem: {
-    atributo: "Agilidade",
-    uso: "Abrir fechaduras, desarmar armadilhas e manipular mecanismos delicados.",
-  },
-  Conhecimento: {
-    atributo: "Intelecto",
-    uso: "Recordar informacoes academicas ou culturais.",
-  },
-  Medicina: {
-    atributo: "Intelecto",
-    uso: "Diagnosticar ferimentos, tratar doencas e prestar primeiros socorros.",
-  },
-  Sobrevivencia: {
-    atributo: "Intelecto",
-    uso: "Rastrear, orientar-se na natureza e sobreviver em ambientes hostis.",
-  },
+const PERICIA_INFO: Record<string, { atributo: Atributo; descricao: string }> =
+  {
+    Acrobacia: {
+      atributo: "Agilidade",
+      descricao:
+        "Controle corporal avancado para equilibrio, saltos dificeis, manobras evasivas e deslocamento preciso em ambientes perigosos.",
+    },
+    "Analise de Eter": {
+      atributo: "Tecnica",
+      descricao:
+        "Capacidade de interpretar o fluxo de Eter, reconhecer assinaturas e analisar manifestacoes e tecnicas em uso.",
+    },
+    Atletismo: {
+      atributo: "Forca",
+      descricao:
+        "Capacidade fisica bruta para escalar, nadar, saltar grandes distancias e realizar esforcos intensos.",
+    },
+    Concentracao: {
+      atributo: "Vontade",
+      descricao:
+        "Capacidade de manter foco mental sob pressao, resistir interrupcoes e sustentar acoes continuas em situacoes criticas.",
+    },
+    "Controle de Eter": {
+      atributo: "Tecnica",
+      descricao:
+        "Dominio tecnico para manipular Eter com precisao, estabilizar manifestacoes e ajustar intensidade e forma dos efeitos.",
+    },
+    Enganar: {
+      atributo: "Presenca",
+      descricao:
+        "Capacidade de manipular percepcoes por mentiras, omissoes e encenacao convincente mesmo sob pressao.",
+    },
+    Expressao: {
+      atributo: "Presenca",
+      descricao:
+        "Capacidade de comunicar ideias, emocoes e intencoes por performance artistica ou corporal, como atuacao, musica, danca e oratoria.",
+    },
+    Furtividade: {
+      atributo: "Agilidade",
+      descricao:
+        "Capacidade de agir sem ser percebido, mover-se silenciosamente e infiltrar-se em locais protegidos.",
+    },
+    Percepcao: {
+      atributo: "Vontade",
+      descricao:
+        "Atencao ativa ao ambiente para detectar ameacas, perceber detalhes e antecipar perigos antes que se tornem evidentes.",
+    },
+    Investigacao: {
+      atributo: "Intelecto",
+      descricao:
+        "Capacidade analitica para examinar pistas, interpretar evidencias e reconstruir acontecimentos complexos.",
+    },
+    Intuicao: {
+      atributo: "Presenca",
+      descricao:
+        "Percepcao emocional para interpretar comportamentos, detectar manipulacoes e ler intencoes ocultas.",
+    },
+    Persuasao: {
+      atributo: "Presenca",
+      descricao:
+        "Habilidade social para convencer, negociar e influenciar decisoes por argumentacao e carisma.",
+    },
+    Intimidacao: {
+      atributo: "Presenca",
+      descricao:
+        "Capacidade de impor medo e pressao psicologica para dominar conversas ou desmoralizar adversarios.",
+    },
+    Ladinagem: {
+      atributo: "Agilidade",
+      descricao:
+        "Habilidade manual precisa para abrir fechaduras, desarmar armadilhas e manipular mecanismos delicados.",
+    },
+    Conhecimento: {
+      atributo: "Intelecto",
+      descricao:
+        "Cultura e aprendizado acumulado em campos academicos e praticos, com especializacoes por area.",
+    },
+    Medicina: {
+      atributo: "Intelecto",
+      descricao:
+        "Conhecimento medico para diagnosticar, estabilizar feridos, tratar doencas e realizar primeiros socorros.",
+    },
+    Sobrevivencia: {
+      atributo: "Intelecto",
+      descricao:
+        "Conhecimento pratico para rastrear, orientar-se e extrair recursos em ambientes hostis e condicoes adversas.",
+    },
+  };
+
+const PERICIA_KEY_ALIAS: Record<string, string | undefined> = {
+  Enganar: "Enganacao",
 };
 
-const formatSkillCostText = (graduacoes: number): string => {
-  const custo = graduacoes / 4;
-  return Number.isInteger(custo) ? String(custo) : custo.toFixed(2);
+const getPericiaSheetValue = (
+  pericias: Record<string, string>,
+  pericia: string,
+): string => {
+  const current = pericias[pericia];
+  if (current !== undefined) {
+    return current;
+  }
+
+  const alias = PERICIA_KEY_ALIAS[pericia];
+  if (!alias) {
+    return "";
+  }
+
+  return pericias[alias] ?? "";
 };
 
 const CONHECIMENTO_OPTIONS = [
@@ -1417,6 +1479,15 @@ const TECNICAS_BASICAS: BasicTechniqueDefinition[] = [
 
 const DICE_OPTIONS: Dice[] = ["D4", "D6", "D8", "D10", "D12"];
 const COMBAT_DICE_OPTIONS: CombatDice[] = ["-", ...DICE_OPTIONS];
+
+/** SVG polygon points for each die shape (null = uses <rect> for D6). */
+const DICE_POLYGON_POINTS: Record<Dice, string | null> = {
+  D4: "12,3 21,20 3,20",
+  D6: null,
+  D8: "12,2 22,12 12,22 2,12",
+  D10: "12,2 20,10 17,21 7,21 4,10",
+  D12: "12,2 19.8,7.6 19.8,16.4 12,22 4.2,16.4 4.2,7.6",
+};
 const NAIPE_IDENTITY_OPTIONS: Array<{
   value: Naipe;
   label: string;
@@ -1502,17 +1573,50 @@ const COMBAT_PP_BY_DICE: Record<CombatDice, number> = {
 const ATTRIBUTE_PROGRESS_TOOLTIP =
   "Custo de atributos por evolucao: D4->D6 = 3 PP, D6->D8 = 4 PP, D8->D10 = 5 PP, D10->D12 = 6 PP.";
 
+const ATTRIBUTE_DETAIL_TOOLTIPS: Record<Atributo, string> = {
+  Forca:
+    "Representa poder fisico bruto e capacidade de causar dano. Usado para dano fisico, levantar peso, empurrar inimigos e feitos de forca. Tambem determina o Dano Base do personagem.",
+  Constituicao:
+    "Representa resistencia fisica, vitalidade e capacidade de suportar dano. Usado para resistir a ferimentos, venenos e fadiga. Tambem determina a base da Resistencia do personagem.",
+  Agilidade:
+    "Representa velocidade e reflexos. Usado para esquiva e acrobacias. Tambem determina a base de Movimento e Defesa Base do personagem.",
+  Tecnica:
+    "Representa controle do Eter. Usado para manipular energia e usar tecnicas. Tambem determina a base de Eter Inicial do personagem.",
+  Intelecto:
+    "Representa raciocinio e conhecimento. Usado para investigacao e estrategia.",
+  Presenca:
+    "Representa forca emocional e impacto social. Usado para lideranca e intimidacao.",
+  Vontade:
+    "Representa forca mental, disciplina emocional e resistencia psiquica. Usado para resistir a controle mental, manter concentracao sob pressao e evitar medo, panico ou colapso.",
+};
+
 const COMBAT_PROGRESS_TOOLTIP =
   "Custo de CaC/Disparo por evolucao: Sem dado->D4 = 3 PP, D4->D6 = 4 PP, D6->D8 = 5 PP, D8->D10 = 6 PP, D10->D12 = 7 PP.";
 
+const COMBAT_DICE_DETAIL_TOOLTIPS = {
+  ataqueCac:
+    "Ataque Corpo a Corpo representa sua capacidade ofensiva em combate fisico direto.",
+  disparo:
+    "Disparo representa sua capacidade ofensiva com armas e ataques a distancia.",
+} as const;
+
 const DEFESA_TOTAL_TOOLTIP =
-  "Defesa Total = 7 + bonus de Agilidade + Defesa Comprada. Limite: Defesa Total <= 18 + Nivel.";
+  "Defesa Total = 6 + bonus de Agilidade + Defesa Comprada. Limite: Defesa Total <= 18 + Nivel.";
+
+const DEFESA_BASE_HUMANA_TOOLTIP =
+  "é a base de reflexos natural de todos os humanos.";
+
+const DEFESA_AGILIDADE_TOOLTIP =
+  "Este número vem como bônus do atributo Agilidade, representando personagens naturalmente mais ágeis e rápidos.";
+
+const DEFESA_COMPRADA_TOOLTIP =
+  "Defesa comprada vem do Eter, como um reflexo adicional fortalecido pelo fluxo de energia no corpo.";
 
 const RESISTENCIA_BASE_TOOLTIP =
-  "Resistencia Base vem do bonus de Constituicao (D4=+0, D6=+1, D8=+2, D10=+3, D12=+4).";
+  "Resistencia Base vem do bônus de Constituição (D4=+0, D6=+1, D8=+2, D10=+3, D12=+4).";
 
 const RESISTENCIA_PODERES_TOOLTIP =
-  "Resistencia de Poderes vem de metade da graduacao do poder selecionado em Resistencia de Poder, arredondada para cima (ex.: Protecao, Campo de Forca, Blindagem, Conversao).";
+  "Resistencia de Poderes vem de metade da graduação do poder selecionado em Resistencia de Poder, arredondada para cima (ex.: Protecao, Campo de Forca, Blindagem, Conversao).";
 
 const RESISTENCIA_TOTAL_TOOLTIP =
   "Resistencia Total = Resistencia Base + Resistencia de Poderes. Limite: Resistencia Total <= 6 + Nivel.";
@@ -1527,10 +1631,10 @@ const ETER_MAX_TOOLTIP =
   "Eter Max e derivado de Tecnica: D4=38, D6=46, D8=54, D10=62, D12=70.";
 
 const CARGA_TOOLTIP =
-  "Carga e derivada de Forca: D4=50 kg, D6=100 kg, D8=200 kg, D10=400 kg, D12=800 kg.";
+  "Carga maxima e o peso total que o personagem carrega sem dificuldade. Inclui equipamentos, armas, armaduras e objetos. E derivada de Forca: D4=25 kg, D6=50 kg, D8=100 kg, D10=200 kg, D12=400 kg. Acima do limite pode haver penalidades em movimento e testes fisicos, a criterio do mestre.";
 
 const MOVIMENTO_TOOLTIP =
-  "Movimento e derivado de Agilidade: D4=6 m, D6=9 m, D8=12 m, D10=15 m, D12=18 m.";
+  "Movimentacao e o deslocamento por turno em condicoes normais e usa acao de movimento. E derivada de Agilidade: D4=6 m, D6=9 m, D8=12 m, D10=15 m, D12=18 m. Terreno dificil, obstaculos e efeitos especiais podem reduzir ou aumentar esse valor temporariamente.";
 
 const BONUS_BY_DICE: Record<Dice, number> = {
   D4: 0,
@@ -1565,14 +1669,15 @@ const MOVIMENTO_BASE_POR_AGILIDADE: Record<Dice, number> = {
 };
 
 const CARGA_BASE_POR_FORCA: Record<Dice, number> = {
-  D4: 50,
-  D6: 100,
-  D8: 200,
-  D10: 400,
-  D12: 800,
+  D4: 25,
+  D6: 50,
+  D8: 100,
+  D10: 200,
+  D12: 400,
 };
 
-const DEFESA_BASE = 7;
+const DEFESA_BASE = 6;
+const DEFESA_PP_POR_PONTO = 3;
 const RESISTENCIA_PODERES_POSSIVEIS: Exclude<ResistancePowerSource, "">[] = [
   "Protecao",
   "Campo de Forca",
@@ -1587,6 +1692,42 @@ const parseNatural = (value: string): number => {
   }
 
   return parsed;
+};
+
+const createEmptyConhecimento = (): ConhecimentoEntry => ({
+  area: "",
+  graduacoes: "0",
+});
+
+const isConhecimentoBlank = (conhecimento: ConhecimentoEntry): boolean =>
+  conhecimento.area.trim() === "" &&
+  parseNatural(conhecimento.graduacoes) === 0;
+
+const isLegacyConhecimentoLayout = (
+  conhecimentos: ConhecimentoEntry[],
+): boolean =>
+  conhecimentos.length === 3 && conhecimentos.every(isConhecimentoBlank);
+
+const getEditableConhecimentos = (
+  conhecimentos: ConhecimentoEntry[],
+): ConhecimentoEntry[] => {
+  if (conhecimentos.length === 0 || isLegacyConhecimentoLayout(conhecimentos)) {
+    return [createEmptyConhecimento()];
+  }
+
+  return conhecimentos.map((conhecimento) => ({ ...conhecimento }));
+};
+
+const normalizeConhecimentos = (
+  conhecimentos: ConhecimentoEntry[],
+): ConhecimentoEntry[] => {
+  const next = conhecimentos.map((conhecimento) => ({ ...conhecimento }));
+
+  while (next.length > 1 && isConhecimentoBlank(next[next.length - 1])) {
+    next.pop();
+  }
+
+  return next.length > 0 ? next : [createEmptyConhecimento()];
 };
 
 const clamp = (value: number, min: number, max: number): number => {
@@ -1850,7 +1991,7 @@ type PretipoDef = {
   defesa: string;
   resistenciaPoderFonte: ResistancePowerSource;
   pericias: Partial<Record<(typeof PERICIAS)[number], string>>;
-  conhecimentos: Array<{ area: string; graduacoes: string }>;
+  conhecimentos: ConhecimentoEntry[];
   tecnicasBasicas: Partial<Record<string, string>>;
   vantagens: Array<{ catalogId: string; graduacao: number }>;
   desvantagens: Array<{ catalogId: string; graduacao: number }>;
@@ -2189,7 +2330,7 @@ const PRETIPOS: PretipoDef[] = [
     pericias: {
       Furtividade: "10",
       Acrobacia: "10",
-      Enganacao: "10",
+      Enganar: "10",
       Ladinagem: "10",
       Percepcao: "10",
       Persuasao: "10",
@@ -2489,6 +2630,7 @@ const createEmptyCharacter = (): CharacterSheet => ({
   naipe: "",
   carga: "",
   mov: "",
+  periciasExtra: "0",
   atributos: Object.fromEntries(
     ATRIBUTOS.map((item) => [item, "D4"]),
   ) as Record<Atributo, Dice>,
@@ -2496,17 +2638,13 @@ const createEmptyCharacter = (): CharacterSheet => ({
     ataqueCac: "-",
     disparo: "-",
     resistenciaPoderFonte: "",
-    defesa: "7",
+    defesa: "6",
   },
   pericias: Object.fromEntries(PERICIAS.map((item) => [item, "0"])) as Record<
     string,
     string
   >,
-  conhecimentos: [
-    { area: "", graduacoes: "0" },
-    { area: "", graduacoes: "0" },
-    { area: "", graduacoes: "0" },
-  ],
+  conhecimentos: [createEmptyConhecimento()],
   tecnicasBasicas: Object.fromEntries(
     TECNICAS_BASICAS.map((item) => [item.nome, { graduacao: "" }]),
   ) as Record<string, { graduacao: string }>,
@@ -2515,6 +2653,166 @@ const createEmptyCharacter = (): CharacterSheet => ({
   poderes: [],
   equipamentos: "",
 });
+
+function useAnimatedCounter(
+  target: number,
+  duration = 500,
+  precision = 0,
+): number {
+  const [display, setDisplay] = useState(target);
+  const rafRef = useRef<number | null>(null);
+  const displayRef = useRef<number>(target);
+  const factor = 10 ** precision;
+
+  useEffect(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    const from = displayRef.current;
+    const diff = target - from;
+    if (diff === 0) return;
+    let startTime: number | null = null;
+    const step = (timestamp: number) => {
+      if (startTime === null) startTime = timestamp;
+      const elapsed = timestamp - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - (1 - progress) * (1 - progress);
+      const current = Math.round((from + diff * eased) * factor) / factor;
+      displayRef.current = current;
+      setDisplay(current);
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(step);
+      } else {
+        displayRef.current = target;
+        rafRef.current = null;
+      }
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [target, duration, factor]);
+
+  return display;
+}
+
+const formatAnimatedNumber = (value: number, precision: number): string => {
+  if (precision <= 0) {
+    return String(Math.round(value));
+  }
+
+  return value
+    .toFixed(precision)
+    .replace(/\.0+$/, "")
+    .replace(/(\.\d*?)0+$/, "$1");
+};
+
+function AnimatedNumber({
+  value,
+  className,
+  precision = 0,
+}: {
+  value: number;
+  className?: string;
+  precision?: number;
+}) {
+  const display = useAnimatedCounter(value, 500, precision);
+  const [pulseKey, setPulseKey] = useState(0);
+  const isFirst = useRef(true);
+
+  useEffect(() => {
+    if (isFirst.current) {
+      isFirst.current = false;
+      return;
+    }
+    setPulseKey((k) => k + 1);
+  }, [value]);
+
+  return (
+    <span
+      key={pulseKey}
+      className={`anim-number${className ? ` ${className}` : ""}`}
+    >
+      {formatAnimatedNumber(display, precision)}
+    </span>
+  );
+}
+
+function NumericStepperInput({
+  value,
+  onChange,
+  min = 0,
+  max,
+  step = 1,
+  className,
+  disabled = false,
+  ariaLabel,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  className?: string;
+  disabled?: boolean;
+  ariaLabel?: string;
+}) {
+  const parsedValue = parseNatural(value);
+  const isAtMin = parsedValue <= min;
+  const isAtMax = max !== undefined && parsedValue >= max;
+
+  const handleStep = (direction: -1 | 1) => {
+    if (disabled) {
+      return;
+    }
+
+    const nextValue = clamp(
+      parsedValue + direction * step,
+      min,
+      max ?? Number.MAX_SAFE_INTEGER,
+    );
+
+    onChange(String(nextValue));
+  };
+
+  return (
+    <div className={`number-stepper${className ? ` ${className}` : ""}`}>
+      <button
+        type="button"
+        className="number-stepper-button"
+        onClick={() => handleStep(-1)}
+        disabled={disabled || isAtMin}
+        aria-label={ariaLabel ? `Diminuir ${ariaLabel}` : "Diminuir valor"}
+      >
+        -
+      </button>
+      <input
+        type="number"
+        inputMode="numeric"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <button
+        type="button"
+        className="number-stepper-button"
+        onClick={() => handleStep(1)}
+        disabled={disabled || isAtMax}
+        aria-label={ariaLabel ? `Aumentar ${ariaLabel}` : "Aumentar valor"}
+      >
+        +
+      </button>
+    </div>
+  );
+}
 
 function App() {
   const [characters, setCharacters] = useState<CharacterSheet[]>([
@@ -2528,6 +2826,7 @@ function App() {
   const [isLoadingSheets, setIsLoadingSheets] = useState(false);
   const [isSavingSheet, setIsSavingSheet] = useState(false);
   const [isUnlockingSheet, setIsUnlockingSheet] = useState(false);
+  const [isDeletingSheet, setIsDeletingSheet] = useState(false);
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const [activeSheetPassword, setActiveSheetPassword] = useState("");
   const [apiError, setApiError] = useState<string | null>(null);
@@ -2536,6 +2835,11 @@ function App() {
     useState<SheetSummary | null>(null);
   const [unlockSheetPasswordInput, setUnlockSheetPasswordInput] = useState("");
   const [unlockSheetError, setUnlockSheetError] = useState("");
+  const [deleteSheetModalOpen, setDeleteSheetModalOpen] = useState(false);
+  const [deleteSheetTarget, setDeleteSheetTarget] =
+    useState<SheetSummary | null>(null);
+  const [deleteSheetPasswordInput, setDeleteSheetPasswordInput] = useState("");
+  const [deleteSheetError, setDeleteSheetError] = useState("");
   const [pendingConfirmation, setPendingConfirmation] =
     useState<PendingConfirmation | null>(null);
   const [savePasswordModalOpen, setSavePasswordModalOpen] = useState(false);
@@ -2595,7 +2899,18 @@ function App() {
         return;
       }
 
-      setSavedSheets(payload.sheets ?? []);
+      const normalizedSheets = (payload.sheets ?? []).map((sheet) => {
+        const imagemUrl = getSheetPreviewImageUrl(sheet);
+
+        return {
+          ...sheet,
+          imagemUrl,
+          imageUrl: imagemUrl,
+          fotoUrl: imagemUrl,
+        };
+      });
+
+      setSavedSheets(normalizedSheets);
     } catch {
       setApiError(
         "Nao foi possivel conectar ao backend. Verifique se o server esta rodando.",
@@ -2631,6 +2946,20 @@ function App() {
     }
   }, [characters, selectedId]);
 
+  useEffect(() => {
+    setCharacters((current) =>
+      current.map((character) =>
+        character.id !== selectedId ||
+        !isLegacyConhecimentoLayout(character.conhecimentos)
+          ? character
+          : {
+              ...character,
+              conhecimentos: [createEmptyConhecimento()],
+            },
+      ),
+    );
+  }, [selectedId]);
+
   const createNewSheet = () => {
     const next = createEmptyCharacter();
     setCharacters([next]);
@@ -2641,6 +2970,10 @@ function App() {
     setUnlockSheetTarget(null);
     setUnlockSheetPasswordInput("");
     setUnlockSheetError("");
+    setDeleteSheetModalOpen(false);
+    setDeleteSheetTarget(null);
+    setDeleteSheetPasswordInput("");
+    setDeleteSheetError("");
     setPendingConfirmation(null);
     setSavePasswordModalOpen(false);
     setSavePasswordInput("");
@@ -2653,6 +2986,11 @@ function App() {
   const resetUnlockSheetForm = () => {
     setUnlockSheetPasswordInput("");
     setUnlockSheetError("");
+  };
+
+  const resetDeleteSheetForm = () => {
+    setDeleteSheetPasswordInput("");
+    setDeleteSheetError("");
   };
 
   const closeUnlockSheetModal = () => {
@@ -2669,6 +3007,22 @@ function App() {
     setUnlockSheetTarget(summary);
     setUnlockSheetModalOpen(true);
     resetUnlockSheetForm();
+  };
+
+  const closeDeleteSheetModal = () => {
+    if (isDeletingSheet) {
+      return;
+    }
+
+    setDeleteSheetModalOpen(false);
+    setDeleteSheetTarget(null);
+    resetDeleteSheetForm();
+  };
+
+  const openDeleteSheetModal = (summary: SheetSummary) => {
+    setDeleteSheetTarget(summary);
+    setDeleteSheetModalOpen(true);
+    resetDeleteSheetForm();
   };
 
   const unlockSheetForEditing = async () => {
@@ -2728,6 +3082,64 @@ function App() {
     navigateToScreen("home");
     setApiError(null);
     await fetchSheetList();
+  };
+
+  const deleteSheetFromDatabase = async () => {
+    if (!deleteSheetTarget) {
+      return;
+    }
+
+    const password = deleteSheetPasswordInput.trim();
+    if (!password) {
+      setDeleteSheetError("Digite a senha da ficha para excluir.");
+      return;
+    }
+
+    setApiError(null);
+    setIsDeletingSheet(true);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/sheets/${deleteSheetTarget.id}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ password }),
+        },
+      );
+
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        message?: string;
+      };
+
+      if (!response.ok) {
+        const message = payload.message ?? "Nao foi possivel excluir a ficha.";
+        setDeleteSheetError(message);
+        toast.error(message);
+        return;
+      }
+
+      if (activeSheetId === deleteSheetTarget.id) {
+        setActiveSheetId(null);
+        setActiveSheetPassword("");
+      }
+
+      setSavedSheets((current) =>
+        current.filter((sheet) => sheet.id !== deleteSheetTarget.id),
+      );
+      setDeleteSheetModalOpen(false);
+      setDeleteSheetTarget(null);
+      resetDeleteSheetForm();
+      toast.success("Ficha excluida com sucesso.");
+      await fetchSheetList();
+    } catch {
+      toast.error("Erro de conexao ao excluir a ficha.");
+    } finally {
+      setIsDeletingSheet(false);
+    }
   };
 
   const resetSavePasswordForm = () => {
@@ -2894,6 +3306,75 @@ function App() {
         </div>
       ) : null}
 
+      {deleteSheetModalOpen && deleteSheetTarget ? (
+        <div
+          className="save-password-modal-backdrop"
+          role="presentation"
+          onClick={closeDeleteSheetModal}
+        >
+          <div
+            className="save-password-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-sheet-password-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="delete-sheet-password-title">Excluir ficha</h3>
+            <p>
+              Esta acao remove a ficha de forma permanente. Digite a senha da
+              ficha de <strong>{deleteSheetTarget.nome || "Sem nome"}</strong>{" "}
+              para confirmar.
+            </p>
+            <form
+              className="save-password-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void deleteSheetFromDatabase();
+              }}
+            >
+              <label>
+                Senha
+                <input
+                  type="password"
+                  value={deleteSheetPasswordInput}
+                  onChange={(event) => {
+                    setDeleteSheetPasswordInput(event.target.value);
+                    if (deleteSheetError) {
+                      setDeleteSheetError("");
+                    }
+                  }}
+                  disabled={isDeletingSheet}
+                  autoComplete="current-password"
+                  autoFocus
+                  required
+                />
+              </label>
+
+              {deleteSheetError ? (
+                <p className="save-password-error">{deleteSheetError}</p>
+              ) : null}
+
+              <div className="save-password-actions">
+                <button
+                  type="button"
+                  onClick={closeDeleteSheetModal}
+                  disabled={isDeletingSheet}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="danger"
+                  disabled={isDeletingSheet}
+                >
+                  {isDeletingSheet ? "Excluindo..." : "Excluir ficha"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
       {pendingConfirmation ? (
         <div
           className="save-password-modal-backdrop"
@@ -2926,7 +3407,9 @@ function App() {
                   }
 
                   if (pendingConfirmation.action.type === "delete-character") {
-                    deleteCharacterConfirmed();
+                    deleteCharacterConfirmed(
+                      pendingConfirmation.action.characterId,
+                    );
                   }
 
                   closeConfirmationModal();
@@ -3114,50 +3597,109 @@ function App() {
       <>
         <div className="home-page">
           <header className="home-header">
-            <h1>Estrelas Ascendentes</h1>
-            <p>Selecione uma ficha existente ou crie uma nova.</p>
-            <button type="button" onClick={createNewSheet}>
-              Criar ficha
-            </button>
+            <div className="home-header-content">
+              <img
+                className="home-brand-logo"
+                src={logoImage}
+                alt="Logo Éter & Naipes"
+              />
+            </div>
+            <nav className="home-header-nav" aria-label="Navegacao principal">
+              <ul>
+                <li>
+                  <button type="button">Manual</button>
+                </li>
+                <li>
+                  <button type="button">Copas</button>
+                </li>
+                <li>
+                  <button type="button">Espadas</button>
+                </li>
+                <li>
+                  <button type="button">Ouros</button>
+                </li>
+                <li>
+                  <button type="button">Paus</button>
+                </li>
+              </ul>
+            </nav>
+            <div className="home-header-actions">
+              <button
+                type="button"
+                className="home-create-button"
+                onClick={createNewSheet}
+              >
+                <GiScrollQuill size={16} aria-hidden="true" />
+                Criar ficha
+              </button>
+            </div>
           </header>
 
-          <section className="home-list block">
-            <h2>Fichas criadas</h2>
+          <section className="home-list block home-list-panel">
+            <h2>Fichas criadas ({savedSheets.length})</h2>
             {isLoadingSheets ? <p>Carregando fichas...</p> : null}
             {apiError ? <p className="danger-value">{apiError}</p> : null}
             {!isLoadingSheets && savedSheets.length === 0 ? (
-              <p>Nenhuma ficha cadastrada ainda.</p>
+              <p className="home-empty-state">
+                Nenhuma ficha cadastrada ainda.
+              </p>
             ) : null}
 
             <div className="home-card-grid">
-              {savedSheets.map((sheet) => (
-                <button
-                  key={sheet.id}
-                  type="button"
-                  className="home-card"
-                  onClick={() => openSheetForEditing(sheet)}
-                >
-                  {sheet.imagemUrl ? (
-                    <img
-                      className="home-card-avatar"
-                      src={sheet.imagemUrl}
-                      alt={`Retrato de ${sheet.nome || "personagem"}`}
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="home-card-avatar placeholder">
-                      Sem imagem
+              {savedSheets.map((sheet) => {
+                const previewImageUrl = getSheetPreviewImageUrl(sheet);
+
+                return (
+                  <article key={sheet.id} className="home-card">
+                    <button
+                      type="button"
+                      className="home-card-open"
+                      onClick={() => openSheetForEditing(sheet)}
+                    >
+                      {previewImageUrl ? (
+                        <img
+                          className="home-card-avatar"
+                          src={previewImageUrl}
+                          alt={`Retrato de ${sheet.nome || "personagem"}`}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="home-card-avatar placeholder">
+                          Sem imagem
+                        </div>
+                      )}
+                      <div className="home-card-meta">
+                        <strong>{sheet.nome || "Sem nome"}</strong>
+                        <span className="home-card-player">
+                          Jogador: {sheet.jogador || "-"}
+                        </span>
+                      </div>
+                    </button>
+
+                    <div className="home-card-footer">
+                      <small className="home-card-updated-at">
+                        Ultima atualizacao:{" "}
+                        {new Date(sheet.updatedAt).toLocaleString("pt-BR")}
+                      </small>
+                      <button
+                        type="button"
+                        className="home-card-delete"
+                        aria-label={`Excluir ficha ${sheet.nome || "sem nome"}`}
+                        title="Excluir ficha"
+                        onClick={() => openDeleteSheetModal(sheet)}
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                          focusable="false"
+                        >
+                          <path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h2v9H7V9Zm4 0h2v9h-2V9Zm4 0h2v9h-2V9Z" />
+                        </svg>
+                      </button>
                     </div>
-                  )}
-                  <strong>{sheet.nome || "Sem nome"}</strong>
-                  <span>Nivel {sheet.nivel || "-"}</span>
-                  <span>Jogador: {sheet.jogador || "-"}</span>
-                  <small>
-                    Atualizada em{" "}
-                    {new Date(sheet.updatedAt).toLocaleString("pt-BR")}
-                  </small>
-                </button>
-              ))}
+                  </article>
+                );
+              })}
             </div>
           </section>
         </div>
@@ -3253,6 +3795,7 @@ function App() {
       naipe: def.naipe,
       carga: "",
       mov: "",
+      periciasExtra: "0",
       atributos: def.atributos,
       combate: {
         ataqueCac: def.ataqueCac,
@@ -3261,7 +3804,7 @@ function App() {
         defesa: def.defesa,
       },
       pericias: builtPericias,
-      conhecimentos: def.conhecimentos,
+      conhecimentos: normalizeConhecimentos(def.conhecimentos),
       tecnicasBasicas: builtTecnicas,
       vantagens: builtVantagens,
       desvantagens: builtDesvantagens,
@@ -3292,37 +3835,61 @@ function App() {
     setSelectedId(newCharacter.id);
   };
 
-  const deleteCharacterConfirmed = () => {
+  const deleteCharacterConfirmed = (characterId: string) => {
     const remaining = characters.filter(
-      (character) => character.id !== selectedId,
+      (character) => character.id !== characterId,
     );
+
+    if (remaining.length === 0) {
+      return;
+    }
+
     setCharacters(remaining);
-    setSelectedId(remaining[0].id);
+    setSelectedId((currentId) =>
+      currentId === characterId ? remaining[0].id : currentId,
+    );
   };
 
-  const deleteCharacter = () => {
+  const deleteCharacterById = (characterId: string) => {
     if (characters.length <= 1) {
       toast.warn("Mantenha pelo menos um personagem na lista.");
       return;
     }
 
+    const targetCharacter = characters.find(
+      (character) => character.id === characterId,
+    );
+    if (!targetCharacter) {
+      return;
+    }
+
     setPendingConfirmation({
       title: "Excluir personagem local",
-      message: `Excluir ${selectedCharacter.nome || "personagem sem nome"}? Essa acao remove apenas a copia local atual.`,
+      message: `Excluir ${targetCharacter.nome || "personagem sem nome"}? Essa acao remove apenas a copia local atual.`,
       confirmLabel: "Excluir",
       variant: "danger",
       action: {
         type: "delete-character",
+        characterId,
       },
     });
   };
 
-  const duplicateCharacter = () => {
+  const duplicateCharacterById = (characterId: string) => {
+    const sourceCharacter = characters.find(
+      (character) => character.id === characterId,
+    );
+
+    if (!sourceCharacter) {
+      return;
+    }
+
     const cloned: CharacterSheet = {
-      ...selectedCharacter,
+      ...sourceCharacter,
       id: crypto.randomUUID(),
-      nome: selectedCharacter.nome ? `${selectedCharacter.nome} (Copia)` : "",
+      nome: sourceCharacter.nome ? `${sourceCharacter.nome} (Copia)` : "",
     };
+
     setCharacters((current) => [...current, cloned]);
     setSelectedId(cloned.id);
   };
@@ -3511,6 +4078,56 @@ function App() {
     }));
   };
 
+  const conhecimentosEditaveis = getEditableConhecimentos(
+    selectedCharacter.conhecimentos,
+  );
+
+  const atualizarConhecimento = (
+    index: number,
+    changes: Partial<ConhecimentoEntry>,
+  ) => {
+    updateCharacter((current) => {
+      const novosConhecimentos = getEditableConhecimentos(
+        current.conhecimentos,
+      );
+      novosConhecimentos[index] = {
+        ...novosConhecimentos[index],
+        ...changes,
+      };
+
+      return {
+        ...current,
+        conhecimentos: novosConhecimentos,
+      };
+    });
+  };
+
+  const adicionarConhecimento = () => {
+    updateCharacter((current) => ({
+      ...current,
+      conhecimentos: [
+        ...getEditableConhecimentos(current.conhecimentos),
+        createEmptyConhecimento(),
+      ],
+    }));
+  };
+
+  const removerConhecimento = (index: number) => {
+    updateCharacter((current) => {
+      const novosConhecimentos = getEditableConhecimentos(
+        current.conhecimentos,
+      ).filter((_, currentIndex) => currentIndex !== index);
+
+      return {
+        ...current,
+        conhecimentos:
+          novosConhecimentos.length > 0
+            ? novosConhecimentos
+            : [createEmptyConhecimento()],
+      };
+    });
+  };
+
   const nivel = parseNatural(selectedCharacter.nivel);
   const limitePericia = nivel + 10;
   const limiteDefesaTotal = nivel + 18;
@@ -3528,7 +4145,8 @@ function App() {
 
   const periciasPontos = PERICIAS.reduce(
     (total, pericia) =>
-      total + parseNatural(selectedCharacter.pericias[pericia]),
+      total +
+      parseNatural(getPericiaSheetValue(selectedCharacter.pericias, pericia)),
     0,
   );
 
@@ -3539,7 +4157,7 @@ function App() {
 
   const periciasPontosTotal = periciasPontos + conhecimentosPontos;
 
-  const periciasSpent = periciasPontosTotal / 4;
+  const periciasSpent = periciasPontosTotal / 2;
 
   const vantagensSpent = selectedCharacter.vantagens.reduce(
     (total, vantagem) => {
@@ -3610,7 +4228,7 @@ function App() {
     0,
     limiteDefesaTotal,
   );
-  const defesaSpent = defesaCompradaEfetiva * 2;
+  const defesaSpent = defesaCompradaEfetiva * DEFESA_PP_POR_PONTO;
 
   const tecnicasBasicasSpent = TECNICAS_BASICAS.reduce((total, tecnica) => {
     const graduacao = clamp(
@@ -3657,7 +4275,9 @@ function App() {
     tecnicasBasicasSpent +
     poderesSpent;
 
-  const ppRestante = TOTAL_PP + desvantagensBonus - totalSpent;
+  const nivelAtual = parseNatural(selectedCharacter.nivel);
+  const totalPPDisponivel = TOTAL_PP + nivelAtual * 10;
+  const ppRestante = totalPPDisponivel + desvantagensBonus - totalSpent;
   const catalogoPoderesLiberado = selectedCharacter.naipe !== "";
   const poderesPanelVisivel = catalogoPoderesLiberado
     ? poderesPanelAtivo
@@ -3677,73 +4297,162 @@ function App() {
     <>
       <div className="page">
         <aside className="character-list">
-          <h1>Estrelas Ascendentes</h1>
-          <p>Editor de ficha conectado ao banco.</p>
+          <h1 className="sheet-brand-heading">
+            <img
+              src={logoImage}
+              alt="Eter e Naipes"
+              className="sheet-brand-logo"
+            />
+          </h1>
+          <p className="sheet-brand-subtitle">Monte sua ficha</p>
 
-          <div className="character-actions">
-            <button type="button" onClick={() => void goBackToHome()}>
-              Inicio
-            </button>
+          <div className="character-primary-actions">
             <button type="button" onClick={() => void saveSelectedCharacter()}>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M5 3h11l3 3v15H5zm2 2v5h8V5zm0 14h10v-7H7z" />
+              </svg>
               {isSavingSheet ? "Salvando..." : "Salvar"}
             </button>
             <button type="button" onClick={addCharacter}>
-              Novo local
-            </button>
-            <button type="button" onClick={duplicateCharacter}>
-              Duplicar local
-            </button>
-            <button type="button" className="danger" onClick={deleteCharacter}>
-              Excluir local
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z" />
+              </svg>
+              Nova
             </button>
           </div>
           {apiError ? <p className="danger-value">{apiError}</p> : null}
 
-          <ul>
+          <ul className="character-local-list">
             {characters.map((character) => (
-              <li key={character.id}>
+              <li key={character.id} className="character-local-item">
                 <button
                   type="button"
-                  className={character.id === selectedId ? "active" : ""}
+                  className={`character-local-select ${character.id === selectedId ? "active" : ""}`}
                   onClick={() => setSelectedId(character.id)}
                 >
                   <strong>{character.nome || "Sem nome"}</strong>
-                  <span>Nivel {character.nivel || "-"}</span>
                 </button>
+                <div className="character-local-tools">
+                  <button
+                    type="button"
+                    className="character-icon-button"
+                    aria-label={`Duplicar ${character.nome || "personagem"}`}
+                    title={`Duplicar ${character.nome || "personagem"}`}
+                    onClick={() => duplicateCharacterById(character.id)}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                      focusable="false"
+                    >
+                      <path d="M8 8h10v10H8zM5 5h10v2H7v8H5z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className="character-icon-button danger"
+                    aria-label={`Excluir ${character.nome || "personagem"}`}
+                    title={`Excluir ${character.nome || "personagem"}`}
+                    onClick={() => deleteCharacterById(character.id)}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                      focusable="false"
+                    >
+                      <path d="M7 7h10l-1 13H8zm3-3h4l1 2h4v2H5V6h4z" />
+                    </svg>
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
 
-          <section className="block pp-summary sidebar-pp-summary">
-            <h3>Pontos de Personagem</h3>
-            <div className="pp-header">
-              <div>
-                <strong>{TOTAL_PP}</strong>
-                <span>Total</span>
-              </div>
-              <div>
-                <strong>{totalSpent}</strong>
-                <span>Gastos</span>
-              </div>
-              <div className={ppRestante < 0 ? "danger-value" : ""}>
-                <strong>{ppRestante}</strong>
-                <span>Restantes</span>
-              </div>
-            </div>
-            <div className="pp-breakdown">
-              <p>Atributos: {atributosSpent} PP</p>
-              <p>Pericias: {periciasSpent} PP</p>
-              <p>Vantagens: {vantagensSpent} PP</p>
-              <p>Desvantagens: +{desvantagensBonus} PP</p>
-              <p>CaC + Disparo: {combateSpent} PP</p>
-              <p>Defesa: {defesaSpent} PP</p>
-              <p>Tecnicas Basicas: {tecnicasBasicasSpent} PP</p>
-              <p>Poderes: {poderesSpent} PP</p>
-            </div>
-          </section>
+          <div className="character-list-footer">
+            <button type="button" onClick={() => void goBackToHome()}>
+              Sair
+            </button>
+          </div>
         </aside>
 
         <main className="sheet-wrapper">
+          <section className="block pp-summary editor-pp-summary">
+            <h3>
+              Pontos de Personagem
+              <span className="pp-total-inline">{totalPPDisponivel} pts</span>
+            </h3>
+            <div className="editor-pp-content">
+              <div className="pp-header">
+                <div>
+                  <AnimatedNumber
+                    value={totalSpent}
+                    className="pp-strong"
+                    precision={1}
+                  />
+                  <span>Gastos</span>
+                </div>
+                <div className={ppRestante < 0 ? "danger-value" : ""}>
+                  <AnimatedNumber
+                    value={ppRestante}
+                    className="pp-strong"
+                    precision={1}
+                  />
+                  <span>Restantes</span>
+                </div>
+              </div>
+              <div className="pp-breakdown-inline">
+                <span className="pp-chip">
+                  <span className="pp-chip-name">Atributos</span>
+                  <span className="pp-chip-value">
+                    <AnimatedNumber value={atributosSpent} />
+                  </span>
+                </span>
+                <span className="pp-chip">
+                  <span className="pp-chip-name">Ataque</span>
+                  <span className="pp-chip-value">
+                    <AnimatedNumber value={combateSpent} />
+                  </span>
+                </span>
+                <span className="pp-chip">
+                  <span className="pp-chip-name">Defesa</span>
+                  <span className="pp-chip-value">
+                    <AnimatedNumber value={defesaSpent} />
+                  </span>
+                </span>
+                <span className="pp-chip">
+                  <span className="pp-chip-name">Pericias</span>
+                  <span className="pp-chip-value">
+                    <AnimatedNumber value={periciasSpent} precision={1} />
+                  </span>
+                </span>
+                <span className="pp-chip">
+                  <span className="pp-chip-name">Vantagens</span>
+                  <span className="pp-chip-value">
+                    <AnimatedNumber value={vantagensSpent} />
+                  </span>
+                </span>
+                <span className="pp-chip pp-chip-bonus">
+                  <span className="pp-chip-name">Desvantagens</span>
+                  <span className="pp-chip-value">
+                    +<AnimatedNumber value={desvantagensBonus} />
+                  </span>
+                </span>
+                <span className="pp-chip">
+                  <span className="pp-chip-name">Tecnicas</span>
+                  <span className="pp-chip-value">
+                    <AnimatedNumber value={tecnicasBasicasSpent} />
+                  </span>
+                </span>
+                <span className="pp-chip">
+                  <span className="pp-chip-name">Poderes</span>
+                  <span className="pp-chip-value">
+                    <AnimatedNumber value={poderesSpent} />
+                  </span>
+                </span>
+              </div>
+            </div>
+          </section>
+
           <div className="editor-tabs-bar">
             <div className="editor-tabs">
               {EDITOR_TABS.map((tab) => (
@@ -3760,101 +4469,149 @@ function App() {
           </div>
           <div className="editor-tab-content">
             {activeEditorTab === "identidade" ? (
-              <section className="sheet-header block">
-                <h3>Informações</h3>
-
-                <div className="grid identity-grid">
-                  <label>
-                    Nome
-                    <input
-                      value={selectedCharacter.nome}
-                      onChange={(event) =>
-                        updateCharacter((current) => ({
-                          ...current,
-                          nome: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Nivel
-                    <input
-                      type="number"
-                      min={0}
-                      value={selectedCharacter.nivel}
-                      onChange={(event) =>
-                        updateCharacter((current) => ({
-                          ...current,
-                          nivel: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Jogador
-                    <input
-                      value={selectedCharacter.jogador}
-                      onChange={(event) =>
-                        updateCharacter((current) => ({
-                          ...current,
-                          jogador: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    XP
-                    <input
-                      type="number"
-                      min={0}
-                      value={selectedCharacter.xp}
-                      onChange={(event) =>
-                        updateCharacter((current) => ({
-                          ...current,
-                          xp: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <div className="full-width naipe-radio-panel">
-                    <span className="naipe-radio-title">
-                      Naipe
-                      <span className="naipe-radio-subtitle">
-                        (Selecione 1)
-                      </span>
-                    </span>
-                    <div className="naipe-radio-grid">
-                      {NAIPE_IDENTITY_OPTIONS.map((option) => {
-                        const checked =
-                          selectedCharacter.naipe === option.value;
-                        return (
-                          <label
-                            key={option.value || "nenhum"}
-                            className={`naipe-radio-option ${option.tone} ${checked ? "checked" : ""}`}
-                          >
-                            <input
-                              type="radio"
-                              name="identity-naipe"
-                              value={option.value}
-                              checked={checked}
-                              onChange={() =>
+              <>
+                <section className="sheet-header block">
+                  <div className="identity-info-header">
+                    <h3>
+                      Identidade
+                      <div className="identity-info-badges">
+                        <div className="identity-info-badge">
+                          <span>Nível</span>
+                          <NumericStepperInput
+                            min={0}
+                            value={selectedCharacter.nivel}
+                            ariaLabel="Nivel"
+                            onChange={(value) =>
+                              updateCharacter((current) => ({
+                                ...current,
+                                nivel: String(parseNatural(String(value))),
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="identity-info-badge">
+                          <span>XP</span>
+                          <NumericStepperInput
+                            min={0}
+                            max={10}
+                            value={selectedCharacter.xp}
+                            ariaLabel="XP"
+                            onChange={(value) => {
+                              const xpValue = parseNatural(String(value));
+                              if (xpValue >= 10) {
+                                const novoNivel =
+                                  parseNatural(selectedCharacter.nivel) + 1;
+                                toast.success(
+                                  `Voce upou para o nivel ${novoNivel}! +10 PP totais.`,
+                                );
                                 updateCharacter((current) => ({
                                   ...current,
-                                  naipe: option.value,
-                                }))
+                                  xp: "0",
+                                  nivel: String(novoNivel),
+                                }));
+                              } else {
+                                updateCharacter((current) => ({
+                                  ...current,
+                                  xp: String(xpValue),
+                                }));
                               }
-                            />
-                            <span className="naipe-icon" aria-hidden="true">
-                              {option.icon}
-                            </span>
-                            <span>{option.label}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </h3>
                   </div>
 
-                  <div className="identity-image-panel full-width">
+                  <div className="grid identity-grid identity-grid-layout">
+                    <div className="identity-left-panel">
+                      <span className="naipe-radio-title identity-column-title">
+                        Informações
+                      </span>
+                      <div className="identity-left-column">
+                        <label>
+                          Personagem
+                          <input
+                            value={selectedCharacter.nome}
+                            onChange={(event) =>
+                              updateCharacter((current) => ({
+                                ...current,
+                                nome: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label>
+                          Jogador
+                          <input
+                            value={selectedCharacter.jogador}
+                            onChange={(event) =>
+                              updateCharacter((current) => ({
+                                ...current,
+                                jogador: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label>
+                          Conceito
+                          <input
+                            placeholder="Ex: Velocista que ataca com lâminas de vento"
+                            value={selectedCharacter.conceito}
+                            onChange={(event) =>
+                              updateCharacter((current) => ({
+                                ...current,
+                                conceito: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    <div className="naipe-radio-panel identity-right-column">
+                      <span className="naipe-radio-title">
+                        Naipe
+                        <span className="naipe-radio-subtitle">
+                          (Selecione 1)
+                        </span>
+                      </span>
+                      <div className="naipe-radio-grid">
+                        {NAIPE_IDENTITY_OPTIONS.map((option) => {
+                          const checked =
+                            selectedCharacter.naipe === option.value;
+                          const slotClass = option.value
+                            ? `naipe-slot-${option.value.toLowerCase()}`
+                            : "naipe-slot-none";
+                          return (
+                            <label
+                              key={option.value || "nenhum"}
+                              className={`naipe-radio-option ${slotClass} ${option.tone} ${checked ? "checked" : ""}`}
+                            >
+                              <input
+                                type="radio"
+                                name="identity-naipe"
+                                value={option.value}
+                                checked={checked}
+                                onChange={() =>
+                                  updateCharacter((current) => ({
+                                    ...current,
+                                    naipe: option.value,
+                                  }))
+                                }
+                              />
+                              <span className="naipe-icon" aria-hidden="true">
+                                {option.icon}
+                              </span>
+                              <span>{option.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <div className="identity-secondary-grid">
+                  <section className="block identity-image-panel">
                     <h3 className="identity-image-title">
                       Imagem do Personagem
                     </h3>
@@ -3874,136 +4631,225 @@ function App() {
                         </div>
                       )}
                       <div className="identity-image-controls">
-                        <label>
+                        <label className="identity-url-label">
                           URL da imagem
-                          <input
-                            type="url"
-                            placeholder="https://..."
-                            value={selectedCharacter.imagemUrl ?? ""}
-                            onChange={(event) =>
-                              updateCharacter((current) => ({
-                                ...current,
-                                imagemUrl: event.target.value,
-                              }))
-                            }
-                          />
                         </label>
-                        <label>
-                          Arquivo local
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={onImageFileSelected}
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          className="danger"
-                          onClick={() =>
+                        <input
+                          type="url"
+                          placeholder="https://..."
+                          value={selectedCharacter.imagemUrl ?? ""}
+                          onChange={(event) =>
                             updateCharacter((current) => ({
                               ...current,
-                              imagemUrl: "",
+                              imagemUrl: event.target.value,
                             }))
                           }
-                          disabled={!selectedCharacter.imagemUrl}
-                        >
-                          Remover imagem
-                        </button>
-                        <small>
-                          Voce pode colar uma URL ou escolher um arquivo local.
-                        </small>
+                          className="identity-url-input"
+                        />
+                        <div className="identity-file-row">
+                          <label
+                            htmlFor="identity-file-input"
+                            className="identity-file-button"
+                          >
+                            <MdOutlineAddPhotoAlternate
+                              size={16}
+                              aria-hidden="true"
+                            />
+                            Adicionar Imagem
+                          </label>
+                          <input
+                            id="identity-file-input"
+                            type="file"
+                            accept="image/*"
+                            className="identity-file-input-hidden"
+                            onChange={onImageFileSelected}
+                          />
+                          <button
+                            type="button"
+                            className="danger"
+                            onClick={() =>
+                              updateCharacter((current) => ({
+                                ...current,
+                                imagemUrl: "",
+                              }))
+                            }
+                            disabled={!selectedCharacter.imagemUrl}
+                          >
+                            Remover imagem
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </section>
 
-                  <label className="full-width">
-                    Conceito
-                    <input
-                      placeholder="Ex: Espadachim veloz que cria laminas de energia"
-                      value={selectedCharacter.conceito}
-                      onChange={(event) =>
-                        updateCharacter((current) => ({
-                          ...current,
-                          conceito: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
+                  <section className="pretipo-panel">
+                    <h3 className="pretipo-heading">Modelo de Personagens</h3>
+                    <p className="pretipo-hint">
+                      Escolha um conceito pre-configurado para gerar uma ficha
+                      completa de nivel 0 automaticamente, gastando exatamente
+                      180 PP.
+                    </p>
+                    <div className="pretipo-select-row">
+                      <select
+                        value={pretipoSelecionado}
+                        onChange={(e) => setPretipoSelecionado(e.target.value)}
+                      >
+                        <option value="">-- Escolha um pre-tipo --</option>
+                        {(
+                          ["Espadas", "Ouros", "Paus", "Copas"] as Exclude<
+                            Naipe,
+                            ""
+                          >[]
+                        ).map((naipe) => (
+                          <optgroup key={naipe} label={naipe}>
+                            {(PRETIPOS_POR_NAIPE[naipe] ?? []).map((pt) => (
+                              <option key={pt.id} value={pt.id}>
+                                {pt.label}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="pretipo-apply-btn"
+                        disabled={!pretipoSelecionado}
+                        onClick={() => applyPretipo(pretipoSelecionado)}
+                      >
+                        Aplicar Pre-tipo
+                      </button>
+                    </div>
+                    {pretipoSelecionado
+                      ? (() => {
+                          const def = PRETIPOS.find(
+                            (p) => p.id === pretipoSelecionado,
+                          );
+                          if (!def) return null;
+                          return (
+                            <div className="pretipo-preview">
+                              <strong>{def.label}</strong>
+                              <span className="pretipo-naipe-badge">
+                                {def.naipe}
+                              </span>
+                              <p>{def.descricao}</p>
+                              <ul className="pretipo-powers-list">
+                                {def.poderes.map((p) => {
+                                  const pw = POWER_BY_ID.get(p.powerId);
+                                  return pw ? (
+                                    <li key={p.powerId}>
+                                      {pw.nome}{" "}
+                                      <span className="pretipo-grad">
+                                        grad {p.graduacao}
+                                      </span>
+                                    </li>
+                                  ) : null;
+                                })}
+                              </ul>
+                            </div>
+                          );
+                        })()
+                      : null}
+                  </section>
                 </div>
-
-                <div className="pretipo-panel">
-                  <h3 className="pretipo-heading">Pre-tipo de Personagem</h3>
-                  <p className="pretipo-hint">
-                    Escolha um conceito pre-configurado para gerar uma ficha
-                    completa de nivel 0 automaticamente, gastando exatamente 180
-                    PP.
-                  </p>
-                  <div className="pretipo-select-row">
-                    <select
-                      value={pretipoSelecionado}
-                      onChange={(e) => setPretipoSelecionado(e.target.value)}
-                    >
-                      <option value="">-- Escolha um pre-tipo --</option>
-                      {(
-                        ["Espadas", "Ouros", "Paus", "Copas"] as Exclude<
-                          Naipe,
-                          ""
-                        >[]
-                      ).map((naipe) => (
-                        <optgroup key={naipe} label={naipe}>
-                          {(PRETIPOS_POR_NAIPE[naipe] ?? []).map((pt) => (
-                            <option key={pt.id} value={pt.id}>
-                              {pt.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className="pretipo-apply-btn"
-                      disabled={!pretipoSelecionado}
-                      onClick={() => applyPretipo(pretipoSelecionado)}
-                    >
-                      Aplicar Pre-tipo
-                    </button>
-                  </div>
-                  {pretipoSelecionado
-                    ? (() => {
-                        const def = PRETIPOS.find(
-                          (p) => p.id === pretipoSelecionado,
-                        );
-                        if (!def) return null;
-                        return (
-                          <div className="pretipo-preview">
-                            <strong>{def.label}</strong>
-                            <span className="pretipo-naipe-badge">
-                              {def.naipe}
-                            </span>
-                            <p>{def.descricao}</p>
-                            <ul className="pretipo-powers-list">
-                              {def.poderes.map((p) => {
-                                const pw = POWER_BY_ID.get(p.powerId);
-                                return pw ? (
-                                  <li key={p.powerId}>
-                                    {pw.nome}{" "}
-                                    <span className="pretipo-grad">
-                                      grad {p.graduacao}
-                                    </span>
-                                  </li>
-                                ) : null;
-                              })}
-                            </ul>
-                          </div>
-                        );
-                      })()
-                    : null}
-                </div>
-              </section>
+              </>
             ) : null}
 
             {activeEditorTab === "base" ? (
               <section className="sheet-columns base-layout">
+                <div className="base-top-resources">
+                  <div className="resource-stat-grid">
+                    <div className="resource-stat-card">
+                      <div className="resource-stat-head">
+                        <span
+                          className="resource-stat-icon vida"
+                          aria-hidden="true"
+                        >
+                          <IoMdHeartHalf />
+                        </span>
+                        <p className="resource-stat-label">
+                          Vida
+                          <span
+                            className="info-dot"
+                            data-tooltip={VIDA_MAX_TOOLTIP}
+                          >
+                            i
+                          </span>
+                        </p>
+                      </div>
+                      <p className="resource-stat-value">
+                        <AnimatedNumber value={vidaMaxima} />
+                      </p>
+                    </div>
+                    <div className="resource-stat-card">
+                      <div className="resource-stat-head">
+                        <span
+                          className="resource-stat-icon eter"
+                          aria-hidden="true"
+                        >
+                          <GiRollingEnergy />
+                        </span>
+                        <p className="resource-stat-label">
+                          Eter
+                          <span
+                            className="info-dot"
+                            data-tooltip={ETER_MAX_TOOLTIP}
+                          >
+                            i
+                          </span>
+                        </p>
+                      </div>
+                      <p className="resource-stat-value">
+                        <AnimatedNumber value={eterMaximo} />
+                      </p>
+                    </div>
+                    <div className="resource-stat-card">
+                      <div className="resource-stat-head">
+                        <span
+                          className="resource-stat-icon carga"
+                          aria-hidden="true"
+                        >
+                          <FaWeightHanging />
+                        </span>
+                        <p className="resource-stat-label">
+                          Carga
+                          <span
+                            className="info-dot"
+                            data-tooltip={CARGA_TOOLTIP}
+                          >
+                            i
+                          </span>
+                        </p>
+                      </div>
+                      <p className="resource-stat-value">
+                        <AnimatedNumber value={parseNatural(cargaAtual)} /> kg
+                      </p>
+                    </div>
+                    <div className="resource-stat-card">
+                      <div className="resource-stat-head">
+                        <span
+                          className="resource-stat-icon movimento"
+                          aria-hidden="true"
+                        >
+                          <GiWalkingBoot />
+                        </span>
+                        <p className="resource-stat-label">
+                          Movimento
+                          <span
+                            className="info-dot"
+                            data-tooltip={MOVIMENTO_TOOLTIP}
+                          >
+                            i
+                          </span>
+                        </p>
+                      </div>
+                      <p className="resource-stat-value">
+                        <AnimatedNumber value={parseNatural(movimentoAtual)} />{" "}
+                        m
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <article className="block atributos">
                   <h3>
                     Atributos
@@ -4015,144 +4861,116 @@ function App() {
                     </span>
                   </h3>
                   <div className="list-grid">
-                    {ATRIBUTOS.map((atributo) => (
-                      <label key={atributo}>
-                        <span>{atributo}</span>
-                        <select
-                          value={selectedCharacter.atributos[atributo]}
-                          onChange={(event) =>
-                            updateCharacter((current) => {
-                              const novosAtributos = {
-                                ...current.atributos,
-                                [atributo]: event.target.value as Dice,
-                              };
+                    {ATRIBUTOS.map((atributo) => {
+                      const currentDice = selectedCharacter.atributos[atributo];
+                      const atributoTooltip =
+                        ATTRIBUTE_DETAIL_TOOLTIPS[atributo];
+                      const handleDiceChange = (grade: Dice) =>
+                        updateCharacter((current) => {
+                          const novosAtributos = {
+                            ...current.atributos,
+                            [atributo]: grade,
+                          };
 
-                              if (
-                                atributo !== "Constituicao" &&
-                                atributo !== "Agilidade"
-                              ) {
-                                return {
-                                  ...current,
-                                  atributos: novosAtributos,
-                                };
-                              }
-
-                              const bonusAgilidadeAtual =
-                                BONUS_BY_DICE[novosAtributos.Agilidade];
-                              const maxDefesaCompradaAtual = Math.max(
-                                0,
-                                parseNatural(current.nivel) +
-                                  18 -
-                                  DEFESA_BASE -
-                                  bonusAgilidadeAtual,
-                              );
-                              const defesaCompradaAtual = clamp(
-                                parseNatural(current.combate.defesa) -
-                                  DEFESA_BASE,
-                                0,
-                                maxDefesaCompradaAtual,
-                              );
-
-                              return {
-                                ...current,
-                                atributos: novosAtributos,
-                                combate: {
-                                  ...current.combate,
-                                  defesa: String(
-                                    DEFESA_BASE +
-                                      clamp(
-                                        defesaCompradaAtual,
-                                        0,
-                                        maxDefesaCompradaAtual,
-                                      ),
-                                  ),
-                                },
-                              };
-                            })
+                          if (
+                            atributo !== "Constituicao" &&
+                            atributo !== "Agilidade"
+                          ) {
+                            return { ...current, atributos: novosAtributos };
                           }
-                        >
-                          {DICE_OPTIONS.map((grade) => (
-                            <option
-                              key={grade}
-                              value={grade}
-                              disabled={nivel === 0 && grade === "D12"}
-                            >
-                              {grade}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ))}
-                  </div>
-                </article>
 
-                <article className="block base-resources-block">
-                  <h3>Recursos e Mobilidade</h3>
-                  <div className="resource-stat-grid">
-                    <div className="resource-stat-card">
-                      <p className="resource-stat-label">
-                        Vida Max
-                        <span
-                          className="info-dot"
-                          data-tooltip={VIDA_MAX_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </p>
-                      <p className="resource-stat-value">{vidaMaxima}</p>
-                      <p className="resource-stat-note">
-                        Base: Constituicao{" "}
-                        {selectedCharacter.atributos.Constituicao}
-                      </p>
-                    </div>
-                    <div className="resource-stat-card">
-                      <p className="resource-stat-label">
-                        Eter Max
-                        <span
-                          className="info-dot"
-                          data-tooltip={ETER_MAX_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </p>
-                      <p className="resource-stat-value">{eterMaximo}</p>
-                      <p className="resource-stat-note">
-                        Base: Tecnica {selectedCharacter.atributos.Tecnica}
-                      </p>
-                    </div>
-                    <div className="resource-stat-card">
-                      <p className="resource-stat-label">
-                        Carga
-                        <span className="info-dot" data-tooltip={CARGA_TOOLTIP}>
-                          i
-                        </span>
-                      </p>
-                      <p className="resource-stat-value">{cargaAtual} kg</p>
-                      <p className="resource-stat-note">
-                        Base: Forca {selectedCharacter.atributos.Forca}
-                      </p>
-                    </div>
-                    <div className="resource-stat-card">
-                      <p className="resource-stat-label">
-                        Movimento
-                        <span
-                          className="info-dot"
-                          data-tooltip={MOVIMENTO_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </p>
-                      <p className="resource-stat-value">{movimentoAtual} m</p>
-                      <p className="resource-stat-note">
-                        Base: Agilidade {selectedCharacter.atributos.Agilidade}
-                      </p>
-                    </div>
+                          const bonusAgilidadeAtual =
+                            BONUS_BY_DICE[novosAtributos.Agilidade];
+                          const maxDefesaCompradaAtual = Math.max(
+                            0,
+                            parseNatural(current.nivel) +
+                              18 -
+                              DEFESA_BASE -
+                              bonusAgilidadeAtual,
+                          );
+                          const defesaCompradaAtual = clamp(
+                            parseNatural(current.combate.defesa) - DEFESA_BASE,
+                            0,
+                            maxDefesaCompradaAtual,
+                          );
+
+                          return {
+                            ...current,
+                            atributos: novosAtributos,
+                            combate: {
+                              ...current.combate,
+                              defesa: String(
+                                DEFESA_BASE +
+                                  clamp(
+                                    defesaCompradaAtual,
+                                    0,
+                                    maxDefesaCompradaAtual,
+                                  ),
+                              ),
+                            },
+                          };
+                        });
+
+                      return (
+                        <div key={atributo} className="atributo-row">
+                          <div className="atributo-meta">
+                            <span className="atributo-nome">{atributo}</span>
+                            <span
+                              className="info-dot atributo-info-dot"
+                              data-tooltip={atributoTooltip}
+                            >
+                              i
+                            </span>
+                          </div>
+                          <div
+                            className="dice-radio-group"
+                            role="radiogroup"
+                            aria-label={atributo}
+                          >
+                            {DICE_OPTIONS.map((grade) => {
+                              const checked = currentDice === grade;
+                              const isDisabled = nivel === 0 && grade === "D12";
+                              const points = DICE_POLYGON_POINTS[grade];
+                              return (
+                                <label
+                                  key={grade}
+                                  className={`dice-radio-label${checked ? " checked" : ""}${isDisabled ? " disabled" : ""}`}
+                                  title={grade}
+                                >
+                                  <input
+                                    type="radio"
+                                    name={`attr-${atributo}`}
+                                    value={grade}
+                                    checked={checked}
+                                    disabled={isDisabled}
+                                    onChange={() => handleDiceChange(grade)}
+                                  />
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                    focusable="false"
+                                  >
+                                    {points === null ? (
+                                      <rect
+                                        x="3"
+                                        y="3"
+                                        width="18"
+                                        height="18"
+                                        rx="2.5"
+                                      />
+                                    ) : (
+                                      <polygon points={points} />
+                                    )}
+                                  </svg>
+                                  <span>{grade}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <p className="rule-note">
-                    Valores calculados automaticamente pelos atributos: Vida Max
-                    por Constituicao, Eter Max por Tecnica, Carga por Forca e
-                    Movimento por Agilidade.
-                  </p>
                 </article>
 
                 <article className="block combat-panel combat-panel-full">
@@ -4166,110 +4984,239 @@ function App() {
                     </span>
                   </h3>
                   <div className="resource-grid combat-grid">
-                    <label>
-                      Ataque CaC
-                      <select
-                        value={selectedCharacter.combate.ataqueCac}
-                        onChange={(event) =>
-                          updateCharacter((current) => ({
-                            ...current,
-                            combate: {
-                              ...current.combate,
-                              ataqueCac: event.target.value as CombatDice,
-                            },
-                          }))
-                        }
+                    <div className="combat-dice-row">
+                      <div className="combat-dice-meta">
+                        <span className="combat-dice-name">Ataque CaC</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={COMBAT_DICE_DETAIL_TOOLTIPS.ataqueCac}
+                        >
+                          i
+                        </span>
+                      </div>
+                      <div
+                        className="dice-radio-group"
+                        role="radiogroup"
+                        aria-label="Ataque CaC"
                       >
-                        {COMBAT_DICE_OPTIONS.map((value) => (
-                          <option
-                            key={value}
-                            value={value}
-                            disabled={nivel === 0 && value === "D12"}
-                          >
-                            {value}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Disparo
-                      <select
-                        value={selectedCharacter.combate.disparo}
-                        onChange={(event) =>
-                          updateCharacter((current) => ({
-                            ...current,
-                            combate: {
-                              ...current.combate,
-                              disparo: event.target.value as CombatDice,
-                            },
-                          }))
-                        }
+                        {COMBAT_DICE_OPTIONS.map((value) => {
+                          const checked =
+                            selectedCharacter.combate.ataqueCac === value;
+                          const isDisabled = nivel === 0 && value === "D12";
+                          const points =
+                            value === "-" ? null : DICE_POLYGON_POINTS[value];
+
+                          return (
+                            <label
+                              key={`cac-${value}`}
+                              className={`dice-radio-label${checked ? " checked" : ""}${isDisabled ? " disabled" : ""}`}
+                              title={value === "-" ? "Sem dado" : value}
+                            >
+                              <input
+                                type="radio"
+                                name="combat-ataque-cac"
+                                value={value}
+                                checked={checked}
+                                disabled={isDisabled}
+                                onChange={() =>
+                                  updateCharacter((current) => ({
+                                    ...current,
+                                    combate: {
+                                      ...current.combate,
+                                      ataqueCac: value,
+                                    },
+                                  }))
+                                }
+                              />
+                              <svg
+                                viewBox="0 0 24 24"
+                                aria-hidden="true"
+                                focusable="false"
+                              >
+                                {value === "-" ? (
+                                  <line x1="5" y1="12" x2="19" y2="12" />
+                                ) : points === null ? (
+                                  <rect
+                                    x="3"
+                                    y="3"
+                                    width="18"
+                                    height="18"
+                                    rx="2.5"
+                                  />
+                                ) : (
+                                  <polygon points={points} />
+                                )}
+                              </svg>
+                              <span>{value === "-" ? "Nenhum" : value}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="combat-dice-row">
+                      <div className="combat-dice-meta">
+                        <span className="combat-dice-name">Disparo</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={COMBAT_DICE_DETAIL_TOOLTIPS.disparo}
+                        >
+                          i
+                        </span>
+                      </div>
+                      <div
+                        className="dice-radio-group"
+                        role="radiogroup"
+                        aria-label="Disparo"
                       >
-                        {COMBAT_DICE_OPTIONS.map((value) => (
-                          <option
-                            key={value}
-                            value={value}
-                            disabled={nivel === 0 && value === "D12"}
-                          >
-                            {value}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                        {COMBAT_DICE_OPTIONS.map((value) => {
+                          const checked =
+                            selectedCharacter.combate.disparo === value;
+                          const isDisabled = nivel === 0 && value === "D12";
+                          const points =
+                            value === "-" ? null : DICE_POLYGON_POINTS[value];
+
+                          return (
+                            <label
+                              key={`disparo-${value}`}
+                              className={`dice-radio-label${checked ? " checked" : ""}${isDisabled ? " disabled" : ""}`}
+                              title={value === "-" ? "Sem dado" : value}
+                            >
+                              <input
+                                type="radio"
+                                name="combat-disparo"
+                                value={value}
+                                checked={checked}
+                                disabled={isDisabled}
+                                onChange={() =>
+                                  updateCharacter((current) => ({
+                                    ...current,
+                                    combate: {
+                                      ...current.combate,
+                                      disparo: value,
+                                    },
+                                  }))
+                                }
+                              />
+                              <svg
+                                viewBox="0 0 24 24"
+                                aria-hidden="true"
+                                focusable="false"
+                              >
+                                {value === "-" ? (
+                                  <line x1="5" y1="12" x2="19" y2="12" />
+                                ) : points === null ? (
+                                  <rect
+                                    x="3"
+                                    y="3"
+                                    width="18"
+                                    height="18"
+                                    rx="2.5"
+                                  />
+                                ) : (
+                                  <polygon points={points} />
+                                )}
+                              </svg>
+                              <span>{value === "-" ? "Nenhum" : value}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
                     <div className="combat-summary-row">
                       <div className="defesa-stack emphasis-panel">
                         <span className="combat-group-title">Defesa</span>
                         <div className="defesa-line">
-                          <span className="defesa-base-label">
-                            Base {DEFESA_BASE} + Agilidade (
-                            {bonusAgilidadeDefesa}) +
-                          </span>
-                          <input
-                            type="number"
-                            min={0}
-                            max={Math.max(0, maxDefesaComprada)}
-                            value={defesaCompradaEfetiva}
-                            onChange={(event) =>
-                              updateCharacter((current) => {
-                                const limiteAtual =
-                                  parseNatural(current.nivel) + 18;
-                                const bonusAgilidadeAtual =
-                                  BONUS_BY_DICE[current.atributos.Agilidade];
-                                const maxDefesaCompradaAtual = clamp(
-                                  limiteAtual -
-                                    DEFESA_BASE -
-                                    bonusAgilidadeAtual,
-                                  0,
-                                  limiteAtual,
-                                );
-
-                                const novaDefesaComprada = clamp(
-                                  parseNatural(event.target.value),
-                                  0,
-                                  maxDefesaCompradaAtual,
-                                );
-
-                                return {
-                                  ...current,
-                                  combate: {
-                                    ...current.combate,
-                                    defesa: String(
-                                      DEFESA_BASE + novaDefesaComprada,
-                                    ),
-                                  },
-                                };
-                              })
-                            }
-                          />
-                          <span className="defesa-total">
-                            Defesa Total
-                            <span
-                              className="info-dot section-info-dot"
-                              data-tooltip={DEFESA_TOTAL_TOOLTIP}
-                            >
-                              i
+                          <span className="defesa-chip">
+                            <span className="defesa-chip-title">
+                              Base
+                              <span
+                                className="info-dot"
+                                data-tooltip={DEFESA_BASE_HUMANA_TOOLTIP}
+                              >
+                                i
+                              </span>
                             </span>
-                            : {defesaAtual}
+                            <span className="defesa-chip-value">
+                              {DEFESA_BASE}
+                            </span>
+                          </span>
+                          <span className="defesa-op">+</span>
+                          <span className="defesa-chip">
+                            <span className="defesa-chip-title">
+                              Agilidade
+                              <span
+                                className="info-dot"
+                                data-tooltip={DEFESA_AGILIDADE_TOOLTIP}
+                              >
+                                i
+                              </span>
+                            </span>
+                            <span className="defesa-chip-value">
+                              <AnimatedNumber value={bonusAgilidadeDefesa} />
+                            </span>
+                          </span>
+                          <span className="defesa-op">+</span>
+                          <label className="defesa-chip defesa-comprada-group">
+                            <span className="defesa-chip-title">
+                              Comprada
+                              <span
+                                className="info-dot"
+                                data-tooltip={DEFESA_COMPRADA_TOOLTIP}
+                              >
+                                i
+                              </span>
+                            </span>
+                            <NumericStepperInput
+                              className="defesa-chip-input"
+                              min={0}
+                              max={Math.max(0, maxDefesaComprada)}
+                              value={String(defesaCompradaEfetiva)}
+                              ariaLabel="Defesa comprada"
+                              onChange={(value) =>
+                                updateCharacter((current) => {
+                                  const limiteAtual =
+                                    parseNatural(current.nivel) + 18;
+                                  const bonusAgilidadeAtual =
+                                    BONUS_BY_DICE[current.atributos.Agilidade];
+                                  const maxDefesaCompradaAtual = clamp(
+                                    limiteAtual -
+                                      DEFESA_BASE -
+                                      bonusAgilidadeAtual,
+                                    0,
+                                    limiteAtual,
+                                  );
+
+                                  const novaDefesaComprada = clamp(
+                                    parseNatural(value),
+                                    0,
+                                    maxDefesaCompradaAtual,
+                                  );
+
+                                  return {
+                                    ...current,
+                                    combate: {
+                                      ...current.combate,
+                                      defesa: String(
+                                        DEFESA_BASE + novaDefesaComprada,
+                                      ),
+                                    },
+                                  };
+                                })
+                              }
+                            />
+                          </label>
+                          <span className="defesa-total">
+                            <span className="defesa-total-label">
+                              Defesa Total
+                              <span
+                                className="info-dot section-info-dot tooltip-edge-right"
+                                data-tooltip={DEFESA_TOTAL_TOOLTIP}
+                              >
+                                i
+                              </span>
+                            </span>
+                            <strong>{defesaAtual}</strong>
                           </span>
                         </div>
                       </div>
@@ -4287,7 +5234,7 @@ function App() {
                               </span>
                             </span>
                             <span className="resistance-value">
-                              {bonusConstituicao}
+                              <AnimatedNumber value={bonusConstituicao} />
                             </span>
                           </span>
                           <span className="resistance-op">+</span>
@@ -4344,7 +5291,7 @@ function App() {
                             <span className="metric-label-with-tip">
                               Total
                               <span
-                                className="info-dot"
+                                className="info-dot tooltip-edge-right"
                                 data-tooltip={RESISTENCIA_TOTAL_TOOLTIP}
                               >
                                 i
@@ -4358,10 +5305,13 @@ function App() {
                       </div>
                       <div className="dano-base-panel emphasis-panel passive-panel">
                         <span className="combat-group-title">Dano Base</span>
+                        <p className="dano-base-note">
+                          Este é o dano humano do personagem, sem uso de Éter.
+                        </p>
                         <div className="dano-base-content">
                           <span className="resistance-stat">
                             <span className="metric-label-with-tip">
-                              Forca
+                              Dano Físico (Força)
                               <span
                                 className="info-dot"
                                 data-tooltip={DANO_BASE_TOOLTIP}
@@ -4370,19 +5320,13 @@ function App() {
                               </span>
                             </span>
                             <span className="resistance-value total-value">
-                              +{danoBase}
+                              <AnimatedNumber value={danoBase} />
                             </span>
                           </span>
                         </div>
                       </div>
                     </div>
                   </div>
-                  <p className="rule-note">
-                    Limites: Defesa Total {"<="} 18 + Nivel ({limiteDefesaTotal}
-                    ) e Resistencia Total {"<="} 6 + Nivel (
-                    {limiteResistenciaTotal}
-                    ).
-                  </p>
                 </article>
               </section>
             ) : null}
@@ -4392,31 +5336,31 @@ function App() {
                 <h3>Pericias</h3>
                 <div className="pericias-intro-card">
                   <p>
-                    Pericias e Conhecimentos compartilham o mesmo bloco de
-                    custo. Some todas as graduacoes investidas e divida por 4
-                    para chegar ao gasto em PP.
+                    Pericias e Conhecimentos usam o mesmo custo: total de
+                    graduacoes dividido por 2 (0,5 PP por graduacao).
                   </p>
                   <p>
-                    Cada 1 graduacao vale 0,25 PP. Cada pericia individual
-                    tambem respeita o limite de Nivel + 10, que nesta ficha e{" "}
-                    {limitePericia}.
-                  </p>
-                  <p>
-                    Total atual: {periciasPontosTotal} graduacoes ={" "}
-                    {periciasSpent} PP. Desse total, {periciasPontos} graduacoes
-                    estao em Pericias e {conhecimentosPontos} em Conhecimentos.
+                    Limite por pericia/conhecimento: Nivel + 10 (atual:{" "}
+                    {limitePericia}). Total: {periciasPontosTotal} graduacoes ={" "}
+                    {periciasSpent} PP ({periciasPontos} em Pericias e{" "}
+                    {conhecimentosPontos} em Conhecimentos).
                   </p>
                 </div>
                 <div className="skills-grid">
                   {PERICIAS.map((pericia) => {
-                    const valor = parseNatural(
-                      selectedCharacter.pericias[pericia],
+                    const valorSheet = getPericiaSheetValue(
+                      selectedCharacter.pericias,
+                      pericia,
                     );
+                    const valor = parseNatural(valorSheet);
                     const acimaLimite = valor > limitePericia;
                     const info = PERICIA_INFO[pericia];
-                    const tooltip = info
-                      ? `Atributo-base: ${info.atributo}. Uso: ${info.uso} Custo: cada graduacao vale 0,25 PP no total de Pericias/Conhecimentos. Valor atual: ${valor} graduacoes = ${formatSkillCostText(valor)} PP. Limite individual: Nivel + 10 = ${limitePericia}.`
-                      : "Sem descricao.";
+                    const atributoRelacionado = info?.atributo ?? "Intelecto";
+                    const dadoRelacionado =
+                      selectedCharacter.atributos[atributoRelacionado];
+                    const pontosDadoRelacionado =
+                      DICE_POLYGON_POINTS[dadoRelacionado];
+                    const tooltip = info?.descricao ?? "Sem descricao.";
 
                     return (
                       <label
@@ -4424,22 +5368,50 @@ function App() {
                         className={acimaLimite ? "warn" : ""}
                       >
                         <span className="pericia-name">
-                          {pericia}
-                          <span className="info-dot" data-tooltip={tooltip}>
-                            i
+                          <span className="pericia-atributo-badge">
+                            <span className="pericia-atributo-badge-label">
+                              {ATRIBUTO_SIGLA[atributoRelacionado]}
+                            </span>
+                            <span
+                              className="pericia-atributo-badge-icon"
+                              aria-hidden="true"
+                            >
+                              <svg viewBox="0 0 24 24" focusable="false">
+                                {pontosDadoRelacionado === null ? (
+                                  <rect
+                                    x="3"
+                                    y="3"
+                                    width="18"
+                                    height="18"
+                                    rx="2.5"
+                                  />
+                                ) : (
+                                  <polygon points={pontosDadoRelacionado} />
+                                )}
+                              </svg>
+                            </span>
+                            <span className="pericia-atributo-badge-die">
+                              {dadoRelacionado}
+                            </span>
+                          </span>
+                          <span className="pericia-name-line">
+                            <span className="pericia-name-text">{pericia}</span>
+                            <span className="info-dot" data-tooltip={tooltip}>
+                              i
+                            </span>
                           </span>
                         </span>
-                        <input
-                          type="number"
+                        <NumericStepperInput
                           min={0}
                           max={limitePericia || undefined}
-                          value={selectedCharacter.pericias[pericia]}
-                          onChange={(event) =>
+                          value={valorSheet}
+                          ariaLabel={pericia}
+                          onChange={(value) =>
                             updateCharacter((current) => ({
                               ...current,
                               pericias: {
                                 ...current.pericias,
-                                [pericia]: event.target.value,
+                                [pericia]: value,
                               },
                             }))
                           }
@@ -4449,85 +5421,118 @@ function App() {
                   })}
                 </div>
                 <div className="conhecimentos-stack">
-                  {selectedCharacter.conhecimentos.map(
-                    (conhecimento, index) => {
-                      const valor = parseNatural(conhecimento.graduacoes);
-                      const acimaLimite = valor > limitePericia;
-                      const areaLabel =
-                        conhecimento.area || "Area nao selecionada";
+                  <div className="conhecimentos-header">
+                    <div>
+                      <strong>Conhecimento</strong>
+                      <p>
+                        Escolha uma area por vez e use Adicionar para abrir um
+                        novo Conhecimento.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="conhecimento-add-button"
+                      onClick={adicionarConhecimento}
+                    >
+                      Adicionar
+                    </button>
+                  </div>
+                  {conhecimentosEditaveis.map((conhecimento, index) => {
+                    const valor = parseNatural(conhecimento.graduacoes);
+                    const acimaLimite = valor > limitePericia;
+                    const conhecimentoTooltip =
+                      PERICIA_INFO.Conhecimento.descricao;
+                    const conhecimentoAtributo =
+                      PERICIA_INFO.Conhecimento.atributo;
+                    const conhecimentoDado =
+                      selectedCharacter.atributos[conhecimentoAtributo];
+                    const conhecimentoPontos =
+                      DICE_POLYGON_POINTS[conhecimentoDado];
 
-                      return (
-                        <div
-                          key={`conhecimento-${index}`}
-                          className={`conhecimento-row ${acimaLimite ? "warn" : ""}`}
-                        >
-                          <span className="pericia-name">
-                            Conhecimento
+                    return (
+                      <div
+                        key={`conhecimento-${index}`}
+                        className={`conhecimento-row ${acimaLimite ? "warn" : ""}`}
+                      >
+                        <span className="pericia-name">
+                          <span className="pericia-atributo-badge">
+                            <span className="pericia-atributo-badge-label">
+                              {ATRIBUTO_SIGLA[conhecimentoAtributo]}
+                            </span>
+                            <span
+                              className="pericia-atributo-badge-icon"
+                              aria-hidden="true"
+                            >
+                              <svg viewBox="0 0 24 24" focusable="false">
+                                {conhecimentoPontos === null ? (
+                                  <rect
+                                    x="3"
+                                    y="3"
+                                    width="18"
+                                    height="18"
+                                    rx="2.5"
+                                  />
+                                ) : (
+                                  <polygon points={conhecimentoPontos} />
+                                )}
+                              </svg>
+                            </span>
+                            <span className="pericia-atributo-badge-die">
+                              {conhecimentoDado}
+                            </span>
+                          </span>
+                          <span className="pericia-name-line">
+                            <span className="pericia-name-text">
+                              Conhecimento
+                            </span>
                             <span
                               className="info-dot"
-                              data-tooltip={`Atributo-base: ${PERICIA_INFO.Conhecimento.atributo}. Uso: ${PERICIA_INFO.Conhecimento.uso} Area atual: ${areaLabel}. Custo: cada graduacao vale 0,25 PP no total de Pericias/Conhecimentos. Valor atual: ${valor} graduacoes = ${formatSkillCostText(valor)} PP. Limite individual: Nivel + 10 = ${limitePericia}.`}
+                              data-tooltip={conhecimentoTooltip}
                             >
                               i
                             </span>
                           </span>
-                          <select
-                            value={conhecimento.area}
-                            onChange={(event) =>
-                              updateCharacter((current) => {
-                                const novosConhecimentos = [
-                                  ...current.conhecimentos,
-                                ];
-                                novosConhecimentos[index] = {
-                                  ...novosConhecimentos[index],
-                                  area: event.target.value,
-                                };
-
-                                return {
-                                  ...current,
-                                  conhecimentos: novosConhecimentos,
-                                };
-                              })
-                            }
+                        </span>
+                        <select
+                          value={conhecimento.area}
+                          onChange={(event) =>
+                            atualizarConhecimento(index, {
+                              area: event.target.value,
+                            })
+                          }
+                        >
+                          <option value="">Selecione</option>
+                          {CONHECIMENTO_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.value}: {option.descricao}
+                            </option>
+                          ))}
+                        </select>
+                        <NumericStepperInput
+                          min={0}
+                          max={limitePericia || undefined}
+                          value={conhecimento.graduacoes}
+                          ariaLabel={`Graduacoes de conhecimento ${index + 1}`}
+                          onChange={(value) =>
+                            atualizarConhecimento(index, {
+                              graduacoes: value,
+                            })
+                          }
+                        />
+                        <div className="conhecimento-row-actions">
+                          <button
+                            type="button"
+                            className="conhecimento-remove-button danger"
+                            onClick={() => removerConhecimento(index)}
+                            aria-label={`Remover conhecimento ${index + 1}`}
                           >
-                            <option value="">Selecione</option>
-                            {CONHECIMENTO_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.value}: {option.descricao}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            type="number"
-                            min={0}
-                            max={limitePericia || undefined}
-                            value={conhecimento.graduacoes}
-                            onChange={(event) =>
-                              updateCharacter((current) => {
-                                const novosConhecimentos = [
-                                  ...current.conhecimentos,
-                                ];
-                                novosConhecimentos[index] = {
-                                  ...novosConhecimentos[index],
-                                  graduacoes: event.target.value,
-                                };
-
-                                return {
-                                  ...current,
-                                  conhecimentos: novosConhecimentos,
-                                };
-                              })
-                            }
-                          />
+                            Remover
+                          </button>
                         </div>
-                      );
-                    },
-                  )}
+                      </div>
+                    );
+                  })}
                 </div>
-                <p className="rule-note">
-                  Limite por pericia ou conhecimento: Nivel + 10 ={" "}
-                  {limitePericia}. O custo final da aba e a soma de todas as
-                  graduacoes dividida por 4.
-                </p>
               </section>
             ) : null}
 
@@ -4558,18 +5563,18 @@ function App() {
                               <div className="manip-stats-grid">
                                 <label className="manip-input-field">
                                   <span>Graduacao</span>
-                                  <input
-                                    type="number"
+                                  <NumericStepperInput
                                     min={0}
                                     max={limitePericia}
                                     value={graduacao}
-                                    onChange={(event) =>
+                                    ariaLabel={`Graduacao de ${tecnica.nome}`}
+                                    onChange={(value) =>
                                       updateCharacter((current) => ({
                                         ...current,
                                         tecnicasBasicas: {
                                           ...current.tecnicasBasicas,
                                           [tecnica.nome]: {
-                                            graduacao: event.target.value,
+                                            graduacao: value,
                                           },
                                         },
                                       }))
@@ -4674,13 +5679,11 @@ function App() {
                   {vantagemSelecionada?.temGraduacao ? (
                     <label>
                       Graduacao
-                      <input
-                        type="number"
+                      <NumericStepperInput
                         min={1}
                         value={vantagemGraduacao}
-                        onChange={(event) =>
-                          setVantagemGraduacao(event.target.value)
-                        }
+                        ariaLabel="Graduacao de vantagem"
+                        onChange={setVantagemGraduacao}
                       />
                     </label>
                   ) : null}
@@ -4793,13 +5796,11 @@ function App() {
                   {desvantagemSelecionada?.temGraduacao ? (
                     <label>
                       Graduacao
-                      <input
-                        type="number"
+                      <NumericStepperInput
                         min={1}
                         value={desvantagemGraduacao}
-                        onChange={(event) =>
-                          setDesvantagemGraduacao(event.target.value)
-                        }
+                        ariaLabel="Graduacao de desvantagem"
+                        onChange={setDesvantagemGraduacao}
                       />
                     </label>
                   ) : null}
@@ -4887,12 +5888,10 @@ function App() {
             ) : null}
 
             {activeEditorTab === "poderes" ? (
-              <section className="powers-wide">
-                <div className="powers-header">
-                  <h3>Poderes</h3>
-                </div>
+              <section className="block poderes-panel poderes-wide">
+                <h3>Poderes</h3>
 
-                <div className="powers-main-tabs">
+                <div className="powers-tabs">
                   <button
                     type="button"
                     className={
@@ -4932,24 +5931,37 @@ function App() {
                 {poderesPanelVisivel === "catalogo" ? (
                   <>
                     <div className="powers-suit-tabs">
-                      {NAIPE_PODERES.map((naipe) => (
-                        <button
-                          type="button"
-                          key={naipe}
-                          className={
-                            naipePoderSelecionado === naipe ? "active" : ""
-                          }
-                          onClick={() => {
-                            setNaipePoderSelecionado(naipe);
-                            setCatalogoSearch("");
-                            setCatalogoFiltroAcao("");
-                            setCatalogoFiltroDuracao("");
-                            setCatalogoFiltroTipo("");
-                          }}
-                        >
-                          {naipe}
-                        </button>
-                      ))}
+                      {NAIPE_PODERES.map((naipe) => {
+                        const naipeOption = NAIPE_IDENTITY_OPTIONS.find(
+                          (option) => option.value === naipe,
+                        );
+                        return (
+                          <button
+                            type="button"
+                            key={naipe}
+                            className={
+                              naipePoderSelecionado === naipe ? "active" : ""
+                            }
+                            onClick={() => {
+                              setNaipePoderSelecionado(naipe);
+                              setCatalogoSearch("");
+                              setCatalogoFiltroAcao("");
+                              setCatalogoFiltroDuracao("");
+                              setCatalogoFiltroTipo("");
+                            }}
+                          >
+                            {naipeOption && (
+                              <span
+                                className="powers-suit-icon"
+                                aria-hidden="true"
+                              >
+                                {naipeOption.icon}
+                              </span>
+                            )}
+                            <span>{naipe}</span>
+                          </button>
+                        );
+                      })}
                     </div>
 
                     <div className="catalog-search-bar">
@@ -5179,19 +6191,19 @@ function App() {
 
                             <label>
                               Graduacao
-                              <input
-                                type="number"
+                              <NumericStepperInput
                                 min={1}
                                 max={MAX_POWER_GRADUATION_LIMIT}
                                 value={powerEntry.graduacao}
-                                onChange={(event) =>
+                                ariaLabel={`Graduacao de ${power.nome}`}
+                                onChange={(value) =>
                                   updateCharacter((current) => ({
                                     ...current,
                                     poderes: current.poderes.map((item) =>
                                       item.id === powerEntry.id
                                         ? {
                                             ...item,
-                                            graduacao: event.target.value,
+                                            graduacao: value,
                                           }
                                         : item,
                                     ),
@@ -5322,7 +6334,8 @@ function App() {
                       })
                     )}
                     <p className="rule-note powers-note">
-                      Limite de graduacao por poder: {MAX_POWER_GRADUATION_RULE}
+                      Limite de graduacao por poder:{" "}
+                      {MAX_POWER_GRADUATION_LIMIT - 1}
                     </p>
                   </div>
                 )}
