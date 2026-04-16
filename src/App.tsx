@@ -262,7 +262,7 @@ const DESVANTAGEM_PP_POR_NIVEL: Record<DesvantagemNivel, number> = {
 };
 
 const DESVANTAGENS_MAX_PP = 10;
-const DESVANTAGENS_MAX_SEVERAS = 1;
+const DESVANTAGENS_MAX_SEVERAS = 2;
 const DESVANTAGENS_MAX_LEVES = 6;
 
 const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
@@ -4004,7 +4004,9 @@ function App() {
         desvantagemSelecionada.nivel === "Severa" &&
         severasAtuais >= DESVANTAGENS_MAX_SEVERAS
       ) {
-        toast.error("Limite atingido: maximo 1 desvantagem Severa.");
+        toast.error(
+          `Limite atingido: maximo ${DESVANTAGENS_MAX_SEVERAS} desvantagens Severas.`,
+        );
         return current;
       }
 
@@ -4015,7 +4017,9 @@ function App() {
         desvantagemSelecionada.nivel === "Leve" &&
         levesAtuais >= DESVANTAGENS_MAX_LEVES
       ) {
-        toast.error("Limite atingido: maximo 6 desvantagens Leves.");
+        toast.error(
+          `Limite atingido: maximo ${DESVANTAGENS_MAX_LEVES} desvantagens Leves.`,
+        );
         return current;
       }
 
@@ -5336,14 +5340,59 @@ function App() {
                 <h3>Pericias</h3>
                 <div className="pericias-intro-card">
                   <p>
-                    Pericias e Conhecimentos usam o mesmo custo: total de
-                    graduacoes dividido por 2 (0,5 PP por graduacao).
+                    Pericias representam conhecimentos, treinamento e
+                    experiencia acumulada. Enquanto atributos mostram talento
+                    natural, pericias mostram pratica e especializacao em
+                    atividades especificas.
                   </p>
-                  <p>
-                    Limite por pericia/conhecimento: Nivel + 10 (atual:{" "}
-                    {limitePericia}). Total: {periciasPontosTotal} graduacoes ={" "}
-                    {periciasSpent} PP ({periciasPontos} em Pericias e{" "}
-                    {conhecimentosPontos} em Conhecimentos).
+                  <div className="pericias-intro-columns">
+                    <div className="pericias-intro-column">
+                      <p>
+                        <strong>Teste de Pericia:</strong>
+                      </p>
+                      <p className="pericias-intro-formula">
+                        1d20 + Atributo + Bonus da Pericia + Modificadores
+                      </p>
+                      <ul className="pericias-intro-list">
+                        <li>1d20: imprevisibilidade da situacao.</li>
+                        <li>Atributo: capacidade natural do personagem.</li>
+                        <li>Pericia: treinamento e experiencia.</li>
+                        <li>Modificadores: circunstancias da cena.</li>
+                        <li>
+                          Sucesso quando o resultado final e igual ou maior que
+                          a CD definida pelo mestre.
+                        </li>
+                      </ul>
+                      <p>
+                        <strong>Custo:</strong> cada graduacao custa 0,5 PP.
+                        Limite por pericia: Nivel + 10.
+                      </p>
+                    </div>
+                    <div className="pericias-intro-column">
+                      <p>
+                        <strong>Funcionamento:</strong> testes de pericia
+                        representam o esforco do personagem para resolver
+                        desafios com conhecimento tecnico e pratica.
+                      </p>
+                      <p>
+                        <strong>Treinamento:</strong> personagens treinados
+                        aplicam o bonus de graduacao normalmente. Sem
+                        treinamento, usam apenas o atributo e podem ser
+                        impedidos em tarefas que exigem especializacao.
+                      </p>
+                      <p>
+                        <strong>Especializacao:</strong> algumas pericias
+                        possuem areas especificas (ex.: Conhecimento em
+                        historia, ciencia, politica, cultura popular), refinando
+                        o perfil mecanico e narrativo do personagem.
+                      </p>
+                    </div>
+                  </div>
+                  <p className="pericias-intro-status">
+                    Limite atual por pericia/conhecimento: {limitePericia}
+                    (Nivel + 10). Total investido: {periciasPontosTotal}
+                    graduacoes = {periciasSpent} PP ({periciasPontos} em
+                    Pericias e {conhecimentosPontos} em Conhecimentos).
                   </p>
                 </div>
                 <div className="skills-grid">
@@ -5540,6 +5589,59 @@ function App() {
               <section>
                 <article className="block manipulacoes tecnicas-basicas-wide">
                   <h3>Tecnicas Basicas</h3>
+                  <div className="tecnicas-intro">
+                    <p>
+                      As Tecnicas Basicas sao as formas mais diretas de
+                      manipulacao do Eter. Nao sao refinadas como poderes, mas
+                      sao confiaveis, rapidas e versateis para reagir,
+                      posicionar-se e sobreviver em combate.
+                    </p>
+                    <p>
+                      Cada tecnica possui Graduacao, convertida em VE (Valor
+                      Efetivo), e consome PE (Pontos de Eter) ao ser utilizada.
+                    </p>
+                    <div className="tecnicas-intro-columns">
+                      <div className="tecnicas-intro-column">
+                        <p>
+                          <strong>Progressao (rendimento decrescente):</strong>
+                        </p>
+                        <ul className="tecnicas-intro-list">
+                          <li>Graduacao 1-5: progresso normal (VE igual).</li>
+                          <li>
+                            Graduacao 6 em diante: cada 2 niveis concedem +1 VE.
+                          </li>
+                          <li>1=1, 2=2, 3=3, 4=4, 5-6=5, 7-8=6, 9-10=7.</li>
+                          <li>11-12=8, e assim por diante.</li>
+                          <li>
+                            Limite de Graduacao: Nivel + 10 ({limitePericia}
+                            no nivel atual).
+                          </li>
+                        </ul>
+                      </div>
+                      <div className="tecnicas-intro-column">
+                        <p>
+                          <strong>Consumo e Regras Gerais:</strong>
+                        </p>
+                        <ul className="tecnicas-intro-list">
+                          <li>
+                            PE = Base + arredondamento para cima de (VE / 2).
+                          </li>
+                          <li>Tecnicas sustentadas consomem PE por turno.</li>
+                          <li>Tecnicas instantaneas consomem PE por uso.</li>
+                          <li>Apenas 1 tecnica sustentada ativa por vez.</li>
+                          <li>Cada reacao adicional no turno custa +1 PE.</li>
+                          <li>
+                            Apos reagir: -2 em testes de Tecnica ate o proximo
+                            turno.
+                          </li>
+                        </ul>
+                        <p>
+                          <strong>Teste de Tecnica:</strong> quando exigido, CD
+                          = 10 + graduacao.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                   <div className="manip-grid">
                     {TECNICAS_BASICAS.map((tecnica) => (
                       <div className="manip-card" key={tecnica.nome}>
@@ -5634,6 +5736,46 @@ function App() {
             {activeEditorTab === "vantagens" ? (
               <section className="block vantagens-panel vantagens-wide">
                 <h3>Vantagens</h3>
+                <div className="vantagens-intro">
+                  <p>
+                    Vantagens representam talentos especiais, treinamentos
+                    incomuns e capacidades que diferenciam seu personagem das
+                    pessoas comuns. Elas permitem superar limitacoes normais do
+                    sistema e ampliar opcoes taticas, sociais e narrativas.
+                  </p>
+                  <p>
+                    <strong>Custo:</strong> as vantagens possuem custos
+                    variados. O valor de cada uma aparece ao lado do nome na
+                    lista (ex.: 3 PP/grad). Algumas podem ser compradas em
+                    multiplas graduacoes para ampliar seus efeitos; outras sao
+                    unicas e podem ser adquiridas apenas uma vez.
+                  </p>
+                  <p>
+                    <strong>Tipos de Vantagem:</strong>
+                  </p>
+                  <ul className="vantagens-intro-list">
+                    <li>
+                      <strong>Combate:</strong> melhora desempenho ofensivo e
+                      defensivo.
+                    </li>
+                    <li>
+                      <strong>Pericia:</strong> aprimora o uso de pericias e
+                      suas aplicacoes.
+                    </li>
+                    <li>
+                      <strong>Sorte:</strong> permite manipular resultados e o
+                      uso de recursos especiais.
+                    </li>
+                    <li>
+                      <strong>Geral:</strong> representa talentos unicos,
+                      recursos narrativos e influencia.
+                    </li>
+                    <li>
+                      <strong>Eter:</strong> aprimora o dominio de energia
+                      espiritual e tecnicas baseadas em Eter.
+                    </li>
+                  </ul>
+                </div>
                 <div
                   className={`vantagens-controls ${vantagemSelecionada?.temGraduacao ? "with-graduacao" : "without-graduacao"}`}
                 >
@@ -5751,6 +5893,65 @@ function App() {
             {activeEditorTab === "desvantagens" ? (
               <section className="block desvantagens-panel desvantagens-wide">
                 <h3>Desvantagens</h3>
+                <div className="desvantagens-intro">
+                  <p>
+                    Nem todos os personagens sao definidos apenas por suas
+                    capacidades. Desvantagens representam limitacoes reais,
+                    falhas, restricoes ou condicoes que impactam o desempenho de
+                    forma recorrente e exigem adaptacao durante o jogo.
+                  </p>
+                  <p>
+                    Mais do que fraquezas, desvantagens sao ferramentas de
+                    identidade: ajudam a definir quem o personagem e quando as
+                    coisas nao saem como planejado.
+                  </p>
+                  <p>
+                    <strong>Aquisicao:</strong> desvantagens sao escolhidas na
+                    criacao e concedem PP que podem ser usados normalmente,
+                    respeitando os limites abaixo.
+                  </p>
+                  <p>
+                    <strong>Limites:</strong> maximo absoluto de
+                    {` +${DESVANTAGENS_MAX_PP} PP`}, ate
+                    {` ${DESVANTAGENS_MAX_SEVERAS} Severas`} e
+                    {` ${DESVANTAGENS_MAX_LEVES} Leves`}. Nao ha minimo
+                    obrigatorio.
+                  </p>
+                  <div className="desvantagens-intro-columns">
+                    <div className="desvantagens-intro-column">
+                      <p>
+                        <strong>Escala de Impacto:</strong>
+                      </p>
+                      <ul className="desvantagens-intro-list">
+                        <li>
+                          <strong>Leve:</strong> impacto ocasional (
+                          {" " + "+1 PP"})
+                        </li>
+                        <li>
+                          <strong>Moderada:</strong> impacto frequente (
+                          {" " + "+2 PP"})
+                        </li>
+                        <li>
+                          <strong>Severa:</strong> impacto forte e recorrente (
+                          {" " + "+4 PP"})
+                        </li>
+                      </ul>
+                    </div>
+                    <div className="desvantagens-intro-column">
+                      <p>
+                        <strong>Combinacoes equilibradas (ate +10 PP):</strong>
+                      </p>
+                      <ul className="desvantagens-intro-list">
+                        <li>1 Severa + 3 Moderadas</li>
+                        <li>1 Severa + 2 Moderadas + 2 Leves</li>
+                        <li>1 Severa + 1 Moderada + 4 Leves</li>
+                        <li>5 Moderadas</li>
+                        <li>3 Moderadas + 4 Leves</li>
+                        <li>2 Moderadas + 6 Leves</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
                 <div
                   className={`desvantagens-controls ${desvantagemSelecionada?.temGraduacao ? "with-graduacao" : "without-graduacao"}`}
                 >
@@ -5815,7 +6016,7 @@ function App() {
                 </div>
 
                 <p className="rule-note desvantagens-limits">
-                  {`Limites: +${DESVANTAGENS_MAX_PP} PP maximo | 1 Severa maximo | 6 Leves maximo.`}
+                  {`Limites: +${DESVANTAGENS_MAX_PP} PP maximo | ${DESVANTAGENS_MAX_SEVERAS} Severas maximo | ${DESVANTAGENS_MAX_LEVES} Leves maximo.`}
                 </p>
 
                 {desvantagemSelecionada ? (
@@ -5890,6 +6091,84 @@ function App() {
             {activeEditorTab === "poderes" ? (
               <section className="block poderes-panel poderes-wide">
                 <h3>Poderes</h3>
+
+                <div className="poderes-intro">
+                  <p>
+                    Poderes sao manifestacoes do Eter, a energia espiritual que
+                    permeia o mundo. Cada poder manipula essa energia de forma
+                    especifica para atacar, se defender, controlar o ambiente ou
+                    aprimorar o corpo. O dominio de Poderes define o estilo de
+                    combate e a identidade de cada personagem.
+                  </p>
+
+                  <div className="poderes-intro-row">
+                    <div className="poderes-intro-col">
+                      <p>
+                        <strong>Graduacao:</strong> quanto maior, mais forte o
+                        efeito. Limite: Nivel + 10. Custo Base × Graduacao.
+                      </p>
+                      <p>
+                        <strong>Consumo de Eter:</strong>
+                      </p>
+                      <table className="poderes-ether-table">
+                        <tbody>
+                          <tr>
+                            <td>Graduacao</td>
+                            <td>1-2</td>
+                            <td>3-4</td>
+                            <td>5-6</td>
+                            <td>7-8</td>
+                            <td>9-10</td>
+                          </tr>
+                          <tr>
+                            <td>Eter</td>
+                            <td>1</td>
+                            <td>2</td>
+                            <td>3</td>
+                            <td>4</td>
+                            <td>5</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="poderes-intro-col">
+                      <p>
+                        <strong>Os 4 Naipes:</strong>
+                      </p>
+                      <ul className="poderes-naipes-list">
+                        <li>
+                          <strong>♠ Espadas (Projecao):</strong> combate direto,
+                          fortalecimento corporal.
+                        </li>
+                        <li>
+                          <strong>♦ Ouros (Conjuracao):</strong> criacao,
+                          invocacao, suporte.
+                        </li>
+                        <li>
+                          <strong>♥ Copas (Manipulacao):</strong> controle de
+                          energia, influencia.
+                        </li>
+                        <li>
+                          <strong>♣ Paus (Alteracao):</strong> mudanca de forma,
+                          adaptacao.
+                        </li>
+                      </ul>
+                      <p>
+                        <strong>Afinidade:</strong> mesmo (1x) | adjacente (2x)
+                        | oposto (3x).
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="poderes-intro-footer">
+                    <strong>Parametros:</strong> Acao (Padrao, Movimento, Livre,
+                    Reacao) | Alcance (Pessoal, Toque, Distancia) | Duracao
+                    (Instantanea, Sustentada, Permanente) |{" "}
+                    <strong>Penetrante:</strong> ignora Resistencia (2 PP por
+                    ponto).
+                  </p>
+                </div>
 
                 <div className="powers-tabs">
                   <button
