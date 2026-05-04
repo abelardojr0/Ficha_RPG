@@ -1,4 +1,4 @@
-import {
+﻿import {
   useEffect,
   useMemo,
   useRef,
@@ -13,7 +13,7 @@ import { MdOutlineAddPhotoAlternate } from "react-icons/md";
 import { IoMdHeartHalf } from "react-icons/io";
 import "react-toastify/dist/ReactToastify.css";
 import {
-  MAX_POWER_GRADUATION_LIMIT,
+  getEterCostByGraduacao,
   PODERES_POR_NAIPE,
   type NaipePoder,
   type PowerDefinition,
@@ -23,6 +23,37 @@ import "./App.css";
 
 type Dice = "D4" | "D6" | "D8" | "D10" | "D12";
 type CombatDice = "-" | Dice;
+const EQUIP_BONUS_LIMIT = 2;
+
+const getMaxPositiveBonus = (value: string): number => {
+  const matches = value.match(/\+\d+/g);
+  if (!matches) {
+    return 0;
+  }
+
+  return matches.reduce((max, token) => {
+    const parsed = Number.parseInt(token.replace("+", ""), 10);
+    return Number.isFinite(parsed) ? Math.max(max, parsed) : max;
+  }, 0);
+};
+
+const reachesEquipmentCap = (value: string): boolean =>
+  getMaxPositiveBonus(value) >= EQUIP_BONUS_LIMIT;
+
+const getAcessoBadgeClass = (acesso: string): string => {
+  switch (acesso) {
+    case "Comum":
+      return "acesso-comum";
+    case "Avancado":
+      return "acesso-avancado";
+    case "Raro":
+      return "acesso-raro";
+    case "Especial":
+      return "acesso-especial";
+    default:
+      return "acesso-comum";
+  }
+};
 type Naipe = "Espadas" | "Ouros" | "Paus" | "Copas" | "";
 type VantagemCategoria = "Combate" | "Pericia" | "Sorte" | "Geral" | "Eter";
 type DesvantagemCategoria =
@@ -106,6 +137,117 @@ type BasicTechniqueDefinition = {
   limitacoes: string;
 };
 
+type DevelopedTechniqueType = "Primaria" | "Avancada" | "Especial";
+
+type DevelopedTechniqueBasePower = {
+  id: string;
+  powerId: string;
+  graduacao: string;
+};
+
+type DevelopedTechniqueModifierSet = {
+  bonusDano: string;
+  bonusPrecisao: string;
+  penetracao: string;
+  danoAmpliado: string;
+  ataqueMultiplo: "1" | "2" | "3";
+  area: "" | "3m" | "5m" | "10m";
+  controleNivel: "" | "Leve" | "Moderado" | "Forte";
+  controleEstado: string;
+  controleAtributoResistencia: "Forca" | "Agilidade" | "Vontade";
+  alcanceEtapas: "0" | "1" | "2" | "3" | "4";
+  duracao: "" | "Sustentada" | "Continua";
+  duracaoEstendida: boolean;
+  ativacaoRapida: "" | "Livre" | "Reacao";
+  preparacao: "" | "preparacao" | "turno-completo";
+  bonusDefesa: string;
+  reducaoDanoRecebido: string;
+  absorcao: boolean;
+  reflexo: boolean;
+  limitacaoPerdeMovimento: boolean;
+  limitacaoCondicaoEspecifica: boolean;
+  limitacaoContatoDireto: boolean;
+  limitacaoAlvoEspecifico: boolean;
+  limitacaoUsoCena: boolean;
+  modificadorPersonalizadoNome: string;
+  modificadorPersonalizadoCusto: string;
+};
+
+type DevelopedTechnique = {
+  id: string;
+  nome: string;
+  tipo: DevelopedTechniqueType;
+  conceito: string;
+  efeito: string;
+  acao: string;
+  alcance: string;
+  alvo: string;
+  duracao: string;
+  gatilho: string;
+  poderesBase: DevelopedTechniqueBasePower[];
+  modificadores: DevelopedTechniqueModifierSet;
+  custoBasePE: number;
+  custoModificadoresPE: number;
+  reducoesPE: number;
+  custoFinalPE: number;
+  limiteAdicionalPE: number;
+  adicionalAplicadoPE: number;
+  maiorGraduacaoBase: number;
+  bonusDiretoAplicado: number;
+  createdAt: string;
+};
+
+type DevelopedTechniqueDraft = {
+  nome: string;
+  tipo: DevelopedTechniqueType;
+  conceito: string;
+  efeito: string;
+  acao: string;
+  alcance: string;
+  alvo: string;
+  duracao: string;
+  gatilho: string;
+  poderesBase: DevelopedTechniqueBasePower[];
+  modificadores: DevelopedTechniqueModifierSet;
+};
+
+type EquipmentEra = "Medieval" | "Moderno" | "Futurista";
+type EquipmentKind = "Armas" | "Protecoes" | "Utilitarios";
+
+type EquipmentWeaponEntry = {
+  nome: string;
+  subcategoria: string;
+  tipo: string;
+  alcance: string;
+  dano: string;
+  acerto: string;
+  efeito: string;
+  peso: string;
+  acesso: string;
+};
+
+type EquipmentProtectionEntry = {
+  nome: string;
+  subcategoria: string;
+  tipo: string;
+  resistencia: string;
+  defesa: string;
+  efeito: string;
+  penalidade: string;
+  peso: string;
+  acesso: string;
+};
+
+type EquipmentUtilityEntry = {
+  nome: string;
+  subcategoria: string;
+  tipo: string;
+  efeito: string;
+  limite: string;
+  peso: string;
+  acesso: string;
+};
+
 type CharacterPower = {
   id: string;
   powerId: string;
@@ -122,7 +264,9 @@ type ConhecimentoEntry = {
 type CharacterSheet = {
   id: string;
   nome: string;
+  grupo?: string;
   imagemUrl?: string;
+  imagemViewUrl?: string;
   nivel: string;
   jogador: string;
   xp: string;
@@ -144,7 +288,10 @@ type CharacterSheet = {
   vantagens: CharacterAdvantage[];
   desvantagens: CharacterDisadvantage[];
   poderes: CharacterPower[];
+  tecnicasDesenvolvidas: DevelopedTechnique[];
   equipamentos: string;
+  parentId?: string;
+  localSaved?: boolean;
 };
 
 type EditorTabId =
@@ -152,6 +299,7 @@ type EditorTabId =
   | "base"
   | "pericias"
   | "tecnicas"
+  | "tecnicas-desenvolvimento"
   | "vantagens"
   | "desvantagens"
   | "poderes"
@@ -166,7 +314,9 @@ type EditorTabDefinition = {
 type SheetSummary = {
   id: string;
   nome: string;
+  grupo?: string;
   imagemUrl?: string;
+  imagemViewUrl?: string;
   imageUrl?: string;
   fotoUrl?: string;
   nivel: string;
@@ -174,8 +324,53 @@ type SheetSummary = {
   updatedAt: string;
 };
 
+type GroupAttachment = {
+  id: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  url: string;
+  createdAt?: string;
+  file?: File;
+};
+
+type GroupRecord = {
+  id: string;
+  key: string;
+  name: string;
+  imageUrl: string;
+  sheetCount: number;
+  attachmentCount: number;
+  attachments: GroupAttachment[];
+};
+
+type GroupApiSummary = {
+  id?: string;
+  nome?: string;
+  name?: string;
+  imagemUrl?: string;
+  imagemViewUrl?: string;
+  imageUrl?: string;
+  fotoUrl?: string;
+  sheetCount?: number;
+  attachmentCount?: number;
+};
+
+type GroupFileApiSummary = {
+  id?: string;
+  nome?: string;
+  mimeType?: string;
+  tamanhoBytes?: number;
+  url?: string;
+  createdAt?: string;
+};
+
 const getSheetPreviewImageUrl = (sheet: SheetSummary) =>
-  sheet.imagemUrl || sheet.imageUrl || sheet.fotoUrl || "";
+  sheet.imagemViewUrl ||
+  sheet.imagemUrl ||
+  sheet.imageUrl ||
+  sheet.fotoUrl ||
+  "";
 
 type PendingConfirmation = {
   title: string;
@@ -184,7 +379,8 @@ type PendingConfirmation = {
   variant?: "default" | "danger";
   action:
     | { type: "apply-pretipo"; pretipoId: string }
-    | { type: "delete-character"; characterId: string };
+    | { type: "delete-character"; characterId: string }
+    | { type: "reset-principal"; characterId: string };
 };
 
 const TOTAL_PP = 180;
@@ -194,10 +390,141 @@ const API_BASE_URL = (
 ).replace(/\/$/, "");
 const HOME_ROUTE = "/";
 const CREATE_SHEET_ROUTE = "/criar-ficha";
+const QUICK_SHEET_ROUTE = "/ficha-rapida";
 const SHEET_PASSWORD_MIN_LENGTH = 4;
+const CHARACTER_DRAFT_STORAGE_KEY = "ficha-rpg:editor-draft:v1";
 
-const getScreenFromPathname = (pathname: string): "home" | "editor" =>
-  pathname === CREATE_SHEET_ROUTE ? "editor" : "home";
+type LocalDraftPayload = {
+  characters: CharacterSheet[];
+  selectedId: string;
+  activeSheetId: string | null;
+  activeEditorTab: EditorTabId;
+  poderesPanelAtivo: "catalogo" | "arsenal";
+  naipePoderSelecionado: NaipePoder;
+  catalogoSearch: string;
+  catalogoFiltroAcao: string;
+  catalogoFiltroDuracao: string;
+  catalogoFiltroTipo: string;
+  equipamentosEra: EquipmentEra;
+  equipamentosTipo: EquipmentKind;
+  equipamentosSubcategoria: string;
+  fichaGeradaPagina: 1 | 2;
+  tecnicaDraft: DevelopedTechniqueDraft;
+  vantagemCategoriaSelecionada: VantagemCategoria | "";
+  vantagemSelecionadaId: string;
+  vantagemGraduacao: string;
+  desvantagemCategoriaSelecionada: DesvantagemCategoria | "";
+  desvantagemSelecionadaId: string;
+  desvantagemGraduacao: string;
+  pretipoSelecionado: string;
+};
+
+const getCharacterPrincipalId = (character: CharacterSheet): string =>
+  character.parentId ?? character.id;
+
+const normalizeGroupKey = (value: string): string => value.trim();
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  const kb = bytes / 1024;
+  if (kb < 1024) {
+    return `${kb.toFixed(1)} KB`;
+  }
+
+  const mb = kb / 1024;
+  return `${mb.toFixed(2)} MB`;
+};
+
+const isApiImageUrl = (value: unknown): boolean =>
+  typeof value === "string" &&
+  (value.includes("/api/sheets/") || value.includes("/uploads/"));
+
+// Get the image URL suitable for displaying in <img src>
+// Prefers imagemViewUrl (display URL) if available, falls back to imagemUrl (base64)
+const getCharacterImageForDisplay = (
+  character: CharacterSheet | null,
+): string => {
+  if (!character) return "";
+  return character.imagemViewUrl || character.imagemUrl || "";
+};
+
+const readDraftFromLocalStorage = (): LocalDraftPayload | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(CHARACTER_DRAFT_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<LocalDraftPayload>;
+    if (!parsed || !Array.isArray(parsed.characters) || !parsed.selectedId) {
+      return null;
+    }
+
+    return parsed as LocalDraftPayload;
+  } catch {
+    return null;
+  }
+};
+
+const removeDraftGroupFromLocalStorage = (principalId: string) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const existingDraft = readDraftFromLocalStorage();
+  if (!existingDraft) {
+    return;
+  }
+
+  const remainingCharacters = existingDraft.characters.filter(
+    (character) => getCharacterPrincipalId(character) !== principalId,
+  );
+
+  if (remainingCharacters.length === 0) {
+    window.localStorage.removeItem(CHARACTER_DRAFT_STORAGE_KEY);
+    return;
+  }
+
+  const nextSelectedId = remainingCharacters.some(
+    (character) => character.id === existingDraft.selectedId,
+  )
+    ? existingDraft.selectedId
+    : remainingCharacters[0].id;
+
+  window.localStorage.setItem(
+    CHARACTER_DRAFT_STORAGE_KEY,
+    JSON.stringify({
+      ...existingDraft,
+      characters: remainingCharacters,
+      selectedId: nextSelectedId,
+      activeSheetId:
+        existingDraft.activeSheetId === principalId
+          ? getCharacterPrincipalId(remainingCharacters[0])
+          : existingDraft.activeSheetId,
+    } satisfies LocalDraftPayload),
+  );
+};
+
+type AppScreen = "home" | "editor" | "quick-sheet" | "group";
+
+const getScreenFromPathname = (pathname: string): AppScreen => {
+  if (pathname === CREATE_SHEET_ROUTE) {
+    return "editor";
+  }
+
+  if (pathname === QUICK_SHEET_ROUTE) {
+    return "quick-sheet";
+  }
+
+  return "home";
+};
 
 const ATRIBUTOS = [
   "Forca",
@@ -224,7 +551,6 @@ const PERICIAS = [
   "Analise de Eter",
   "Atletismo",
   "Concentracao",
-  "Controle de Eter",
   "Enganar",
   "Expressao",
   "Furtividade",
@@ -280,9 +606,10 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     nome: "Ataque Poderoso",
     categoria: "Combate",
     temGraduacao: false,
-    custoPorGraduacao: 3,
+    custoPorGraduacao: 4,
     resumo: "-3 no ataque para +3 no dano.",
-    efeito: "Sofre -3 no ataque para receber +3 no dano.",
+    efeito:
+      "Sofre -3 no ataque para receber +3 no dano. Declarar antes da rolagem, 1 vez por turno.",
   },
   {
     id: "ataque-defensivo",
@@ -309,8 +636,9 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     categoria: "Combate",
     temGraduacao: true,
     custoPorGraduacao: 4,
-    resumo: "+1 no alcance critico por graduacao.",
-    efeito: "Aumenta alcance critico em +1 por graduacao.",
+    resumo: "+1 no alcance critico por graduacao (max 3 grads, ate 17-20).",
+    efeito:
+      "Aumenta alcance critico em +1 por graduacao. Limite de 3 graduacoes (alcance 17-20).",
   },
   {
     id: "acuidade",
@@ -327,7 +655,7 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     nome: "Iniciativa Aprimorada",
     categoria: "Combate",
     temGraduacao: false,
-    custoPorGraduacao: 3,
+    custoPorGraduacao: 5,
     resumo: "Compra duas cartas de iniciativa e escolhe uma.",
     efeito: "Compra duas cartas de iniciativa e escolhe uma.",
   },
@@ -348,8 +676,10 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     categoria: "Combate",
     temGraduacao: false,
     custoPorGraduacao: 2,
-    resumo: "A acao Mirar concede +3 no ataque.",
-    efeito: "A acao Mirar concede +3 no ataque.",
+    resumo:
+      "Usa acao de movimento com acao principal para Disparo com +3 sem se deslocar.",
+    efeito:
+      "Usa acao de movimento com acao principal para realizar Disparo com +3, sem qualquer deslocamento no turno. Declarar antes da rolagem.",
   },
   {
     id: "defesa-aprimorada",
@@ -357,8 +687,10 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     categoria: "Combate",
     temGraduacao: false,
     custoPorGraduacao: 3,
-    resumo: "A acao Defender concede +3 em Defesa.",
-    efeito: "A acao Defender concede +3 em Defesa.",
+    resumo:
+      "Usa acao de movimento com acao principal para +3 em Defesa sem atacar ou se deslocar.",
+    efeito:
+      "Usa acao de movimento com acao principal para +3 em Defesa ate o proximo turno, sem atacar ou se deslocar no turno.",
   },
   {
     id: "luta-no-chao",
@@ -394,8 +726,10 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     categoria: "Combate",
     temGraduacao: true,
     custoPorGraduacao: 2,
-    resumo: "+1 no dano com armas arremessadas por graduacao.",
-    efeito: "+1 dano com armas arremessadas por graduacao.",
+    resumo:
+      "+1 no ataque com armas arremessadas por graduacao; com 2+ grads ignora penalidades leves de alcance (max 3 grads).",
+    efeito:
+      "+1 no teste de ataque com armas arremessadas por graduacao. Com 2+ grads, ignora penalidades leves de alcance. Limite: 3 graduacoes.",
   },
   {
     id: "prender-arma",
@@ -411,20 +745,11 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     nome: "Redirecionar",
     categoria: "Combate",
     temGraduacao: false,
-    custoPorGraduacao: 4,
-    resumo: "Redireciona ataque que falhe por 5+ (1 vez por turno).",
-    efeito: "Redireciona ataque que falhe por 5 ou mais (1 vez por turno).",
-  },
-  {
-    id: "adaptado",
-    nome: "Adaptado",
-    categoria: "Pericia",
-    temGraduacao: false,
-    custoPorGraduacao: 3,
+    custoPorGraduacao: 6,
     resumo:
-      "Permite usar uma pericia com atributo diferente em casos justificados.",
+      "Quando inimigo falha ataque CaC por 5+, redireciona para outro alvo adjacente (1 vez por turno).",
     efeito:
-      "Permite usar uma pericia com atributo diferente em situacoes justificadas.",
+      "Quando inimigo falha ataque CaC por 5+, pode como reacao redirecionar para outro alvo adjacente. Realiza teste CaC contra Defesa do novo alvo. 1 vez por turno.",
   },
   {
     id: "maestria-em-pericia",
@@ -490,7 +815,7 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     nome: "Faz-Tudo",
     categoria: "Pericia",
     temGraduacao: false,
-    custoPorGraduacao: 3,
+    custoPorGraduacao: 2,
     resumo: "Usa pericias sem treinamento sem penalidade.",
     efeito: "Permite usar pericias sem treinamento sem sofrer penalidade.",
   },
@@ -509,7 +834,7 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     nome: "Idiomas",
     categoria: "Pericia",
     temGraduacao: true,
-    custoPorGraduacao: 2,
+    custoPorGraduacao: 1,
     resumo: "Cada graduacao concede um idioma adicional.",
     efeito: "Cada graduacao concede um idioma adicional.",
   },
@@ -533,45 +858,47 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
       "Permite interacao social com animais usando Persuasao ou Intuicao.",
   },
   {
-    id: "zombar",
-    nome: "Zombar",
-    categoria: "Pericia",
-    temGraduacao: false,
-    custoPorGraduacao: 2,
-    resumo: "Enganacao causa -2 em testes do alvo ate o fim do proximo turno.",
-    efeito:
-      "Permite causar -2 em testes de um alvo com Enganacao (nao acumula).",
-  },
-  {
     id: "tontear",
     nome: "Tontear",
     categoria: "Pericia",
     temGraduacao: false,
     custoPorGraduacao: 3,
     resumo:
-      "Intimidacao/Enganacao causa -2 em testes do alvo (1 vez por cena).",
+      "Presenca vs Vontade: sucesso causa -2 em testes do alvo ate 2 turnos (1 vez por cena).",
     efeito:
-      "Permite causar -2 em testes de um alvo com interacao social (1 vez por cena).",
+      "Teste de Presenca (Intimidacao ou Enganacao) vs Vontade: sucesso causa -2 nos testes do alvo ate o fim do proximo turno. Sucesso por 5+ estende por mais 1 turno. 1 vez por cena.",
+  },
+  {
+    id: "presenca-marcante",
+    nome: "Presenca Marcante",
+    categoria: "Pericia",
+    temGraduacao: false,
+    custoPorGraduacao: 2,
+    resumo:
+      "+2 em Persuasao ou Enganacao quando aparencia pode influenciar o alvo.",
+    efeito:
+      "+2 em Persuasao ou Enganacao em interacoes sociais onde a aparencia influencia o alvo. Nao se aplica a interacoes hostis ja estabelecidas.",
   },
   {
     id: "sorte",
-    nome: "Sorte",
+    nome: "Acaso",
     categoria: "Sorte",
     temGraduacao: false,
     custoPorGraduacao: 2,
-    resumo: "Recebe +1 Pedra de Eter no inicio de cada sessao.",
-    efeito: "+1 Pedra de Eter no inicio da sessao.",
+    resumo: "+1 Pedra de Eter Menor adicional no inicio de cada sessao.",
+    efeito:
+      "+1 Pedra de Eter Menor adicional no inicio de cada sessao. A pedra segue as regras normais de uso e nao se acumula entre sessoes.",
   },
   {
     id: "esforco-supremo",
     nome: "Esforco Supremo",
     categoria: "Sorte",
     temGraduacao: false,
-    custoPorGraduacao: 4,
+    custoPorGraduacao: 5,
     resumo:
-      "Gasta 1 Pedra de Eter para receber +10 em um teste (1 vez por cena).",
+      "Gasta 1 Pedra de Eter para +5/+8/+10 em um teste conforme tipo (1 vez por cena).",
     efeito:
-      "Gasta 1 Pedra de Eter para receber +10 em um teste (1 vez por cena).",
+      "Gasta 1 Pedra de Eter para bonus em um teste: Menor +5, Maior +8, Rara +10. Declarar apos rolagem, antes do resultado. 1 vez por cena.",
   },
   {
     id: "tomar-a-iniciativa",
@@ -583,22 +910,37 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     efeito: "Pode trocar carta de iniciativa abaixo de 5.",
   },
   {
-    id: "sorte-de-principiante",
-    nome: "Sorte de Principiante",
-    categoria: "Sorte",
-    temGraduacao: false,
-    custoPorGraduacao: 3,
-    resumo: "Gasta 1 Pedra de Eter para +3 em teste de pericia.",
-    efeito: "Gasta 1 Pedra de Eter para receber +3 em um teste de pericia.",
-  },
-  {
     id: "inspirar",
     nome: "Inspirar",
     categoria: "Sorte",
     temGraduacao: false,
     custoPorGraduacao: 3,
-    resumo: "Gasta 1 Pedra de Eter para conceder +2 em teste de um aliado.",
-    efeito: "Gasta 1 Pedra de Eter para conceder +2 em um teste de um aliado.",
+    resumo:
+      "Gasta 1 Pedra de Eter para conceder +2 em teste de um aliado antes da rolagem.",
+    efeito:
+      "Gasta 1 Pedra de Eter para conceder +2 em um teste de um aliado antes da rolagem. 1 vez por turno.",
+  },
+  {
+    id: "fluxo-favoravel",
+    nome: "Fluxo Favoravel",
+    categoria: "Sorte",
+    temGraduacao: false,
+    custoPorGraduacao: 3,
+    resumo:
+      "Pedras de Eter com bonus numerico concedem valor adicional: Menor +1, Maior +2, Rara +2.",
+    efeito:
+      "Ao usar Pedra de Eter com bonus numerico direto, recebe adicional: Menor +1, Maior +2, Rara +2. Aplica-se 1 vez por uso.",
+  },
+  {
+    id: "dupla-oportunidade",
+    nome: "Dupla Oportunidade",
+    categoria: "Sorte",
+    temGraduacao: false,
+    custoPorGraduacao: 4,
+    resumo:
+      "Uma vez por cena, aplica dois efeitos de uma Pedra Menor na mesma acao.",
+    efeito:
+      "Uma vez por cena, ao usar Pedra de Eter Menor, pode aplicar dois efeitos distintos dela na mesma acao ou momento. Nao pode repetir o mesmo efeito.",
   },
   {
     id: "beneficio",
@@ -615,8 +957,9 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     categoria: "Geral",
     temGraduacao: false,
     custoPorGraduacao: 2,
-    resumo: "+3 em testes para lembrar informacoes.",
-    efeito: "+3 em testes para lembrar informacoes.",
+    resumo: "+2 em testes para lembrar, reconhecer ou reconstruir informacoes.",
+    efeito:
+      "+2 em testes para lembrar, reconhecer ou reconstruir informacoes. Sucesso pode fornecer detalhes adicionais.",
   },
   {
     id: "destemido",
@@ -624,9 +967,9 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     categoria: "Geral",
     temGraduacao: false,
     custoPorGraduacao: 3,
-    resumo: "+3 contra medo e ignora efeitos secundarios leves ao resistir.",
+    resumo: "+2 contra medo, intimidacao e pressao psicologica.",
     efeito:
-      "+3 em testes contra medo e ignora efeitos secundarios leves ao resistir.",
+      "+2 em testes contra medo, intimidacao ou pressao psicologica. Sucesso por 5+ ignora efeitos secundarios leves associados.",
   },
   {
     id: "duro-de-matar",
@@ -634,8 +977,10 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     categoria: "Geral",
     temGraduacao: false,
     custoPorGraduacao: 4,
-    resumo: "Estabiliza automaticamente ao atingir 0 Vida.",
-    efeito: "Estabiliza automaticamente ao chegar a 0 Vida.",
+    resumo:
+      "Ao chegar a 0 PV, permanece consciente ate o fim do proximo turno (1 vez por cena).",
+    efeito:
+      "Ao atingir 0 PV, permanece consciente e funcional ate o fim do proximo turno. Fica inconsciente se nao estabilizado. Nao evita morte imediata. 1 vez por cena.",
   },
   {
     id: "interpor-se",
@@ -657,30 +1002,65 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
   },
   {
     id: "trabalho-em-equipe",
-    nome: "Trabalho em Equipe",
+    nome: "Sinergia",
     categoria: "Geral",
     temGraduacao: false,
     custoPorGraduacao: 2,
-    resumo: "Concede +2 ao ajudar em testes de equipe.",
-    efeito: "Concede +2 ao ajudar em testes de equipe.",
+    resumo: "Concede +2 ao aliado ao ajudar em testes de equipe.",
+    efeito:
+      "Ao realizar acao de ajuda em teste de equipe, concede +2 ao aliado em vez do bonus padrao.",
   },
   {
     id: "tolerancia-maior",
-    nome: "Tolerancia Maior",
+    nome: "Resistencia Ambiental",
     categoria: "Geral",
     temGraduacao: false,
-    custoPorGraduacao: 2,
-    resumo: "+2 contra condicoes ambientais adversas.",
-    efeito: "+2 em testes contra condicoes ambientais adversas.",
+    custoPorGraduacao: 1,
+    resumo:
+      "+2 em testes contra condicoes ambientais adversas (frio, calor, fadiga).",
+    efeito:
+      "+2 em testes para resistir a condicoes ambientais adversas como frio, calor, fadiga ou ambientes hostis.",
   },
   {
     id: "recuperacao-rapida",
     nome: "Recuperacao Rapida",
     categoria: "Geral",
     temGraduacao: false,
+    custoPorGraduacao: 2,
+    resumo: "+1 adicional por fonte ao receber cura.",
+    efeito:
+      "+1 adicional por fonte ao receber cura. Nao afeta recuperacao passiva continua.",
+  },
+  {
+    id: "presenca-impositiva",
+    nome: "Presenca Impositiva",
+    categoria: "Geral",
+    temGraduacao: false,
     custoPorGraduacao: 3,
-    resumo: "Recebe +2 adicional sempre que for curado.",
-    efeito: "Recebe +2 adicional sempre que for curado.",
+    resumo: "Teste de Presenca concede +2 social contra alvos da cena.",
+    efeito:
+      "Ao iniciar interacao social, teste de Presenca bem-sucedido concede +2 em testes sociais contra esses alvos durante a cena.",
+  },
+  {
+    id: "adaptacao-rapida",
+    nome: "Adaptacao Rapida",
+    categoria: "Geral",
+    temGraduacao: false,
+    custoPorGraduacao: 3,
+    resumo:
+      "Uma vez por cena, ao falhar teste (exceto ataque), pode refaze-lo com -2.",
+    efeito:
+      "Uma vez por cena, ao falhar em um teste (exceto ataque), pode refaze-lo com -2. O novo resultado deve ser aceito.",
+  },
+  {
+    id: "foco-inabalavel",
+    nome: "Foco Inabalavel",
+    categoria: "Geral",
+    temGraduacao: false,
+    custoPorGraduacao: 4,
+    resumo: "+2 em testes para manter concentracao e resistir interrupcoes.",
+    efeito:
+      "+2 em testes para manter concentracao, resistir distracoes e sustentar acoes continuas sob pressao.",
   },
   {
     id: "reserva-de-eter",
@@ -688,8 +1068,8 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     categoria: "Eter",
     temGraduacao: true,
     custoPorGraduacao: 3,
-    resumo: "+5 no Eter maximo por graduacao.",
-    efeito: "+5 Eter maximo por graduacao.",
+    resumo: "+5 no Eter maximo por graduacao (max 3 grads).",
+    efeito: "+5 Eter maximo por graduacao. Limite de 3 graduacoes.",
   },
   {
     id: "tecnica-eficiente",
@@ -702,14 +1082,14 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
   },
   {
     id: "controle-eter",
-    nome: "Controle Eter",
+    nome: "Controle de Eter",
     categoria: "Eter",
     temGraduacao: false,
     custoPorGraduacao: 3,
     resumo:
-      "+2 em testes de Tecnica para sustentar, manter ou estabilizar tecnicas.",
+      "+2 em testes de Tecnica para controlar Eter, sustentar tecnicas e resistir interferencias.",
     efeito:
-      "+2 em testes de Tecnica para sustentar, manter ou estabilizar tecnicas.",
+      "+2 em testes de Tecnica relacionados ao controle de Eter (sustentar, evitar falhas, resistir interferencias).",
   },
   {
     id: "pressao-de-eter",
@@ -739,6 +1119,28 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     resumo: "Ao chegar a 0 PE, recupera 3 PE automaticamente (1 vez por cena).",
     efeito: "Ao chegar a 0 PE, recupera 3 PE automaticamente (1 vez por cena).",
   },
+  {
+    id: "descarga-controlada",
+    nome: "Descarga Controlada",
+    categoria: "Eter",
+    temGraduacao: false,
+    custoPorGraduacao: 3,
+    resumo:
+      "Ao usar tecnica ofensiva, pode gastar +3 PE para +2 no dano ou efeito (1 vez por turno).",
+    efeito:
+      "Ao usar tecnica ofensiva, pode aumentar custo em +3 PE para +2 no dano ou efeito principal. Declarar antes da execucao. 1 vez por turno.",
+  },
+  {
+    id: "estabilidade-de-fluxo",
+    nome: "Estabilidade de Fluxo",
+    categoria: "Eter",
+    temGraduacao: false,
+    custoPorGraduacao: 3,
+    resumo:
+      "Uma vez por cena, ao falhar teste de Tecnica, pode refaze-lo com -2.",
+    efeito:
+      "Uma vez por cena, ao falhar teste de Tecnica (uso de Eter), pode refaze-lo com -2. Deve aceitar o novo resultado.",
+  },
 ];
 
 const VANTAGEM_BY_ID = new Map(
@@ -747,14 +1149,16 @@ const VANTAGEM_BY_ID = new Map(
 
 const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
   {
-    id: "ataque-comprometido",
-    nome: "Ataque Comprometido",
+    id: "precisao-reduzida",
+    nome: "Precisao Reduzida",
     categoria: "Combate",
     nivel: "Moderada",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "Falha grave em ataque gera penalidade defensiva.",
-    efeito: "Errar ataque por 5+ causa -1 em Defesa ate o proximo turno.",
+    resumo:
+      "Ao falhar ataque por 2 ou menos, sofre -2 no proximo ataque ate o fim do turno.",
+    efeito:
+      "Sempre que falhar em um teste de ataque por 2 ou menos, recebe -2 no proximo teste de ataque ate o fim do turno.",
   },
   {
     id: "defesa-instavel",
@@ -763,9 +1167,10 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Moderada",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "Sofrer dano relevante reduz Defesa temporariamente.",
+    resumo:
+      "Ao sofrer dano >= 8 ou critico, recebe -2 em Defesa; nova ativacao agrava para -3.",
     efeito:
-      "Ao sofrer dano >= 8 ou critico, recebe -1 em Defesa ate o proximo turno.",
+      "Ao sofrer dano igual ou superior a 8 ou acerto critico, recebe -2 em Defesa ate o proximo turno. Nova ativacao sob efeito agrava para -3.",
   },
   {
     id: "postura-exposta",
@@ -774,19 +1179,10 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Severa",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
-    resumo: "Perde bonus de Defesa sob pressao.",
+    resumo:
+      "A partir do 2o ataque recebido no turno, sofre -2 em Defesa; com 3+ ataques, -4.",
     efeito:
-      "Sob pressao, perde bonus ativos de Defesa (ate -3) ate o proximo turno.",
-  },
-  {
-    id: "precisao-reduzida",
-    nome: "Precisao Reduzida",
-    categoria: "Combate",
-    nivel: "Moderada",
-    temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "-1 em testes de ataque.",
-    efeito: "Sofre -1 em todos os testes de ataque.",
+      "Ao ser alvo de 2 ou mais ataques no mesmo turno, sofre -2 em Defesa contra os adicionais. Se for alvo de 3 ou mais, a penalidade passa a -4.",
   },
   {
     id: "reacao-lenta",
@@ -795,29 +1191,100 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Leve",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
-    resumo: "-2 em testes de reacao.",
-    efeito: "Sofre -2 em testes de reacao, esquiva e respostas defensivas.",
-  },
-  {
-    id: "colapso-sensivel",
-    nome: "Colapso Sensivel",
-    categoria: "Eter",
-    nivel: "Severa",
-    temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
-    resumo: "Ao zerar PE, fica Atordoado.",
-    efeito: "Ao chegar a 0 PE, fica Atordoado por 1 turno (1 vez por cena).",
-  },
-  {
-    id: "corpo-incompativel",
-    nome: "Corpo Incompativel",
-    categoria: "Eter",
-    nivel: "Severa",
-    temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
-    resumo: "Penalidade ao usar tecnicas intensas.",
+    resumo:
+      "-2 em testes reativos (esquivas, contra-ataques e respostas defensivas).",
     efeito:
-      "Ao usar tecnica com custo >= 4 PE, sofre -1 em Tecnica ate o proximo turno.",
+      "Sofre -2 em testes de reacao, como esquivas, contra-ataques e respostas defensivas imediatas.",
+  },
+  {
+    id: "ataque-comprometido",
+    nome: "Ataque Comprometido",
+    categoria: "Combate",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Errar ataque por 5+ causa -2 em Defesa ate o proximo turno.",
+    efeito:
+      "Sempre que errar um ataque por 5 ou mais, sofre -2 em Defesa ate o inicio do proximo turno.",
+  },
+  {
+    id: "comprometimento-excessivo",
+    nome: "Comprometimento Excessivo",
+    categoria: "Combate",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo:
+      "Apos atacar, nao pode se deslocar e, adjacente a inimigo, sofre -1 em Defesa.",
+    efeito:
+      "Sempre que realizar um ataque no turno, nao pode se deslocar apos o ataque. Se terminar adjacente a inimigo, sofre -1 em Defesa ate o proximo turno.",
+  },
+  {
+    id: "foco-limitado",
+    nome: "Foco Limitado",
+    categoria: "Combate",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Ao trocar de alvo ainda ao alcance, sofre -2 no ataque.",
+    efeito:
+      "Sempre que atacar um alvo diferente do anterior enquanto o anterior ainda estiver ao alcance, sofre -2 no teste de ataque.",
+  },
+  {
+    id: "tempo-de-recuperacao",
+    nome: "Tempo de Recuperacao",
+    categoria: "Combate",
+    nivel: "Severa",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
+    resumo:
+      "No proximo turno, primeiro ataque sofre -2; se falhar, nao pode atacar novamente no turno.",
+    efeito:
+      "Sempre que atacar, no inicio do proximo turno sofre -2 no primeiro ataque. Se esse ataque falhar, nao pode realizar outros ataques nesse turno.",
+  },
+  {
+    id: "abertura-previsivel",
+    nome: "Abertura Previsivel",
+    categoria: "Combate",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo:
+      "Repetir mesmo tipo de ataque em turnos consecutivos concede +1 Defesa aos inimigos.",
+    efeito:
+      "Ao repetir o mesmo tipo de ataque em turnos consecutivos, inimigos recebem +1 em testes de Defesa contra seus ataques ate o fim do turno.",
+  },
+  {
+    id: "dificuldade-em-finalizar",
+    nome: "Dificuldade em Finalizar",
+    categoria: "Combate",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Contra alvos com metade ou menos dos PV, sofre -2 no ataque.",
+    efeito:
+      "Sempre que atacar alvo com metade ou menos dos PV maximos, sofre -2 no teste de ataque.",
+  },
+  {
+    id: "resposta-lenta-a-erros",
+    nome: "Resposta Lenta a Erros",
+    categoria: "Combate",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Ao falhar ataque, sofre -1 no proximo ataque ate o fim do turno.",
+    efeito:
+      "Sempre que falhar em um teste de ataque, sofre -1 no proximo teste de ataque ate o final do turno.",
+  },
+  {
+    id: "reserva-reduzida",
+    nome: "Reserva Reduzida",
+    categoria: "Eter",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Eter maximo reduzido em -5 PE.",
+    efeito: "Seu Eter maximo e reduzido em -5 PE.",
   },
   {
     id: "fluxo-instavel",
@@ -826,29 +1293,9 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Moderada",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "Pode consumir PE adicional ao usar tecnicas.",
+    resumo: "Tecnicas de custo >= 4 PE perdem +1 PE; em sequencia, +2 PE.",
     efeito:
-      "Ao usar tecnica de custo >= 3 PE, pode perder +1 PE adicional em falha.",
-  },
-  {
-    id: "instabilidade-de-eter",
-    nome: "Instabilidade de Eter",
-    categoria: "Eter",
-    nivel: "Moderada",
-    temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "-1 em testes de Tecnica sob pressao.",
-    efeito: "Sofre -1 em testes de Tecnica em combate e situacoes de estresse.",
-  },
-  {
-    id: "reserva-reduzida",
-    nome: "Reserva Reduzida",
-    categoria: "Eter",
-    nivel: "Leve",
-    temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
-    resumo: "-5 PE maximo.",
-    efeito: "Reduce o Eter maximo em 5 pontos.",
+      "Ao usar tecnica com custo >= 4 PE, perde +1 PE adicional. Se usar outra tecnica no mesmo turno ou no seguinte, a perda adicional passa a +2 PE.",
   },
   {
     id: "sobrecarga",
@@ -857,9 +1304,33 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Moderada",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "Tecnicas fortes podem impedir acoes.",
+    resumo:
+      "Tecnica de custo >= 5 PE causa -2 geral no proximo turno; recorrencia bloqueia movimento.",
     efeito:
-      "Ao usar tecnica de custo >= 5 PE, falha pode remover acao no proximo turno.",
+      "Ao usar tecnica com custo >= 5 PE, no proximo turno sofre -2 em todos os testes. Se repetir sob efeito, nao pode realizar acao de movimento.",
+  },
+  {
+    id: "colapso-sensivel",
+    nome: "Colapso Sensivel",
+    categoria: "Eter",
+    nivel: "Severa",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
+    resumo:
+      "Ao chegar a 0 PE, fica incapacitado por 1 turno e depois sofre -1 em Tecnica.",
+    efeito:
+      "Quando o Eter atinge 0, fica incapacitado por 1 turno completo. Depois, sofre -1 em testes de Tecnica ate o fim do turno seguinte (1 vez por cena).",
+  },
+  {
+    id: "corpo-incompativel",
+    nome: "Corpo Incompativel",
+    categoria: "Eter",
+    nivel: "Severa",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
+    resumo: "Apos usar tecnica, nao pode usar tecnica no turno seguinte.",
+    efeito:
+      "Sempre que utilizar uma tecnica que consuma Eter, nao pode utilizar outra tecnica no proximo turno.",
   },
   {
     id: "arrogante",
@@ -872,45 +1343,16 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     efeito: "Ao receber ajuda em testes, sofre -2 no resultado final.",
   },
   {
-    id: "codigo-de-honra",
-    nome: "Codigo de Honra",
-    categoria: "Comportamental",
-    nivel: "Moderada",
-    temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "Nao pode violar principios sem penalidade.",
-    efeito:
-      "Violar o codigo causa -2 em testes por 1 cena e bloqueia Vantagens de Sorte.",
-  },
-  {
-    id: "dependente-de-aprovacao",
-    nome: "Dependente de Aprovacao",
-    categoria: "Comportamental",
-    nivel: "Leve",
-    temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
-    resumo: "-1 geral quando isolado.",
-    efeito: "Quando isolado ou sem apoio, sofre -1 em todos os testes.",
-  },
-  {
-    id: "excesso-de-confianca",
-    nome: "Excesso de Confianca",
-    categoria: "Comportamental",
-    nivel: "Moderada",
-    temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "Penalidade em avaliacao de risco.",
-    efeito: "Sofre -2 em testes de risco, estrategia ou cautela.",
-  },
-  {
     id: "impaciente",
     nome: "Impaciente",
     categoria: "Comportamental",
     nivel: "Leve",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
-    resumo: "Penalidade em acoes que exigem espera.",
-    efeito: "Sofre -2 em testes que exigem preparacao ou espera.",
+    resumo:
+      "-2 em acoes que exigem preparacao/espera; pode agir antes para ignorar penalidade.",
+    efeito:
+      "Em acoes com preparacao ou coordenacao, sofre -2. Pode agir imediatamente para ignorar a penalidade, resolvendo antes dos demais e sem beneficios de coordenacao posterior.",
   },
   {
     id: "ingenuo",
@@ -919,18 +1361,9 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Leve",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
-    resumo: "Vulneravel a enganacao.",
-    efeito: "Sofre -2 em testes para detectar mentira ou manipulacao.",
-  },
-  {
-    id: "provocador",
-    nome: "Provocador",
-    categoria: "Comportamental",
-    nivel: "Leve",
-    temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
-    resumo: "Atrai hostilidade e dificulta evitar conflitos.",
-    efeito: "Sofre -2 em testes para evitar conflito e desescalar situacoes.",
+    resumo: "-2 para detectar mentira, manipulacao ou intencoes ocultas.",
+    efeito:
+      "Sofre -2 em testes para detectar mentira, manipulacao ou intencoes ocultas em interacoes sociais diretas.",
   },
   {
     id: "teimoso",
@@ -939,8 +1372,10 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Leve",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
-    resumo: "Dificuldade em mudar decisoes.",
-    efeito: "Sofre -2 em testes para reconsiderar ou adaptar decisoes.",
+    resumo:
+      "Ao mudar decisao relevante em andamento, sofre -2 na nova abordagem.",
+    efeito:
+      "Sempre que tentar mudar uma decisao relevante ja iniciada, sofre -2 em testes relacionados a nova abordagem ate o fim do turno.",
   },
   {
     id: "temperamental",
@@ -949,9 +1384,21 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Moderada",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "Perde controle sob pressao.",
+    resumo: "Sob pressao emocional, sofre -1 geral e nao pode ajudar.",
     efeito:
-      "Sob pressao, pode sofrer -1 geral ou acao impulsiva em falha critica.",
+      "Ao sofrer dano significativo, falhar teste relevante ou ser provocado, sofre -1 em testes ate o fim do proximo turno e nao pode usar acao de ajuda.",
+  },
+  {
+    id: "codigo-de-honra",
+    nome: "Codigo de Honra",
+    categoria: "Comportamental",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo:
+      "Violar o codigo gera -2 na acao; quebrar o codigo gera -1 geral ate o fim da cena.",
+    efeito:
+      "Ao violar diretamente o codigo, sofre -2 em testes ligados a acao. Se quebrar o codigo, sofre -1 em testes ate o fim da cena.",
   },
   {
     id: "timido",
@@ -960,8 +1407,78 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Leve",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
-    resumo: "Penalidade em interacoes sociais ativas.",
-    efeito: "Sofre -2 em Persuasao, Lideranca e negociacao ativa.",
+    resumo: "-2 no primeiro teste ao iniciar interacao social relevante.",
+    efeito:
+      "Sempre que iniciar interacao social relevante, sofre -2 no primeiro teste social realizado.",
+  },
+  {
+    id: "excesso-de-confianca",
+    nome: "Excesso de Confianca",
+    categoria: "Comportamental",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo:
+      "-2 em avaliacao de risco/cautela e -1 ao escolher opcao segura quando havia risco claro.",
+    efeito:
+      "Sofre -2 em testes de avaliacao de risco, planejamento ou cautela. Ao escolher abordagem segura em vez de opcao claramente arriscada, sofre -1 em testes da acao ate o fim do turno.",
+  },
+  {
+    id: "provocador",
+    nome: "Provocador",
+    categoria: "Comportamental",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo:
+      "-2 para evitar/reduzir/encerrar conflitos sociais; pode virar alvo prioritario em hostilidade.",
+    efeito:
+      "Sofre -2 em testes para evitar, reduzir ou encerrar conflitos sociais. Em hostilidade, pode ser considerado alvo prioritario.",
+  },
+  {
+    id: "dependente-de-aprovacao",
+    nome: "Dependente de Aprovacao",
+    categoria: "Comportamental",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo: "Sem apoio direto de aliado, sofre -2 no primeiro teste da acao.",
+    efeito:
+      "Sempre que iniciar acao sem apoio direto de aliado, sofre -2 no primeiro teste realizado. Apoio previo ignora a penalidade.",
+  },
+  {
+    id: "marca-registrada",
+    nome: "Marca Registrada",
+    categoria: "Fisica",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo:
+      "-2 em disfarce, anonimato e infiltracao quando reconhecimento for relevante.",
+    efeito:
+      "Sempre que tentar ocultar identidade ou agir de forma discreta, sofre -2 em testes de disfarce, anonimato ou infiltracao.",
+  },
+  {
+    id: "expressao-transparente",
+    nome: "Expressao Transparente",
+    categoria: "Fisica",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "-2 em Enganacao para mentir/ocultar emocoes em interacao direta.",
+    efeito:
+      "Sempre que tentar mentir, ocultar emocoes ou manipular informacoes, sofre -2 em testes de Enganacao.",
+  },
+  {
+    id: "presenca-intimidadora",
+    nome: "Presenca Intimidadora",
+    categoria: "Fisica",
+    nivel: "Leve",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
+    resumo: "-2 em Persuasao e interacoes positivas no primeiro contato.",
+    efeito:
+      "Ao iniciar interacao social com quem nao o conhece, sofre -2 em testes de Persuasao e outras interacoes sociais positivas.",
   },
   {
     id: "amputacao-braco",
@@ -990,40 +1507,10 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Severa",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
-    resumo: "Severas penalidades visuais e combate a distancia.",
+    resumo:
+      "-5 em testes que dependam de visao e em ataques a distancia realizados por voce.",
     efeito:
-      "Sofre -5 em percepcao visual e inimigos recebem +2 em ataques a distancia.",
-  },
-  {
-    id: "desnutrido",
-    nome: "Desnutrido",
-    categoria: "Fisica",
-    nivel: "Moderada",
-    temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "-1 em testes fisicos.",
-    efeito:
-      "Sofre -1 em testes fisicos e pode sofrer penalidade extra apos dano.",
-  },
-  {
-    id: "expressao-transparente",
-    nome: "Expressao Transparente",
-    categoria: "Fisica",
-    nivel: "Leve",
-    temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
-    resumo: "-2 em Enganacao.",
-    efeito: "Sofre -2 em Enganacao e ocultacao emocional.",
-  },
-  {
-    id: "feio",
-    nome: "Feio",
-    categoria: "Fisica",
-    nivel: "Leve",
-    temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
-    resumo: "-2 em Persuasao.",
-    efeito: "Sofre -2 em testes de Persuasao.",
+      "Sofre -5 em testes que dependam diretamente de visao. Ataques a distancia realizados por voce sofrem -5.",
   },
   {
     id: "fragil",
@@ -1032,58 +1519,56 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Moderada",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "Sofre +1 de dano.",
-    efeito: "Sofre +1 de dano de qualquer fonte e -1 em resistencias fisicas.",
+    resumo: "Recebe +1 de dano adicional por fonte de dano direto.",
+    efeito:
+      "Sempre que sofrer dano direto, recebe +1 de dano adicional (uma vez por fonte).",
   },
   {
-    id: "movimento-pesado",
-    nome: "Movimento Pesado",
-    categoria: "Fisica",
-    nivel: "Leve",
-    temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
-    resumo: "-2 em furtividade por movimento.",
-    efeito: "Sofre -2 em testes de Furtividade baseados em deslocamento.",
-  },
-  {
-    id: "obeso",
-    nome: "Obeso",
-    categoria: "Fisica",
-    nivel: "Leve",
-    temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
-    resumo: "-2 Agilidade.",
-    efeito: "Sofre -2 em testes de Agilidade e -1 em Defesa por esquiva.",
-  },
-  {
-    id: "presenca-intimidante",
-    nome: "Presenca Intimidante",
+    id: "sobrecarga-corporal",
+    nome: "Sobrecarga Corporal",
     categoria: "Fisica",
     nivel: "Moderada",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "+Intimidacao / -Persuasao.",
-    efeito: "Recebe +1 em Intimidacao e sofre -2 em Persuasao.",
+    resumo:
+      "Deslocamento reduzido e -1 em Defesa contra ataques que dependam de esquiva.",
+    efeito:
+      "Seu deslocamento e reduzido e voce sofre -1 em Defesa contra ataques que dependam de esquiva.",
   },
   {
-    id: "presenca-marcante",
-    nome: "Presenca Marcante",
+    id: "desnutrido",
+    nome: "Desnutrido",
+    categoria: "Fisica",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo:
+      "-1 em testes de Forca e Constituicao; apos dano direto, -1 em testes fisicos ate o proximo turno.",
+    efeito:
+      "Sofre -1 em testes baseados em Forca e Constituicao. Apos sofrer dano direto, sofre -1 em testes fisicos ate o proximo turno.",
+  },
+  {
+    id: "aparencia-desagradavel",
+    nome: "Aparencia Desagradavel",
     categoria: "Fisica",
     nivel: "Leve",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
-    resumo: "-2 em disfarce e anonimato.",
-    efeito: "Sofre -2 em testes de disfarce, anonimato e infiltracao social.",
+    resumo: "-2 em Persuasao ao iniciar interacao com quem nao o conhece.",
+    efeito:
+      "Sempre que iniciar interacao social com alguem que nao o conheca, sofre -2 em testes de Persuasao.",
   },
   {
     id: "ansiedade",
     nome: "Ansiedade",
     categoria: "Psicologica",
-    nivel: "Leve",
+    nivel: "Moderada",
     temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
-    resumo: "Pode sofrer penalidade antes de testes importantes.",
-    efeito: "Antes de testes importantes, falha em Vontade causa -1 no teste.",
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo:
+      "Sob pressao, -2 no primeiro teste da acao; se falhar, -1 ate o fim do turno.",
+    efeito:
+      "Ao iniciar acao relevante sob pressao, sofre -2 no primeiro teste. Se falhar, sofre -1 em testes ate o final do turno.",
   },
   {
     id: "autodestrutivo",
@@ -1092,9 +1577,10 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Severa",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
-    resumo: "+ataque / -Defesa obrigatorio.",
+    resumo:
+      "Ao sofrer hostilidade, -2 em Defesa e em acoes defensivas/recuo; ao agir ofensivamente contra a fonte, ignora penalidade de teste.",
     efeito:
-      "Sob gatilho, recebe +1 ataque e sofre -2 Defesa ate o proximo turno.",
+      "Ao sofrer dano ou acao hostil direta, sofre -2 em Defesa ate o proximo turno e -2 em testes de acao defensiva/recuo nesse periodo. Ao agir ofensivamente contra a fonte do gatilho, ignora a penalidade de teste dessa desvantagem ate o fim do turno.",
   },
   {
     id: "culpa",
@@ -1103,9 +1589,10 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Moderada",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "Penalidade apos causar dano significativo.",
+    resumo:
+      "Ao causar dano, -2 em ataques ate o proximo turno; ao incapacitar, -2 em testes ate o fim do turno seguinte.",
     efeito:
-      "Apos causar dano significativo, sofre -1 em todos os testes no proximo turno.",
+      "Sempre que causar dano a outro personagem, sofre -2 em testes de ataque ate o inicio do proximo turno. Se incapacitar alvo, sofre -2 em testes ate o fim do turno seguinte.",
   },
   {
     id: "dependencia-emocional",
@@ -1114,20 +1601,9 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Leve",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Leve,
-    resumo: "-1 geral quando isolado.",
+    resumo: "Sob pressao sem acesso ao vinculo, -2 no primeiro teste da acao.",
     efeito:
-      "Quando sem vinculo emocional proximo, sofre -1 em todos os testes.",
-  },
-  {
-    id: "depressao",
-    nome: "Depressao",
-    categoria: "Psicologica",
-    nivel: "Moderada",
-    temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "Penalidade em rodadas com iniciativa baixa.",
-    efeito:
-      "Com iniciativa baixa, sofre -1 em testes ate o inicio do proximo turno.",
+      "Sob pressao sem acesso direto ao vinculo, sofre -2 no primeiro teste ao iniciar uma acao. Apoio direto ignora a penalidade.",
   },
   {
     id: "fobia",
@@ -1136,9 +1612,10 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Moderada",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "-2 geral sob gatilho + risco de fuga.",
+    resumo:
+      "Sob exposicao ao gatilho, sofre -2 em testes e -1 adicional ao se aproximar voluntariamente.",
     efeito:
-      "Sob gatilho de fobia, sofre -2 geral e pode ser forcado a se afastar.",
+      "Quando exposto diretamente ao objeto da fobia, sofre -2 em testes. Ao se aproximar voluntariamente da fonte, sofre -1 adicional ate o final do turno.",
   },
   {
     id: "instabilidade-emocional",
@@ -1147,9 +1624,10 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Moderada",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "Penalidades sob pressao.",
+    resumo:
+      "Ao sofrer dano ou falhar teste, sofre -1 geral; nova ativacao agrava para -2.",
     efeito:
-      "Sob pressao, pode sofrer -1 geral por 1 turno (ou -2 em falha critica).",
+      "Sempre que sofrer dano ou falhar em teste, sofre -1 em todos os testes ate o inicio do proximo turno. Nova ativacao sob efeito agrava para -2.",
   },
   {
     id: "obsessivo",
@@ -1158,9 +1636,10 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Moderada",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "Penalidade fora do foco.",
+    resumo:
+      "Com foco relevante em cena, sofre -2 fora dele e recebe +1 quando agir alinhado ao foco.",
     efeito:
-      "Sofre -2 em testes que nao estejam relacionados ao foco da obsessao.",
+      "Quando o foco de obsessao estiver presente ou relacionado a cena, sofre -2 em testes fora dele. Ao agir alinhado ao foco, recebe +1 em testes da acao.",
   },
   {
     id: "paranoico",
@@ -1169,9 +1648,10 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Moderada",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "Penalidade social / resistencia a engano.",
+    resumo:
+      "-2 em testes sociais de confianca, cooperacao e negociacao, e para aceitar ajuda sem evidencia.",
     efeito:
-      "Sofre -2 em cooperacao social, mas recebe +2 contra blefes e emboscadas.",
+      "Sofre -2 em testes sociais que envolvam confianca, cooperacao ou negociacao e -2 para aceitar ajuda/informacoes sem evidencia clara.",
   },
   {
     id: "trauma",
@@ -1180,8 +1660,22 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Severa",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
-    resumo: "Pode perder acao ou controle.",
-    efeito: "Sob gatilho de trauma, pode ficar Atordoado ou Desorientado.",
+    resumo:
+      "Sob gatilho, -2 em testes e nao pode executar acoes de concentracao/preparo ate o fim do proximo turno; depois -1.",
+    efeito:
+      "Ao ser exposto ao gatilho de trauma, sofre -2 em testes e nao pode realizar acoes que exijam concentracao/preparo ate o fim do proximo turno. Depois sofre -1 em testes ate o fim do turno seguinte (max 1 vez por cena).",
+  },
+  {
+    id: "inercia-emocional",
+    nome: "Inercia Emocional",
+    categoria: "Psicologica",
+    nivel: "Severa",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
+    resumo:
+      "Sob pressao, -1 em testes; em iniciativa desfavoravel, -2. Falha gera -1 no proximo teste do turno.",
+    efeito:
+      "Ao iniciar turno em situacao de pressao, sofre -1 em testes ate o proximo turno. Em iniciativa desfavoravel, a penalidade sobe para -2. Se falhar em teste nesse periodo, sofre -1 adicional no proximo teste do mesmo turno.",
   },
   {
     id: "dependencia-fisica",
@@ -1190,19 +1684,10 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Moderada",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "Penalidade crescente sem recurso.",
-    efeito: "Sem o fator de dependencia, sofre -1 geral cumulativo ate -3.",
-  },
-  {
-    id: "exaustao-progressiva",
-    nome: "Exaustao Progressiva",
-    categoria: "Condicao",
-    nivel: "Moderada",
-    temGraduacao: false,
-    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "Penalidade cumulativa ao longo do combate.",
+    resumo:
+      "Sem fator de dependencia, -1 geral; no turno seguinte, -2 geral e -2 em Tecnica.",
     efeito:
-      "A cada 2 turnos intensos, sofre -1 cumulativo em testes fisicos e de Tecnica (max -3).",
+      "Sem acesso ao fator de dependencia, sofre -1 em todos os testes. Se continuar sem acesso ate o inicio do proximo turno, sofre -2 em testes e -2 em testes de Tecnica.",
   },
   {
     id: "sensibilidade",
@@ -1211,9 +1696,46 @@ const DESVANTAGENS_CATALOGO: DisadvantageDefinition[] = [
     nivel: "Moderada",
     temGraduacao: false,
     ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
-    resumo: "Penalidade sob estimulo especifico.",
+    resumo:
+      "Sob estimulo definido, sofre -2 em testes; exposicao intensa adiciona -2 em acoes de concentracao/precisao.",
     efeito:
-      "Sob exposicao ao estimulo, sofre -2 em testes afetados e pode sofrer -1 geral.",
+      "Ao ficar exposto ao estimulo definido, sofre -2 em testes. Se a exposicao for intensa/continua, sofre -2 adicionais em acoes que exijam concentracao ou precisao.",
+  },
+  {
+    id: "fraqueza",
+    nome: "Fraqueza",
+    categoria: "Condicao",
+    nivel: "Severa",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Severa,
+    resumo:
+      "Sob exposicao ao elemento de fraqueza, sofre -3 geral e nao pode usar Tecnicas que consumam Eter.",
+    efeito:
+      "Quando exposto ao elemento de fraqueza definido, sofre -3 em todos os testes e nao pode usar Tecnicas que consumam Eter enquanto durar a exposicao.",
+  },
+  {
+    id: "exaustao-progressiva",
+    nome: "Exaustao Progressiva",
+    categoria: "Condicao",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo:
+      "Apos 2 turnos de esforco intenso, -1 em fisicos/Tecnica; persistindo, -2 e bloqueio de esforco maximo.",
+    efeito:
+      "Apos dois turnos consecutivos de acoes intensas, sofre -1 em testes fisicos e de Tecnica. Se continuar, a penalidade sobe para -2 e nao pode realizar acoes de esforco maximo ate interromper por 1 turno.",
+  },
+  {
+    id: "dependencia-quimica",
+    nome: "Dependencia Quimica",
+    categoria: "Condicao",
+    nivel: "Moderada",
+    temGraduacao: false,
+    ppPorGraduacao: DESVANTAGEM_PP_POR_NIVEL.Moderada,
+    resumo:
+      "Sem a substancia por 1 cena, -1 geral; na cena seguinte, -2 e bloqueio de Tecnicas.",
+    efeito:
+      "Ao passar uma cena sem a substancia definida, sofre -1 em todos os testes. Na cena seguinte sem consumo, sofre -2 em testes e nao pode utilizar Tecnicas ate consumir novamente.",
   },
 ];
 
@@ -1242,11 +1764,6 @@ const PERICIA_INFO: Record<string, { atributo: Atributo; descricao: string }> =
       atributo: "Vontade",
       descricao:
         "Capacidade de manter foco mental sob pressao, resistir interrupcoes e sustentar acoes continuas em situacoes criticas.",
-    },
-    "Controle de Eter": {
-      atributo: "Tecnica",
-      descricao:
-        "Dominio tecnico para manipular Eter com precisao, estabilizar manifestacoes e ajustar intensidade e forma dos efeitos.",
     },
     Enganar: {
       atributo: "Presenca",
@@ -1413,9 +1930,9 @@ const TECNICAS_BASICAS: BasicTechniqueDefinition[] = [
     duracao: "Sustentada",
     basePE: 1,
     descricao:
-      "Comprime o fluxo de Eter no proprio corpo, reduzindo drasticamente sua presenca no ambiente.",
+      "Comprime o fluxo de Eter dentro do proprio corpo ate praticamente eliminar sua manifestacao externa. Para qualquer percepcao baseada em Eter, o personagem deixa de existir.",
     limitacoes:
-      "Nao pode realizar acoes ofensivas enquanto ativa e sofre -1 em Resistencia.",
+      "Impossivel atacar enquanto ativa. Sofre -1 em Resistencia e -1 em testes de Tecnica durante a manutencao.",
   },
   {
     nome: "Foco",
@@ -1425,8 +1942,8 @@ const TECNICAS_BASICAS: BasicTechniqueDefinition[] = [
     duracao: "Sustentada",
     basePE: 1,
     descricao:
-      "Direciona o Eter para os olhos, tornando sua percepcao mais precisa e capaz de detectar Eter.",
-    limitacoes: "Sofre -2 em Defesa contra alvos fora do foco atual.",
+      "Direciona o fluxo de Eter para os olhos, transformando percepcao passiva em leitura ativa de fluxo, densidade e intencao. Permite detectar presencas de Eter mesmo sem linha de visao direta.",
+    limitacoes: "Sofre -2 em Defesa contra alvos fora de seu foco atual.",
   },
   {
     nome: "Campo",
@@ -1436,9 +1953,9 @@ const TECNICAS_BASICAS: BasicTechniqueDefinition[] = [
     duracao: "Sustentada",
     basePE: 2,
     descricao:
-      "Expande o Eter ao redor do corpo, percebendo qualquer presenca ou fluxo dentro da area.",
+      "Projeta o Eter ao redor do corpo formando uma zona sensorial continua. Dentro dessa area detecta automaticamente qualquer presenca de Eter, movimentacoes e alteracoes de fluxo, independentemente de linha de visao.",
     limitacoes:
-      "Sofre -2 em Defesa enquanto mantem parte do Eter fora do corpo.",
+      "Sofre -2 em Defesa enquanto a tecnica estiver ativa. Impossibilita qualquer beneficio de efeitos que ocultem a presenca de Eter.",
   },
   {
     nome: "Guarda",
@@ -1448,20 +1965,21 @@ const TECNICAS_BASICAS: BasicTechniqueDefinition[] = [
     duracao: "Sustentada",
     basePE: 2,
     descricao:
-      "Distribui o Eter por todo o corpo para absorver impacto e dissipar dano recebido.",
-    limitacoes: "Sofre -2 em Agilidade enquanto a tecnica estiver ativa.",
+      "Distribui o fluxo de Eter por todo o corpo em camada continua de absorcao. Em vez de bloquear o impacto, dissipa sua forca antes que se converta em dano efetivo.",
+    limitacoes:
+      "Sofre -2 em Agilidade enquanto ativa. Limitado a no maximo 1 reacao por rodada.",
   },
   {
     nome: "Impulso",
     tipo: "Fortalecimento",
-    custoPPPorGraduacao: 4,
+    custoPPPorGraduacao: 5,
     acao: "Livre",
     duracao: "Sustentada",
     basePE: 2,
     descricao:
-      "Forca o Eter a circular em alta intensidade, ampliando ataque ou dano com agressividade.",
+      "Forca o fluxo de Eter a circular em sobrecarga, ampliando capacidade ofensiva. Ao ativar, escolha o modo: bônus em Ataque ou bônus em Dano. Aplica-se apenas ao primeiro ataque do turno.",
     limitacoes:
-      "Sofre -2 em Defesa e sua aura se torna facilmente perceptivel.",
+      "Sofre -2 em Defesa. Impede qualquer beneficio de efeitos de ocultacao de Eter. Cada turno consecutivo ativo aumenta o custo em +1 PE cumulativo.",
   },
   {
     nome: "Ruptura",
@@ -1469,13 +1987,1968 @@ const TECNICAS_BASICAS: BasicTechniqueDefinition[] = [
     custoPPPorGraduacao: 3,
     acao: "Reacao ou Padrao",
     duracao: "Instantanea",
-    basePE: 3,
+    basePE: 1,
     descricao:
-      "Concentra todo o Eter em um ponto unico para reduzir dano em reacao ou ampliar dano em um golpe.",
+      "Concentra todo o fluxo de Eter em um unico ponto no momento critico. Como reacao ao sofrer dano, testa Tecnica (1d20 + graduacao) contra CD 15 para reduzir o impacto. Como acao, amplifica o dano de um golpe.",
     limitacoes:
-      "Apos usar, sofre -2 em testes de Tecnica ate o proximo turno. Cada reacao adicional custa +1 PE.",
+      "Apos usar, todos os efeitos defensivos baseados em Eter ficam suprimidos ate o inicio do proximo turno. Sofre -2 em testes de Tecnica ate o inicio do seu proximo turno.",
   },
 ];
+
+const EQUIPAMENTOS_ACESSO_NIVEIS = [
+  "Comum",
+  "Avancado",
+  "Raro",
+  "Especial",
+] as const;
+
+const EQUIPAMENTOS_LIMITE_INICIAL = {
+  armas: 2,
+  protecoes: 2,
+  utilitarios: 5,
+};
+
+const EQUIPAMENTOS_REGRAS_GERAIS = [
+  "Bonus de dano total nao pode ultrapassar +2.",
+  "Bonus de acerto total nao pode ultrapassar +2.",
+  "Bonus de defesa total nao pode ultrapassar +2.",
+  "Efeitos que ignoram resistencia nao acumulam.",
+  "Reducoes de dano nao acumulam entre si.",
+  "Equipamentos nao substituem tecnicas ou atributos.",
+  "Itens utilitarios possuem uso limitado.",
+  "O mestre possui decisao final.",
+];
+
+const EQUIPAMENTOS_DESGASTE = [
+  {
+    estado: "Integro",
+    efeitos: "Funcionamento normal.",
+  },
+  {
+    estado: "Danificado",
+    efeitos:
+      "Armas: -1 acerto ou perda do efeito principal. Protecoes: -1 resistencia ou perda do efeito.",
+  },
+  {
+    estado: "Comprometido",
+    efeitos:
+      "Armas: sem bonus e risco de falha. Protecoes: sem resistencia. Novo desgaste: inutilizavel ate reparo.",
+  },
+];
+
+const EQUIPMENT_WEAPONS_BY_ERA: Record<EquipmentEra, EquipmentWeaponEntry[]> = {
+  Medieval: [
+    {
+      nome: "Adaga",
+      subcategoria: "Armas Leves",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+1",
+      acerto: "+1 (surpresa)",
+      efeito: "+2 dano contra alvo desprevenido",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Faca de Combate",
+      subcategoria: "Armas Leves",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+1",
+      acerto: "0",
+      efeito: "Pode ser arremessada",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Punhal",
+      subcategoria: "Armas Leves",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "0",
+      acerto: "+1",
+      efeito: "+1 em ataques rapidos consecutivos",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Estilete",
+      subcategoria: "Armas Leves",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "0",
+      acerto: "+2 (precisao)",
+      efeito: "Ignora 1 resistencia em alvo desprevenido",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Clava leve",
+      subcategoria: "Armas Leves",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+1",
+      acerto: "0",
+      efeito: "+1 dano contra alvo ja machucado",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Espada curta",
+      subcategoria: "Espadas",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+1",
+      acerto: "+1 (apos mover)",
+      efeito: "Ideal para mobilidade",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Espada longa",
+      subcategoria: "Espadas",
+      tipo: "CaC",
+      alcance: "Medio",
+      dano: "+1",
+      acerto: "0",
+      efeito: "+1 dano se nao se mover",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Espada bastarda",
+      subcategoria: "Espadas",
+      tipo: "CaC",
+      alcance: "Medio",
+      dano: "+2",
+      acerto: "-1",
+      efeito: "+2 dano se usar duas maos",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Montante",
+      subcategoria: "Espadas",
+      tipo: "CaC",
+      alcance: "Medio",
+      dano: "+2",
+      acerto: "-1",
+      efeito: "Ataca multiplos alvos adjacentes",
+      peso: "Pesado",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Sabre",
+      subcategoria: "Espadas",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+1",
+      acerto: "+1",
+      efeito: "+1 dano apos esquiva bem-sucedida",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Maca",
+      subcategoria: "Armas de Impacto",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+2",
+      acerto: "0",
+      efeito: "Ignora 1 resistencia",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Martelo de guerra",
+      subcategoria: "Armas de Impacto",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+2",
+      acerto: "-1",
+      efeito: "+2 dano contra armadura",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Mangual",
+      subcategoria: "Armas de Impacto",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+2",
+      acerto: "-1",
+      efeito: "Ignora bonus de defesa de escudo",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Porrete pesado",
+      subcategoria: "Armas de Impacto",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+2",
+      acerto: "0",
+      efeito: "+1 dano se alvo estiver caido",
+      peso: "Pesado",
+      acesso: "Comum",
+    },
+    {
+      nome: "Lanca",
+      subcategoria: "Armas de Haste",
+      tipo: "CaC",
+      alcance: "Medio",
+      dano: "+1",
+      acerto: "+1 (distancia)",
+      efeito: "-1 se adjacente",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Alabarda",
+      subcategoria: "Armas de Haste",
+      tipo: "CaC",
+      alcance: "Medio",
+      dano: "+2",
+      acerto: "0",
+      efeito: "Pode empurrar alvo",
+      peso: "Pesado",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Glaive",
+      subcategoria: "Armas de Haste",
+      tipo: "CaC",
+      alcance: "Medio",
+      dano: "+1",
+      acerto: "+1",
+      efeito: "+1 dano em ataque preparado",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Pique",
+      subcategoria: "Armas de Haste",
+      tipo: "CaC",
+      alcance: "Longo",
+      dano: "+1",
+      acerto: "+2 (carga)",
+      efeito: "+2 dano contra avanco",
+      peso: "Pesado",
+      acesso: "Comum",
+    },
+    {
+      nome: "Arco curto",
+      subcategoria: "Armas a Distancia",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "+1",
+      acerto: "+1 (curto alcance)",
+      efeito: "Penalidade em longo alcance",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Arco longo",
+      subcategoria: "Armas a Distancia",
+      tipo: "Distancia",
+      alcance: "Longo",
+      dano: "+1",
+      acerto: "0",
+      efeito: "+1 dano se nao se mover",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Besta leve",
+      subcategoria: "Armas a Distancia",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "+2",
+      acerto: "0",
+      efeito: "Recarga limita acao",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Besta pesada",
+      subcategoria: "Armas a Distancia",
+      tipo: "Distancia",
+      alcance: "Longo",
+      dano: "+2",
+      acerto: "-1",
+      efeito: "+2 dano no primeiro disparo",
+      peso: "Pesado",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Dardos",
+      subcategoria: "Armas a Distancia",
+      tipo: "Distancia",
+      alcance: "Curto",
+      dano: "0",
+      acerto: "+2",
+      efeito: "Ataque rapido",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Chicote",
+      subcategoria: "Armas Especiais",
+      tipo: "CaC",
+      alcance: "Medio",
+      dano: "0",
+      acerto: "+1",
+      efeito: "Pode desarmar",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Rede",
+      subcategoria: "Armas Especiais",
+      tipo: "Distancia",
+      alcance: "Curto",
+      dano: "0",
+      acerto: "0",
+      efeito: "Aplica estado de imobilizacao",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Tocha",
+      subcategoria: "Armas Especiais",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+1",
+      acerto: "0",
+      efeito: "Pode aplicar queimadura",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Granada primitiva",
+      subcategoria: "Armas Especiais",
+      tipo: "Distancia",
+      alcance: "Curto",
+      dano: "2 fixo",
+      acerto: "0",
+      efeito: "Area pequena",
+      peso: "Medio",
+      acesso: "Raro",
+    },
+  ],
+  Moderno: [
+    {
+      nome: "Pistola leve",
+      subcategoria: "Armas Leves",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "+1",
+      acerto: "+1",
+      efeito: "Sem penalidade em movimento",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Pistola pesada",
+      subcategoria: "Armas Leves",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "+2",
+      acerto: "-1",
+      efeito: "+2 dano no primeiro ataque",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Revolver",
+      subcategoria: "Armas Leves",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "+2",
+      acerto: "0",
+      efeito: "Ignora 1 resistencia",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Pistola automatica",
+      subcategoria: "Armas Leves",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "+1",
+      acerto: "+1 (rajada curta)",
+      efeito: "Pode atacar 2 alvos proximos (-1 cada)",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Derringer",
+      subcategoria: "Armas Leves",
+      tipo: "Distancia",
+      alcance: "Curto",
+      dano: "+2",
+      acerto: "0",
+      efeito: "+2 dano em surpresa",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "SMG leve",
+      subcategoria: "Submetralhadoras",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "+1",
+      acerto: "+2 (rajada)",
+      efeito: "Pode dividir dano em 2 alvos",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "SMG tatica",
+      subcategoria: "Submetralhadoras",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "+1",
+      acerto: "+1",
+      efeito: "+1 dano apos movimento",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "SMG pesada",
+      subcategoria: "Submetralhadoras",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "+2",
+      acerto: "0",
+      efeito: "-1 se mover antes de atacar",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Fuzil padrao",
+      subcategoria: "Fuzis de Assalto",
+      tipo: "Distancia",
+      alcance: "Longo",
+      dano: "+1",
+      acerto: "+1",
+      efeito: "Sem penalidade em medio alcance",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Fuzil tatico",
+      subcategoria: "Fuzis de Assalto",
+      tipo: "Distancia",
+      alcance: "Longo",
+      dano: "+1",
+      acerto: "+1",
+      efeito: "+1 dano se nao se mover",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Fuzil pesado",
+      subcategoria: "Fuzis de Assalto",
+      tipo: "Distancia",
+      alcance: "Longo",
+      dano: "+2",
+      acerto: "0",
+      efeito: "-1 apos movimento",
+      peso: "Pesado",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Fuzil com rajada",
+      subcategoria: "Fuzis de Assalto",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "+1",
+      acerto: "+2 (rajada)",
+      efeito: "Pode atacar area pequena (-1 dano)",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Rifle de precisao leve",
+      subcategoria: "Fuzis de Precisao",
+      tipo: "Distancia",
+      alcance: "Longo",
+      dano: "+2",
+      acerto: "+1",
+      efeito: "+2 dano se nao se mover",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Rifle pesado",
+      subcategoria: "Fuzis de Precisao",
+      tipo: "Distancia",
+      alcance: "Longo",
+      dano: "+2",
+      acerto: "0",
+      efeito: "Ignora 1 resistencia",
+      peso: "Pesado",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Rifle anti-material",
+      subcategoria: "Fuzis de Precisao",
+      tipo: "Distancia",
+      alcance: "Longo",
+      dano: "+2",
+      acerto: "-1",
+      efeito: "Ignora 2 resistencia",
+      peso: "Pesado",
+      acesso: "Raro",
+    },
+    {
+      nome: "Cassetete",
+      subcategoria: "Armas de Impacto Modernas",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+1",
+      acerto: "+1",
+      efeito: "+1 dano contra alvo imobilizado",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Tonfa",
+      subcategoria: "Armas de Impacto Modernas",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+1",
+      acerto: "+1",
+      efeito: "+1 Defesa apos ataque",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Bastao eletrico",
+      subcategoria: "Armas de Impacto Modernas",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+1",
+      acerto: "0",
+      efeito: "Pode aplicar estado (atordoado leve)",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Martelo tatico",
+      subcategoria: "Armas de Impacto Modernas",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+2",
+      acerto: "0",
+      efeito: "+1 dano contra protecao",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Escopeta leve",
+      subcategoria: "Espingardas",
+      tipo: "Distancia",
+      alcance: "Curto",
+      dano: "+2",
+      acerto: "+1",
+      efeito: "-1 em medio alcance",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Escopeta tatica",
+      subcategoria: "Espingardas",
+      tipo: "Distancia",
+      alcance: "Curto",
+      dano: "+2",
+      acerto: "0",
+      efeito: "+2 dano se alvo estiver proximo",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Escopeta pesada",
+      subcategoria: "Espingardas",
+      tipo: "Distancia",
+      alcance: "Curto",
+      dano: "+2",
+      acerto: "-1",
+      efeito: "Pode atingir multiplos alvos proximos",
+      peso: "Pesado",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Metralhadora leve",
+      subcategoria: "Armas de Suporte",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "+1",
+      acerto: "+2 (supressao)",
+      efeito: "Impoe -1 em acoes inimigas",
+      peso: "Pesado",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Metralhadora pesada",
+      subcategoria: "Armas de Suporte",
+      tipo: "Distancia",
+      alcance: "Longo",
+      dano: "+2",
+      acerto: "0",
+      efeito: "Area de supressao (-1 inimigos)",
+      peso: "Muito pesado",
+      acesso: "Raro",
+    },
+    {
+      nome: "Granada",
+      subcategoria: "Armas Especiais",
+      tipo: "Area",
+      alcance: "Curto",
+      dano: "3 fixo",
+      acerto: "0",
+      efeito: "Dano em area",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Flashbang",
+      subcategoria: "Armas Especiais",
+      tipo: "Area",
+      alcance: "Curto",
+      dano: "0",
+      acerto: "0",
+      efeito: "Aplica estado (cego leve)",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Gas",
+      subcategoria: "Armas Especiais",
+      tipo: "Area",
+      alcance: "Curto",
+      dano: "1 fixo",
+      acerto: "0",
+      efeito: "Aplica estado continuo",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Lancador",
+      subcategoria: "Armas Especiais",
+      tipo: "Area",
+      alcance: "Medio",
+      dano: "3 fixo",
+      acerto: "-1",
+      efeito: "Area maior",
+      peso: "Pesado",
+      acesso: "Raro",
+    },
+  ],
+  Futurista: [
+    {
+      nome: "Lamina de energia",
+      subcategoria: "Armas de Energia (CaC)",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+1",
+      acerto: "+1",
+      efeito: "Ignora 1 resistencia",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Sabre de Eter",
+      subcategoria: "Armas de Energia (CaC)",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+1",
+      acerto: "0",
+      efeito: "+1 dano ao consumir 1 Eter",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Espada de plasma",
+      subcategoria: "Armas de Energia (CaC)",
+      tipo: "CaC",
+      alcance: "Medio",
+      dano: "+2",
+      acerto: "-1",
+      efeito: "Ignora 1 resistencia",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Lamina vibratoria",
+      subcategoria: "Armas de Energia (CaC)",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+1",
+      acerto: "+2",
+      efeito: "+1 dano contra alvo com protecao",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Foice energetica",
+      subcategoria: "Armas de Energia (CaC)",
+      tipo: "CaC",
+      alcance: "Medio",
+      dano: "+2",
+      acerto: "0",
+      efeito: "Pode atingir 2 alvos adjacentes",
+      peso: "Pesado",
+      acesso: "Raro",
+    },
+    {
+      nome: "Pistola de pulso",
+      subcategoria: "Armas de Disparo Energetico",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "+1",
+      acerto: "+1",
+      efeito: "Sem penalidade em movimento",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Pistola de plasma",
+      subcategoria: "Armas de Disparo Energetico",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "+2",
+      acerto: "0",
+      efeito: "+1 dano se consumir 1 Eter",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Rifle de pulso",
+      subcategoria: "Armas de Disparo Energetico",
+      tipo: "Distancia",
+      alcance: "Longo",
+      dano: "+1",
+      acerto: "+1",
+      efeito: "+1 dano se nao se mover",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Rifle de plasma",
+      subcategoria: "Armas de Disparo Energetico",
+      tipo: "Distancia",
+      alcance: "Longo",
+      dano: "+2",
+      acerto: "0",
+      efeito: "Ignora 1 resistencia",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Canhao de energia",
+      subcategoria: "Armas de Disparo Energetico",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "+2",
+      acerto: "-1",
+      efeito: "Area pequena",
+      peso: "Pesado",
+      acesso: "Raro",
+    },
+    {
+      nome: "Condutor de Eter",
+      subcategoria: "Armas de Eter",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "+1",
+      acerto: "+1",
+      efeito: "Consome 1 Eter, +1 dano",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Disruptor",
+      subcategoria: "Armas de Eter",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "+1",
+      acerto: "0",
+      efeito: "Ignora 1 resistencia e aplica instabilidade",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Lancador de Eter",
+      subcategoria: "Armas de Eter",
+      tipo: "Area",
+      alcance: "Medio",
+      dano: "+2",
+      acerto: "-1",
+      efeito: "Area media, consome 1 Eter",
+      peso: "Pesado",
+      acesso: "Raro",
+    },
+    {
+      nome: "Foco de canalizacao",
+      subcategoria: "Armas de Eter",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "0",
+      acerto: "+2",
+      efeito: "+2 em testes de tecnica ofensiva",
+      peso: "Leve",
+      acesso: "Raro",
+    },
+    {
+      nome: "Campo gravitacional",
+      subcategoria: "Armas de Controle",
+      tipo: "Area",
+      alcance: "Curto",
+      dano: "0",
+      acerto: "0",
+      efeito: "Reduz movimentacao inimiga",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Projetil de contencao",
+      subcategoria: "Armas de Controle",
+      tipo: "Distancia",
+      alcance: "Medio",
+      dano: "0",
+      acerto: "+1",
+      efeito: "Aplica imobilizacao leve",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Rede energetica",
+      subcategoria: "Armas de Controle",
+      tipo: "Distancia",
+      alcance: "Curto",
+      dano: "0",
+      acerto: "0",
+      efeito: "Imobiliza por 1 turno",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Pulso de choque",
+      subcategoria: "Armas de Controle",
+      tipo: "Area",
+      alcance: "Curto",
+      dano: "+1",
+      acerto: "0",
+      efeito: "Empurra alvos",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Canhao de plasma pesado",
+      subcategoria: "Armas Pesadas / Experimentais",
+      tipo: "Area",
+      alcance: "Medio",
+      dano: "+2",
+      acerto: "-1",
+      efeito: "Area grande, consome 2 Eter",
+      peso: "Muito pesado",
+      acesso: "Raro",
+    },
+    {
+      nome: "Rifle de desintegracao",
+      subcategoria: "Armas Pesadas / Experimentais",
+      tipo: "Distancia",
+      alcance: "Longo",
+      dano: "+2",
+      acerto: "-1",
+      efeito: "Ignora 2 resistencia",
+      peso: "Pesado",
+      acesso: "Raro",
+    },
+    {
+      nome: "Lancador gravitacional",
+      subcategoria: "Armas Pesadas / Experimentais",
+      tipo: "Area",
+      alcance: "Medio",
+      dano: "+1",
+      acerto: "0",
+      efeito: "Derruba e empurra",
+      peso: "Pesado",
+      acesso: "Raro",
+    },
+    {
+      nome: "Implosor de campo",
+      subcategoria: "Armas Pesadas / Experimentais",
+      tipo: "Area",
+      alcance: "Curto",
+      dano: "+2",
+      acerto: "-1",
+      efeito: "Puxa inimigos para centro",
+      peso: "Muito pesado",
+      acesso: "Especial",
+    },
+    {
+      nome: "Arma vinculada ao Eter",
+      subcategoria: "Armas Especiais (Shounen/Eter)",
+      tipo: "Variavel",
+      alcance: "Variavel",
+      dano: "+1",
+      acerto: "+1",
+      efeito: "Evolui com o personagem",
+      peso: "Leve",
+      acesso: "Especial",
+    },
+    {
+      nome: "Lamina instavel",
+      subcategoria: "Armas Especiais (Shounen/Eter)",
+      tipo: "CaC",
+      alcance: "Curto",
+      dano: "+2",
+      acerto: "-1",
+      efeito: "+3 dano ao consumir 2 Eter",
+      peso: "Leve",
+      acesso: "Especial",
+    },
+    {
+      nome: "Dispositivo de sobrecarga",
+      subcategoria: "Armas Especiais (Shounen/Eter)",
+      tipo: "Area",
+      alcance: "Curto",
+      dano: "+2",
+      acerto: "0",
+      efeito: "+2 dano, usuario sofre 1 dano",
+      peso: "Medio",
+      acesso: "Especial",
+    },
+    {
+      nome: "Fragmentador dimensional",
+      subcategoria: "Armas Especiais (Shounen/Eter)",
+      tipo: "Area",
+      alcance: "Medio",
+      dano: "+2",
+      acerto: "-1",
+      efeito: "Ignora resistencia, uso unico",
+      peso: "Pesado",
+      acesso: "Especial",
+    },
+  ],
+};
+
+const EQUIPMENT_PROTECTIONS_BY_ERA: Record<
+  EquipmentEra,
+  EquipmentProtectionEntry[]
+> = {
+  Medieval: [
+    {
+      nome: "Roupas reforcadas",
+      subcategoria: "Protecoes Leves",
+      tipo: "Leve",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "Sem penalidades",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Couro simples",
+      subcategoria: "Protecoes Leves",
+      tipo: "Leve",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "+1 em testes de movimento",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Couro batido",
+      subcategoria: "Protecoes Leves",
+      tipo: "Leve",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "+1 Defesa contra ataques leves",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Gibao acolchoado",
+      subcategoria: "Protecoes Leves",
+      tipo: "Leve",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "Reduz 1 dano (1x por rodada)",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Couro flexivel",
+      subcategoria: "Protecoes Leves",
+      tipo: "Leve",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "Mantem bonus apos movimento",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Cota de malha",
+      subcategoria: "Protecoes Medias",
+      tipo: "Media",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "Reduz 1 dano cortante (1x por rodada)",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Malha reforcada",
+      subcategoria: "Protecoes Medias",
+      tipo: "Media",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "+1 contra multiplos ataques",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Brigandina",
+      subcategoria: "Protecoes Medias",
+      tipo: "Media",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "+1 Defesa se nao se mover",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Couraca leve",
+      subcategoria: "Protecoes Medias",
+      tipo: "Media",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "+1 contra impacto",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Armadura de placas",
+      subcategoria: "Protecoes Pesadas",
+      tipo: "Pesada",
+      resistencia: "+2",
+      defesa: "0",
+      efeito: "Reduz 1 dano (1x por rodada)",
+      penalidade: "-2 movimento",
+      peso: "Pesado",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Placas completas",
+      subcategoria: "Protecoes Pesadas",
+      tipo: "Pesada",
+      resistencia: "+2",
+      defesa: "+1",
+      efeito: "+1 contra ataques frontais",
+      penalidade: "-2 movimento",
+      peso: "Pesado",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Armadura de guerra",
+      subcategoria: "Protecoes Pesadas",
+      tipo: "Pesada",
+      resistencia: "+2",
+      defesa: "0",
+      efeito: "Ignora empurroes leves",
+      penalidade: "-2 movimento",
+      peso: "Pesado",
+      acesso: "Comum",
+    },
+    {
+      nome: "Placas reforcadas",
+      subcategoria: "Protecoes Pesadas",
+      tipo: "Pesada",
+      resistencia: "+3",
+      defesa: "+1",
+      efeito: "Reduz 1 dano adicional",
+      penalidade: "-2 movimento, -1 acao rapida",
+      peso: "Pesado",
+      acesso: "Raro",
+    },
+    {
+      nome: "Escudo pequeno",
+      subcategoria: "Escudos",
+      tipo: "Escudo",
+      resistencia: "0",
+      defesa: "+1",
+      efeito: "+1 Defesa contra distancia",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Escudo medio",
+      subcategoria: "Escudos",
+      tipo: "Escudo",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "+1 Defesa geral",
+      penalidade: "-1 em ataques pesados",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Escudo grande",
+      subcategoria: "Escudos",
+      tipo: "Escudo",
+      resistencia: "+1",
+      defesa: "+2",
+      efeito: "+2 Defesa frontal",
+      penalidade: "-1 movimento",
+      peso: "Pesado",
+      acesso: "Comum",
+    },
+    {
+      nome: "Escudo torre",
+      subcategoria: "Escudos",
+      tipo: "Escudo",
+      resistencia: "+2",
+      defesa: "+2",
+      efeito: "Pode proteger aliado adjacente",
+      penalidade: "-2 movimento",
+      peso: "Pesado",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Armadura cerimonial",
+      subcategoria: "Protecoes Especiais",
+      tipo: "Especial",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "+1 em testes sociais de presenca",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Armadura runica",
+      subcategoria: "Protecoes Especiais",
+      tipo: "Especial",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "+1 contra efeitos de Eter",
+      penalidade: "-",
+      peso: "Medio",
+      acesso: "Raro",
+    },
+    {
+      nome: "Couro encantado",
+      subcategoria: "Protecoes Especiais",
+      tipo: "Especial",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "+1 esquiva apos receber dano",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Raro",
+    },
+    {
+      nome: "Placa consagrada",
+      subcategoria: "Protecoes Especiais",
+      tipo: "Especial",
+      resistencia: "+2",
+      defesa: "+1",
+      efeito: "Reduz dano de entidades especiais",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Raro",
+    },
+  ],
+  Moderno: [
+    {
+      nome: "Roupas taticas",
+      subcategoria: "Protecoes Leves",
+      tipo: "Leve",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "Sem penalidades",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Colete leve",
+      subcategoria: "Protecoes Leves",
+      tipo: "Leve",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "+1 contra disparos leves",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Vestimenta furtiva",
+      subcategoria: "Protecoes Leves",
+      tipo: "Leve",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "+1 em testes de furtividade",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Traje flexivel",
+      subcategoria: "Protecoes Leves",
+      tipo: "Leve",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "Sem penalidade apos movimento",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Jaqueta reforcada",
+      subcategoria: "Protecoes Leves",
+      tipo: "Leve",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "Reduz 1 dano (1x por rodada)",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Colete balistico",
+      subcategoria: "Protecoes Medias",
+      tipo: "Media",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "Reduz 1 dano de projeteis (1x por rodada)",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Colete tatico",
+      subcategoria: "Protecoes Medias",
+      tipo: "Media",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "+1 Defesa em cobertura",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Armadura policial",
+      subcategoria: "Protecoes Medias",
+      tipo: "Media",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "+1 contra ataques nao letais",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Colete reforcado",
+      subcategoria: "Protecoes Medias",
+      tipo: "Media",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "Reduz 1 dano adicional em ataques sucessivos",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Armadura tatica pesada",
+      subcategoria: "Protecoes Pesadas",
+      tipo: "Pesada",
+      resistencia: "+2",
+      defesa: "0",
+      efeito: "Reduz 1 dano (1x por rodada)",
+      penalidade: "-2 movimento",
+      peso: "Pesado",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Traje de combate pesado",
+      subcategoria: "Protecoes Pesadas",
+      tipo: "Pesada",
+      resistencia: "+2",
+      defesa: "+1",
+      efeito: "+1 contra ataques frontais",
+      penalidade: "-2 movimento",
+      peso: "Pesado",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Exoesqueleto leve",
+      subcategoria: "Protecoes Pesadas",
+      tipo: "Pesada",
+      resistencia: "+2",
+      defesa: "0",
+      efeito: "Ignora penalidade de carga",
+      penalidade: "-2 movimento",
+      peso: "Pesado",
+      acesso: "Raro",
+    },
+    {
+      nome: "Exoesqueleto pesado",
+      subcategoria: "Protecoes Pesadas",
+      tipo: "Pesada",
+      resistencia: "+3",
+      defesa: "+1",
+      efeito: "+1 contra impacto",
+      penalidade: "-2 movimento, -1 acao rapida",
+      peso: "Pesado",
+      acesso: "Raro",
+    },
+    {
+      nome: "Escudo tatico",
+      subcategoria: "Escudos e Protecoes Ativas",
+      tipo: "Escudo",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "+1 Defesa contra disparos",
+      penalidade: "-1 em ataques pesados",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Escudo balistico",
+      subcategoria: "Escudos e Protecoes Ativas",
+      tipo: "Escudo",
+      resistencia: "+1",
+      defesa: "+2",
+      efeito: "+2 Defesa frontal",
+      penalidade: "-1 movimento",
+      peso: "Pesado",
+      acesso: "Comum",
+    },
+    {
+      nome: "Escudo movel",
+      subcategoria: "Escudos e Protecoes Ativas",
+      tipo: "Escudo",
+      resistencia: "+1",
+      defesa: "+2",
+      efeito: "Pode proteger aliado adjacente",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Escudo de supressao",
+      subcategoria: "Escudos e Protecoes Ativas",
+      tipo: "Escudo",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "Reduz dano de area em 1",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Traje anti-impacto",
+      subcategoria: "Protecoes Especiais",
+      tipo: "Especial",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "Reduz dano de queda ou impacto",
+      penalidade: "-",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Traje anti-explosao",
+      subcategoria: "Protecoes Especiais",
+      tipo: "Especial",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "Reduz dano de area em 1",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Armadura furtiva",
+      subcategoria: "Protecoes Especiais",
+      tipo: "Especial",
+      resistencia: "+1",
+      defesa: "+2",
+      efeito: "+2 em furtividade",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Raro",
+    },
+    {
+      nome: "Traje NBC (quimico)",
+      subcategoria: "Protecoes Especiais",
+      tipo: "Especial",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "Imune a gases e toxinas",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+  ],
+  Futurista: [
+    {
+      nome: "Traje sintetico",
+      subcategoria: "Protecoes Leves",
+      tipo: "Leve",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "Sem penalidades",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Malha reativa",
+      subcategoria: "Protecoes Leves",
+      tipo: "Leve",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "+1 Defesa apos receber dano (1x por rodada)",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Traje de mobilidade",
+      subcategoria: "Protecoes Leves",
+      tipo: "Leve",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "Sem penalidade apos movimento",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Tecido de Eter",
+      subcategoria: "Protecoes Leves",
+      tipo: "Leve",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "+1 contra efeitos de Eter",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Camuflagem ativa",
+      subcategoria: "Protecoes Leves",
+      tipo: "Leve",
+      resistencia: "+1",
+      defesa: "+2",
+      efeito: "+2 em furtividade",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Raro",
+    },
+    {
+      nome: "Armadura modular",
+      subcategoria: "Protecoes Medias",
+      tipo: "Media",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "Pode trocar efeito 1x por combate",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Traje de combate",
+      subcategoria: "Protecoes Medias",
+      tipo: "Media",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "+1 Defesa em combate direto",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Armadura reativa",
+      subcategoria: "Protecoes Medias",
+      tipo: "Media",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "Reduz 1 dano apos primeiro ataque (1x por rodada)",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Placas de energia",
+      subcategoria: "Protecoes Medias",
+      tipo: "Media",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "+1 contra ataques a distancia",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Raro",
+    },
+    {
+      nome: "Armadura de energia",
+      subcategoria: "Protecoes Pesadas",
+      tipo: "Pesada",
+      resistencia: "+2",
+      defesa: "0",
+      efeito: "Reduz 1 dano (1x por rodada)",
+      penalidade: "-2 movimento",
+      peso: "Pesado",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Exoesqueleto de combate",
+      subcategoria: "Protecoes Pesadas",
+      tipo: "Pesada",
+      resistencia: "+2",
+      defesa: "+1",
+      efeito: "Ignora penalidade de carga",
+      penalidade: "-2 movimento",
+      peso: "Pesado",
+      acesso: "Raro",
+    },
+    {
+      nome: "Armadura de campo",
+      subcategoria: "Protecoes Pesadas",
+      tipo: "Pesada",
+      resistencia: "+2",
+      defesa: "0",
+      efeito: "+1 contra multiplos ataques",
+      penalidade: "-2 movimento",
+      peso: "Pesado",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Exoesqueleto pesado",
+      subcategoria: "Protecoes Pesadas",
+      tipo: "Pesada",
+      resistencia: "+3",
+      defesa: "+1",
+      efeito: "+1 contra impacto",
+      penalidade: "-2 movimento, -1 acao rapida",
+      peso: "Pesado",
+      acesso: "Raro",
+    },
+    {
+      nome: "Escudo de energia",
+      subcategoria: "Escudos e Campos de Energia",
+      tipo: "Escudo",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "+1 Defesa contra ataques a distancia",
+      penalidade: "-",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Campo de protecao",
+      subcategoria: "Escudos e Campos de Energia",
+      tipo: "Escudo",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "Reduz 1 dano de todos ataques (1x por rodada)",
+      penalidade: "Consome 1 Eter/turno",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Barreira direcional",
+      subcategoria: "Escudos e Campos de Energia",
+      tipo: "Escudo",
+      resistencia: "+1",
+      defesa: "+2",
+      efeito: "+2 Defesa frontal",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Campo adaptativo",
+      subcategoria: "Escudos e Campos de Energia",
+      tipo: "Escudo",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "Reduz 1 dano do mesmo tipo consecutivo",
+      penalidade: "Consome 1 Eter/turno",
+      peso: "Medio",
+      acesso: "Raro",
+    },
+    {
+      nome: "Traje de fase",
+      subcategoria: "Protecoes Especiais",
+      tipo: "Especial",
+      resistencia: "+1",
+      defesa: "+2",
+      efeito: "Pode ignorar 1 ataque por combate",
+      penalidade: "Consome 1 Eter",
+      peso: "Leve",
+      acesso: "Raro",
+    },
+    {
+      nome: "Armadura dimensional",
+      subcategoria: "Protecoes Especiais",
+      tipo: "Especial",
+      resistencia: "+1",
+      defesa: "+1",
+      efeito: "Reduz dano de area em 1",
+      penalidade: "-1 movimento",
+      peso: "Medio",
+      acesso: "Raro",
+    },
+    {
+      nome: "Nucleo de sobrecarga",
+      subcategoria: "Protecoes Especiais",
+      tipo: "Especial",
+      resistencia: "+1",
+      defesa: "0",
+      efeito: "+2 Resistencia por 1 turno (1x por combate)",
+      penalidade: "Sofre 1 dano apos",
+      peso: "Medio",
+      acesso: "Especial",
+    },
+    {
+      nome: "Campo de distorcao",
+      subcategoria: "Protecoes Especiais",
+      tipo: "Especial",
+      resistencia: "+1",
+      defesa: "+2",
+      efeito: "Inimigos sofrem -1 acerto contra voce",
+      penalidade: "Consome 1 Eter/turno",
+      peso: "Leve",
+      acesso: "Especial",
+    },
+  ],
+};
+
+const EQUIPMENT_UTILITIES_BY_ERA: Record<
+  EquipmentEra,
+  EquipmentUtilityEntry[]
+> = {
+  Medieval: [
+    {
+      nome: "Kit medico simples",
+      subcategoria: "Suporte e Sobrevivencia",
+      tipo: "Suporte",
+      efeito: "Remove 1 Machucado fora de combate",
+      limite: "1 uso",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Bandagens",
+      subcategoria: "Suporte e Sobrevivencia",
+      tipo: "Suporte",
+      efeito: "+1 em testes de recuperacao",
+      limite: "Consumo",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Ervas medicinais",
+      subcategoria: "Suporte e Sobrevivencia",
+      tipo: "Suporte",
+      efeito: "Remove 1 penalidade leve",
+      limite: "1 uso",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Antidoto",
+      subcategoria: "Suporte e Sobrevivencia",
+      tipo: "Suporte",
+      efeito: "Remove efeito de veneno",
+      limite: "1 uso",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Racao",
+      subcategoria: "Suporte e Sobrevivencia",
+      tipo: "Sobrevivencia",
+      efeito: "Evita penalidades por desgaste",
+      limite: "Consumo",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Corda",
+      subcategoria: "Exploracao",
+      tipo: "Exploracao",
+      efeito: "Facilita escalada e descida",
+      limite: "-",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Gancho",
+      subcategoria: "Exploracao",
+      tipo: "Exploracao",
+      efeito: "Permite alcancar locais elevados",
+      limite: "-",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Tocha",
+      subcategoria: "Exploracao",
+      tipo: "Exploracao",
+      efeito: "Ilumina area",
+      limite: "Duracao",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Lanterna",
+      subcategoria: "Exploracao",
+      tipo: "Exploracao",
+      efeito: "Iluminacao estavel",
+      limite: "Duracao",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Kit de ferramentas",
+      subcategoria: "Exploracao",
+      tipo: "Exploracao",
+      efeito: "+2 em testes tecnicos",
+      limite: "-",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Oleo",
+      subcategoria: "Utilidade Tatica",
+      tipo: "Tatico",
+      efeito: "Cria area escorregadia",
+      limite: "1 uso",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Bomba de fumaca",
+      subcategoria: "Utilidade Tatica",
+      tipo: "Tatico",
+      efeito: "Bloqueia visao",
+      limite: "1 uso",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Caltrap",
+      subcategoria: "Utilidade Tatica",
+      tipo: "Tatico",
+      efeito: "Reduz movimentacao inimiga",
+      limite: "1 uso",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Rede",
+      subcategoria: "Utilidade Tatica",
+      tipo: "Tatico",
+      efeito: "Imobiliza parcialmente",
+      limite: "1 uso",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Apito",
+      subcategoria: "Utilidade Tatica",
+      tipo: "Tatico",
+      efeito: "Comunicacao ou distracao",
+      limite: "-",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+  ],
+  Moderno: [
+    {
+      nome: "Kit medico avancado",
+      subcategoria: "Suporte",
+      tipo: "Suporte",
+      efeito: "Remove 1 Machucado ou 1 Ferimento leve",
+      limite: "1 uso",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Estimulante",
+      subcategoria: "Suporte",
+      tipo: "Suporte",
+      efeito: "Ignora penalidade por 1 turno",
+      limite: "1 uso",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Antidoto quimico",
+      subcategoria: "Suporte",
+      tipo: "Suporte",
+      efeito: "Remove efeitos de toxina",
+      limite: "1 uso",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Radio",
+      subcategoria: "Tecnologia",
+      tipo: "Comunicacao",
+      efeito: "Comunicacao a distancia",
+      limite: "-",
+      peso: "Leve",
+      acesso: "Comum",
+    },
+    {
+      nome: "Drone simples",
+      subcategoria: "Tecnologia",
+      tipo: "Tecnologia",
+      efeito: "+2 em percepcao remota",
+      limite: "Duracao",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Tablet tatico",
+      subcategoria: "Tecnologia",
+      tipo: "Tecnologia",
+      efeito: "+1 em testes de analise",
+      limite: "-",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Flashbang",
+      subcategoria: "Taticos",
+      tipo: "Tatico",
+      efeito: "Aplica cegueira leve",
+      limite: "1 uso",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Granada",
+      subcategoria: "Taticos",
+      tipo: "Tatico",
+      efeito: "Dano fixo em area",
+      limite: "1 uso",
+      peso: "Medio",
+      acesso: "Comum",
+    },
+    {
+      nome: "Gas lacrimogeneo",
+      subcategoria: "Taticos",
+      tipo: "Tatico",
+      efeito: "Reduz acoes inimigas",
+      limite: "1 uso",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+  ],
+  Futurista: [
+    {
+      nome: "Injetor de Eter",
+      subcategoria: "Suporte de Eter",
+      tipo: "Eter",
+      efeito: "Recupera 5 Eter",
+      limite: "1 uso",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Celula de energia",
+      subcategoria: "Suporte de Eter",
+      tipo: "Eter",
+      efeito: "+1 uso de tecnica",
+      limite: "1 uso",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Amplificador de Eter",
+      subcategoria: "Suporte de Eter",
+      tipo: "Eter",
+      efeito: "+1 em testes de tecnica",
+      limite: "Duracao",
+      peso: "Medio",
+      acesso: "Raro",
+    },
+    {
+      nome: "Sensor de Eter",
+      subcategoria: "Tecnologia Avancada",
+      tipo: "Tecnologia",
+      efeito: "+2 em deteccao de energia",
+      limite: "-",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Drone avancado",
+      subcategoria: "Tecnologia Avancada",
+      tipo: "Tecnologia",
+      efeito: "Visao ampliada + suporte tatico",
+      limite: "Duracao",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Dispositivo de hack",
+      subcategoria: "Tecnologia Avancada",
+      tipo: "Tecnologia",
+      efeito: "+2 em interacoes tecnologicas",
+      limite: "-",
+      peso: "Leve",
+      acesso: "Avancado",
+    },
+    {
+      nome: "Granada gravitacional",
+      subcategoria: "Controle e Campo",
+      tipo: "Controle",
+      efeito: "Puxa inimigos",
+      limite: "1 uso",
+      peso: "Medio",
+      acesso: "Raro",
+    },
+    {
+      nome: "Campo de distorcao",
+      subcategoria: "Controle e Campo",
+      tipo: "Controle",
+      efeito: "-1 acerto inimigo",
+      limite: "Duracao",
+      peso: "Medio",
+      acesso: "Raro",
+    },
+    {
+      nome: "Emissor de pulso",
+      subcategoria: "Controle e Campo",
+      tipo: "Controle",
+      efeito: "Empurra inimigos",
+      limite: "1 uso",
+      peso: "Medio",
+      acesso: "Avancado",
+    },
+  ],
+};
 
 const DICE_OPTIONS: Dice[] = ["D4", "D6", "D8", "D10", "D12"];
 const COMBAT_DICE_OPTIONS: CombatDice[] = ["-", ...DICE_OPTIONS];
@@ -1526,6 +3999,12 @@ const EDITOR_TABS: EditorTabDefinition[] = [
       "Ajuste graduacoes das tecnicas fundamentais e acompanhe VE, custo de Eter e limitacoes.",
   },
   {
+    id: "tecnicas-desenvolvimento",
+    label: "Tecnicas",
+    descricao:
+      "Cadastre tecnicas Primarias, Avancadas e Especiais com poderes base, modificadores, reducoes e custo final em PE.",
+  },
+  {
     id: "vantagens",
     label: "Vantagens",
     descricao:
@@ -1552,6 +4031,127 @@ const EDITOR_TABS: EditorTabDefinition[] = [
 ];
 const ALL_POWERS: PowerDefinition[] = Object.values(PODERES_POR_NAIPE).flat();
 const POWER_BY_ID = new Map(ALL_POWERS.map((power) => [power.id, power]));
+
+const TECHNIQUE_PP_BY_TYPE: Record<DevelopedTechniqueType, number> = {
+  Primaria: 4,
+  Avancada: 8,
+  Especial: 12,
+};
+
+const TECHNIQUE_ADDITIONAL_LIMIT_BY_TYPE: Record<
+  DevelopedTechniqueType,
+  number
+> = {
+  Primaria: 5,
+  Avancada: 10,
+  Especial: 16,
+};
+
+const ATTACK_MULTIPLE_COST: Record<"1" | "2" | "3", number> = {
+  "1": 0,
+  "2": 1,
+  "3": 2,
+};
+
+const AREA_COST: Record<"" | "3m" | "5m" | "10m", number> = {
+  "": 0,
+  "3m": 2,
+  "5m": 3,
+  "10m": 5,
+};
+
+const CONTROLE_COST: Record<"" | "Leve" | "Moderado" | "Forte", number> = {
+  "": 0,
+  Leve: 1,
+  Moderado: 2,
+  Forte: 4,
+};
+
+const ALCANCE_ETAPAS_COST: Record<"0" | "1" | "2" | "3" | "4", number> = {
+  "0": 0,
+  "1": 1,
+  "2": 2,
+  "3": 4,
+  "4": 7,
+};
+
+const DURACAO_COST: Record<"" | "Sustentada" | "Continua", number> = {
+  "": 0,
+  Sustentada: 2,
+  Continua: 4,
+};
+
+const QUICK_ACTIVATION_COST: Record<"" | "Livre" | "Reacao", number> = {
+  "": 0,
+  Livre: 3,
+  Reacao: 3,
+};
+
+const PREPARATION_REDUCTION: Record<
+  "" | "preparacao" | "turno-completo",
+  number
+> = {
+  "": 0,
+  preparacao: 1,
+  "turno-completo": 2,
+};
+
+const getPrecisaoCost = (bonusPrecisao: number): number => {
+  if (bonusPrecisao <= 0) return 0;
+  if (bonusPrecisao === 1) return 1;
+  if (bonusPrecisao === 2) return 3;
+  return 5;
+};
+
+const createDevelopedTechniqueModifierDefaults =
+  (): DevelopedTechniqueModifierSet => ({
+    bonusDano: "0",
+    bonusPrecisao: "0",
+    penetracao: "0",
+    danoAmpliado: "0",
+    ataqueMultiplo: "1",
+    area: "",
+    controleNivel: "",
+    controleEstado: "",
+    controleAtributoResistencia: "Vontade",
+    alcanceEtapas: "0",
+    duracao: "",
+    duracaoEstendida: false,
+    ativacaoRapida: "",
+    preparacao: "",
+    bonusDefesa: "0",
+    reducaoDanoRecebido: "0",
+    absorcao: false,
+    reflexo: false,
+    limitacaoPerdeMovimento: false,
+    limitacaoCondicaoEspecifica: false,
+    limitacaoContatoDireto: false,
+    limitacaoAlvoEspecifico: false,
+    limitacaoUsoCena: false,
+    modificadorPersonalizadoNome: "",
+    modificadorPersonalizadoCusto: "0",
+  });
+
+const createEmptyDevelopedTechniqueBasePower =
+  (): DevelopedTechniqueBasePower => ({
+    id: crypto.randomUUID(),
+    powerId: "",
+    graduacao: "1",
+  });
+
+const createDevelopedTechniqueDraft = (): DevelopedTechniqueDraft => ({
+  nome: "",
+  tipo: "Primaria",
+  conceito: "",
+  efeito: "",
+  acao: "Padrao",
+  alcance: "Corpo a corpo",
+  alvo: "1 criatura",
+  duracao: "Instantanea",
+  gatilho: "",
+  poderesBase: [createEmptyDevelopedTechniqueBasePower()],
+  modificadores: createDevelopedTechniqueModifierDefaults(),
+});
 
 const ATTRIBUTE_PP_BY_DICE: Record<Dice, number> = {
   D4: 0,
@@ -1786,6 +4386,7 @@ const normalizePowerName = (name: string): string =>
 const getPowerGraduacaoForResistenciaFonte = (
   character: CharacterSheet,
   source: Exclude<ResistancePowerSource, "">,
+  maxGraduacaoLimit: number,
 ): number => {
   const normalizedSource = normalizePowerName(source);
 
@@ -1802,7 +4403,7 @@ const getPowerGraduacaoForResistenciaFonte = (
     const graduacao = clamp(
       parseNatural(powerEntry.graduacao),
       1,
-      MAX_POWER_GRADUATION_LIMIT,
+      maxGraduacaoLimit,
     );
     const resistenciaEfetiva = Math.ceil(graduacao / 2);
 
@@ -1913,7 +4514,7 @@ const getCampoRaio = (graduacao: number): string => {
     return "50 m";
   }
 
-  return "70 m";
+  return "50 m";
 };
 
 const getTecnicaBasicaDerived = (
@@ -1931,43 +4532,50 @@ const getTecnicaBasicaDerived = (
         graduacao,
         ve,
         custoPE,
-        efeito: `+${ve} em Furtividade e -${ve} para perceber sua presenca.`,
+        efeito: `+${graduacao} em Furtividade; tentativas de detectar por leitura de Eter sofrem -${graduacao}. Criaturas que dependem exclusivamente dessa percepcao sao incapazes de identifica-lo (exceto tecnicas de graduacao superior ou contato direto).`,
       };
     case "Foco":
       return {
         graduacao,
         ve,
         custoPE,
-        efeito: `+${ve} em Percepcao e detecta presenca de Eter.`,
+        efeito: `+${graduacao} em Percepcao. Detecta presenca de Eter no ambiente mesmo sem linha de visao direta, identifica ativacoes de tecnicas e movimentacoes de fluxo energetico.`,
       };
     case "Campo":
       return {
         graduacao,
         ve,
         custoPE,
-        efeito: `+${ve} em Percepcao na area e revela Supressao inferior. Raio: ${getCampoRaio(graduacao)}.`,
+        efeito: `+${graduacao} em Percepcao na area. Detecta automaticamente qualquer presenca de Eter na zona sensorial. Efeitos de ocultacao de Eter com graduacao inferior sao anulados. Raio: ${getCampoRaio(graduacao)}.`,
       };
-    case "Guarda":
+    case "Guarda": {
+      const reducao = Math.ceil(graduacao / 2);
       return {
         graduacao,
         ve,
         custoPE,
-        efeito: `Reduz em ${ve} o dano do primeiro ataque sofrido no turno.`,
+        efeito: `Reduz em ${reducao} o dano do primeiro ataque sofrido por turno (aplicado apos a Resistencia).`,
       };
-    case "Impulso":
+    }
+    case "Impulso": {
+      const bonus = Math.ceil(graduacao / 2);
       return {
         graduacao,
         ve,
         custoPE,
-        efeito: `+${ve} em Ataque ou +${ve} no Dano, conforme o foco escolhido ao ativar.`,
+        efeito: `Modo ofensivo: +${bonus} em testes de Ataque; ou modo amplificacao: +${bonus} no Dano causado. Aplica-se apenas ao primeiro ataque do turno.`,
       };
-    case "Ruptura":
+    }
+    case "Ruptura": {
+      const reducaoReacao = graduacao + Math.floor(graduacao / 2);
+      const bonusAtaque = Math.ceil(graduacao / 2);
       return {
         graduacao,
         ve,
         custoPE,
-        efeito: `Como Reacao, reduz dano em ${ve}; como Acao, recebe +${ve} no dano causado.`,
+        efeito: `Como Reacao: teste Tecnica (1d20+${graduacao}) vs CD 15 — sucesso reduz ${reducaoReacao} do dano final; falha sem reducao. Como Acao: +${bonusAtaque} no dano do golpe.`,
       };
+    }
     default:
       return {
         graduacao,
@@ -2094,7 +4702,7 @@ const PRETIPOS: PretipoDef[] = [
     ],
     desvantagens: [
       { catalogId: "reacao-lenta", graduacao: 1 },
-      { catalogId: "presenca-intimidante", graduacao: 1 },
+      { catalogId: "presenca-intimidadora", graduacao: 1 },
     ],
     poderes: [
       { powerId: "espadas-protecao", graduacao: "10" },
@@ -2125,7 +4733,6 @@ const PRETIPOS: PretipoDef[] = [
     resistenciaPoderFonte: "",
     pericias: {
       "Analise de Eter": "10",
-      "Controle de Eter": "10",
       Concentracao: "10",
       Percepcao: "10",
     },
@@ -2175,7 +4782,6 @@ const PRETIPOS: PretipoDef[] = [
     resistenciaPoderFonte: "",
     pericias: {
       "Analise de Eter": "10",
-      "Controle de Eter": "10",
       Concentracao: "10",
       Investigacao: "10",
       Percepcao: "10",
@@ -2232,7 +4838,6 @@ const PRETIPOS: PretipoDef[] = [
       Persuasao: "10",
       Concentracao: "10",
       "Analise de Eter": "10",
-      "Controle de Eter": "10",
       Percepcao: "10",
       Investigacao: "10",
     },
@@ -2282,7 +4887,6 @@ const PRETIPOS: PretipoDef[] = [
     resistenciaPoderFonte: "Campo de Forca",
     pericias: {
       "Analise de Eter": "4",
-      "Controle de Eter": "4",
       Investigacao: "4",
     },
     conhecimentos: [
@@ -2444,10 +5048,7 @@ const PRETIPOS: PretipoDef[] = [
       { catalogId: "ataque-poderoso", graduacao: 1 },
       { catalogId: "interpor-se", graduacao: 1 },
     ],
-    desvantagens: [
-      { catalogId: "obeso", graduacao: 1 },
-      { catalogId: "movimento-pesado", graduacao: 1 },
-    ],
+    desvantagens: [{ catalogId: "sobrecarga-corporal", graduacao: 1 }],
     poderes: [
       { powerId: "paus-crescimento", graduacao: "10" },
       { powerId: "paus-alterar-densidade", graduacao: "10" },
@@ -2532,7 +5133,6 @@ const PRETIPOS: PretipoDef[] = [
     resistenciaPoderFonte: "",
     pericias: {
       "Analise de Eter": "10",
-      "Controle de Eter": "10",
       Concentracao: "10",
       Percepcao: "10",
     },
@@ -2587,7 +5187,6 @@ const PRETIPOS: PretipoDef[] = [
       Concentracao: "10",
       Intuicao: "10",
       "Analise de Eter": "8",
-      "Controle de Eter": "6",
     },
     conhecimentos: [
       { area: "", graduacoes: "0" },
@@ -2651,8 +5250,47 @@ const createEmptyCharacter = (): CharacterSheet => ({
   vantagens: [],
   desvantagens: [],
   poderes: [],
+  tecnicasDesenvolvidas: [],
   equipamentos: "",
 });
+
+const normalizeCharacterSheet = (character: CharacterSheet): CharacterSheet => {
+  const fallback = createEmptyCharacter();
+
+  // Filter out endpoint URLs from imagemUrl (preserve only base64 for editing)
+  let imagemUrl = character.imagemUrl || fallback.imagemUrl;
+  if (imagemUrl && isApiImageUrl(imagemUrl)) {
+    // This is an endpoint URL, clear it (will use imagemViewUrl for display instead)
+    imagemUrl = fallback.imagemUrl;
+  }
+
+  return {
+    ...fallback,
+    ...character,
+    atributos: {
+      ...fallback.atributos,
+      ...(character.atributos ?? {}),
+    },
+    combate: {
+      ...fallback.combate,
+      ...(character.combate ?? {}),
+    },
+    pericias: {
+      ...fallback.pericias,
+      ...(character.pericias ?? {}),
+    },
+    conhecimentos: normalizeConhecimentos(character.conhecimentos),
+    tecnicasBasicas: {
+      ...fallback.tecnicasBasicas,
+      ...(character.tecnicasBasicas ?? {}),
+    },
+    tecnicasDesenvolvidas: Array.isArray(character.tecnicasDesenvolvidas)
+      ? character.tecnicasDesenvolvidas
+      : [],
+    imagemUrl,
+    imagemViewUrl: character.imagemViewUrl,
+  };
+};
 
 function useAnimatedCounter(
   target: number,
@@ -2761,6 +5399,7 @@ function NumericStepperInput({
   disabled?: boolean;
   ariaLabel?: string;
 }) {
+  const maxBound = max ?? Number.MAX_SAFE_INTEGER;
   const parsedValue = parseNatural(value);
   const isAtMin = parsedValue <= min;
   const isAtMax = max !== undefined && parsedValue >= max;
@@ -2770,12 +5409,13 @@ function NumericStepperInput({
       return;
     }
 
-    const nextValue = clamp(
-      parsedValue + direction * step,
-      min,
-      max ?? Number.MAX_SAFE_INTEGER,
-    );
+    const nextValue = clamp(parsedValue + direction * step, min, maxBound);
 
+    onChange(String(nextValue));
+  };
+
+  const handleInputChange = (rawValue: string) => {
+    const nextValue = clamp(parseNatural(rawValue), min, maxBound);
     onChange(String(nextValue));
   };
 
@@ -2799,7 +5439,7 @@ function NumericStepperInput({
         value={value}
         disabled={disabled}
         aria-label={ariaLabel}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => handleInputChange(event.target.value)}
       />
       <button
         type="button"
@@ -2815,20 +5455,99 @@ function NumericStepperInput({
 }
 
 function App() {
-  const [characters, setCharacters] = useState<CharacterSheet[]>([
-    createEmptyCharacter(),
-  ]);
-  const [selectedId, setSelectedId] = useState<string>(characters[0].id);
-  const [screen, setScreen] = useState<"home" | "editor">(() =>
+  const restoredDraft = useMemo(() => {
+    const loaded = readDraftFromLocalStorage();
+    if (!loaded) {
+      return null;
+    }
+
+    const normalizedCharacters = loaded.characters
+      .filter((character): character is CharacterSheet => !!character)
+      .map((character) => normalizeCharacterSheet(character));
+
+    if (normalizedCharacters.length === 0) {
+      return null;
+    }
+
+    const draftActiveGroupId = loaded.activeSheetId
+      ? loaded.activeSheetId
+      : normalizedCharacters.some(
+            (character) => character.id === loaded.selectedId,
+          )
+        ? getCharacterPrincipalId(
+            normalizedCharacters.find(
+              (character) => character.id === loaded.selectedId,
+            ) ?? normalizedCharacters[0],
+          )
+        : getCharacterPrincipalId(normalizedCharacters[0]);
+
+    const scopedCharacters = normalizedCharacters.filter(
+      (character) => getCharacterPrincipalId(character) === draftActiveGroupId,
+    );
+
+    if (scopedCharacters.length === 0) {
+      return null;
+    }
+
+    const selectedId = scopedCharacters.some(
+      (character) => character.id === loaded.selectedId,
+    )
+      ? loaded.selectedId
+      : scopedCharacters[0].id;
+
+    return {
+      ...loaded,
+      characters: scopedCharacters,
+      selectedId,
+      activeSheetId: draftActiveGroupId,
+    };
+  }, []);
+
+  const freshCharacter = useMemo(() => createEmptyCharacter(), []);
+
+  const [characters, setCharacters] = useState<CharacterSheet[]>(
+    () => restoredDraft?.characters ?? [freshCharacter],
+  );
+  const [selectedId, setSelectedId] = useState<string>(
+    () => restoredDraft?.selectedId ?? freshCharacter.id,
+  );
+  const [screen, setScreen] = useState<AppScreen>(() =>
     getScreenFromPathname(window.location.pathname),
   );
   const [savedSheets, setSavedSheets] = useState<SheetSummary[]>([]);
+  const [groupRecords, setGroupRecords] = useState<GroupRecord[]>([]);
   const [isLoadingSheets, setIsLoadingSheets] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [groupSelectModalOpen, setGroupSelectModalOpen] = useState(false);
+  const [groupSelectInput, setGroupSelectInput] = useState("");
+  const [groupSelectError, setGroupSelectError] = useState("");
+  const [groupEditorModalOpen, setGroupEditorModalOpen] = useState(false);
+  const [groupEditorKey, setGroupEditorKey] = useState<string | null>(null);
+  const [groupEditorName, setGroupEditorName] = useState("");
+  const [groupEditorImageUrl, setGroupEditorImageUrl] = useState("");
+  const [groupEditorImageFile, setGroupEditorImageFile] = useState<File | null>(
+    null,
+  );
+  const [groupEditorInitialImageUrl, setGroupEditorInitialImageUrl] =
+    useState("");
+  const [groupEditorAttachments, setGroupEditorAttachments] = useState<
+    GroupAttachment[]
+  >([]);
+  const [groupEditorInitialAttachmentIds, setGroupEditorInitialAttachmentIds] =
+    useState<string[]>([]);
+  const [groupEditorError, setGroupEditorError] = useState("");
+  const [isSavingGroup, setIsSavingGroup] = useState(false);
   const [isSavingSheet, setIsSavingSheet] = useState(false);
   const [isUnlockingSheet, setIsUnlockingSheet] = useState(false);
   const [isDeletingSheet, setIsDeletingSheet] = useState(false);
-  const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
+  const [activeSheetId, setActiveSheetId] = useState<string | null>(
+    () => restoredDraft?.activeSheetId ?? null,
+  );
   const [activeSheetPassword, setActiveSheetPassword] = useState("");
+  const [confirmSavePasswordModalOpen, setConfirmSavePasswordModalOpen] =
+    useState(false);
+  const [confirmSavePasswordInput, setConfirmSavePasswordInput] = useState("");
+  const [confirmSavePasswordError, setConfirmSavePasswordError] = useState("");
   const [apiError, setApiError] = useState<string | null>(null);
   const [unlockSheetModalOpen, setUnlockSheetModalOpen] = useState(false);
   const [unlockSheetTarget, setUnlockSheetTarget] =
@@ -2840,6 +5559,22 @@ function App() {
     useState<SheetSummary | null>(null);
   const [deleteSheetPasswordInput, setDeleteSheetPasswordInput] = useState("");
   const [deleteSheetError, setDeleteSheetError] = useState("");
+  const [moveSheetModalOpen, setMoveSheetModalOpen] = useState(false);
+  const [moveSheetTarget, setMoveSheetTarget] = useState<SheetSummary | null>(
+    null,
+  );
+  const [moveSheetPasswordInput, setMoveSheetPasswordInput] = useState("");
+  const [moveSheetDestinationInput, setMoveSheetDestinationInput] =
+    useState("");
+  const [moveSheetError, setMoveSheetError] = useState("");
+  const [isMovingSheet, setIsMovingSheet] = useState(false);
+  const [deleteGroupModalOpen, setDeleteGroupModalOpen] = useState(false);
+  const [deleteGroupTarget, setDeleteGroupTarget] =
+    useState<GroupRecord | null>(null);
+  const [deleteGroupDestinationInput, setDeleteGroupDestinationInput] =
+    useState("");
+  const [deleteGroupError, setDeleteGroupError] = useState("");
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false);
   const [pendingConfirmation, setPendingConfirmation] =
     useState<PendingConfirmation | null>(null);
   const [savePasswordModalOpen, setSavePasswordModalOpen] = useState(false);
@@ -2847,34 +5582,133 @@ function App() {
   const [savePasswordConfirmInput, setSavePasswordConfirmInput] = useState("");
   const [savePasswordError, setSavePasswordError] = useState("");
   const [vantagemCategoriaSelecionada, setVantagemCategoriaSelecionada] =
-    useState<VantagemCategoria | "">("");
-  const [vantagemSelecionadaId, setVantagemSelecionadaId] = useState("");
-  const [vantagemGraduacao, setVantagemGraduacao] = useState("1");
+    useState<VantagemCategoria | "">(
+      () => restoredDraft?.vantagemCategoriaSelecionada ?? "",
+    );
+  const [vantagemSelecionadaId, setVantagemSelecionadaId] = useState(
+    () => restoredDraft?.vantagemSelecionadaId ?? "",
+  );
+  const [vantagemGraduacao, setVantagemGraduacao] = useState(
+    () => restoredDraft?.vantagemGraduacao ?? "1",
+  );
   const [desvantagemCategoriaSelecionada, setDesvantagemCategoriaSelecionada] =
-    useState<DesvantagemCategoria | "">("");
-  const [desvantagemSelecionadaId, setDesvantagemSelecionadaId] = useState("");
-  const [desvantagemGraduacao, setDesvantagemGraduacao] = useState("1");
+    useState<DesvantagemCategoria | "">(
+      () => restoredDraft?.desvantagemCategoriaSelecionada ?? "",
+    );
+  const [desvantagemSelecionadaId, setDesvantagemSelecionadaId] = useState(
+    () => restoredDraft?.desvantagemSelecionadaId ?? "",
+  );
+  const [desvantagemGraduacao, setDesvantagemGraduacao] = useState(
+    () => restoredDraft?.desvantagemGraduacao ?? "1",
+  );
   const [poderesPanelAtivo, setPoderesPanelAtivo] = useState<
     "catalogo" | "arsenal"
-  >("arsenal");
-  const [activeEditorTab, setActiveEditorTab] =
-    useState<EditorTabId>("identidade");
+  >(() => restoredDraft?.poderesPanelAtivo ?? "arsenal");
+  const [activeEditorTab, setActiveEditorTab] = useState<EditorTabId>(
+    () => restoredDraft?.activeEditorTab ?? "identidade",
+  );
   const [naipePoderSelecionado, setNaipePoderSelecionado] =
-    useState<NaipePoder>("Espadas");
+    useState<NaipePoder>(
+      () => restoredDraft?.naipePoderSelecionado ?? "Espadas",
+    );
   const [detalhesPoderId, setDetalhesPoderId] = useState<string | null>(null);
-  const [pretipoSelecionado, setPretipoSelecionado] = useState("");
-  const [catalogoSearch, setCatalogoSearch] = useState("");
-  const [catalogoFiltroAcao, setCatalogoFiltroAcao] = useState("");
-  const [catalogoFiltroDuracao, setCatalogoFiltroDuracao] = useState("");
-  const [catalogoFiltroTipo, setCatalogoFiltroTipo] = useState("");
+  const [pretipoSelecionado, setPretipoSelecionado] = useState(
+    () => restoredDraft?.pretipoSelecionado ?? "",
+  );
+  const [catalogoSearch, setCatalogoSearch] = useState(
+    () => restoredDraft?.catalogoSearch ?? "",
+  );
+  const [catalogoFiltroAcao, setCatalogoFiltroAcao] = useState(
+    () => restoredDraft?.catalogoFiltroAcao ?? "",
+  );
+  const [catalogoFiltroDuracao, setCatalogoFiltroDuracao] = useState(
+    () => restoredDraft?.catalogoFiltroDuracao ?? "",
+  );
+  const [catalogoFiltroTipo, setCatalogoFiltroTipo] = useState(
+    () => restoredDraft?.catalogoFiltroTipo ?? "",
+  );
+  const [equipamentosEra, setEquipamentosEra] = useState<EquipmentEra>(
+    () => restoredDraft?.equipamentosEra ?? "Medieval",
+  );
+  const [equipamentosTipo, setEquipamentosTipo] = useState<EquipmentKind>(
+    () => restoredDraft?.equipamentosTipo ?? "Armas",
+  );
+  const [equipamentosSubcategoria, setEquipamentosSubcategoria] = useState(
+    () => restoredDraft?.equipamentosSubcategoria ?? "",
+  );
+  const [fichaGeradaPagina, setFichaGeradaPagina] = useState<1 | 2>(
+    () => restoredDraft?.fichaGeradaPagina ?? 1,
+  );
+  const [tecnicaDraft, setTecnicaDraft] = useState<DevelopedTechniqueDraft>(
+    () => restoredDraft?.tecnicaDraft ?? createDevelopedTechniqueDraft(),
+  );
 
   const selectedCharacter = useMemo(
     () => characters.find((character) => character.id === selectedId),
     [characters, selectedId],
   );
 
-  const navigateToScreen = (nextScreen: "home" | "editor") => {
-    const nextPath = nextScreen === "editor" ? CREATE_SHEET_ROUTE : HOME_ROUTE;
+  const equipamentosAtivos = useMemo(() => {
+    if (equipamentosTipo === "Armas") {
+      return EQUIPMENT_WEAPONS_BY_ERA[equipamentosEra];
+    }
+
+    if (equipamentosTipo === "Protecoes") {
+      return EQUIPMENT_PROTECTIONS_BY_ERA[equipamentosEra];
+    }
+
+    return EQUIPMENT_UTILITIES_BY_ERA[equipamentosEra];
+  }, [equipamentosEra, equipamentosTipo]);
+
+  const equipamentosSubcategorias = useMemo(
+    () =>
+      Array.from(new Set(equipamentosAtivos.map((item) => item.subcategoria))),
+    [equipamentosAtivos],
+  );
+
+  const equipamentosFiltrados = useMemo(() => {
+    if (!equipamentosSubcategoria) {
+      return equipamentosAtivos;
+    }
+
+    return equipamentosAtivos.filter(
+      (item) => item.subcategoria === equipamentosSubcategoria,
+    );
+  }, [equipamentosAtivos, equipamentosSubcategoria]);
+
+  const adicionarNotaEquipamento = (linha: string) => {
+    updateCharacter((current) => {
+      const notasAtuais = current.equipamentos.trim();
+      const proximaLinha = notasAtuais ? `${notasAtuais}\n${linha}` : linha;
+
+      return {
+        ...current,
+        equipamentos: proximaLinha,
+      };
+    });
+  };
+
+  const destaqueArmaNoLimite = (item: EquipmentWeaponEntry): boolean =>
+    reachesEquipmentCap(item.dano) ||
+    reachesEquipmentCap(item.acerto) ||
+    reachesEquipmentCap(item.efeito) ||
+    /ignora\s+2\s+resistencia/i.test(item.efeito);
+
+  const destaqueProtecaoNoLimite = (item: EquipmentProtectionEntry): boolean =>
+    reachesEquipmentCap(item.resistencia) ||
+    reachesEquipmentCap(item.defesa) ||
+    reachesEquipmentCap(item.efeito);
+
+  const destaqueUtilitarioNoLimite = (item: EquipmentUtilityEntry): boolean =>
+    reachesEquipmentCap(item.efeito);
+
+  const navigateToScreen = (nextScreen: AppScreen) => {
+    const nextPath =
+      nextScreen === "editor"
+        ? CREATE_SHEET_ROUTE
+        : nextScreen === "quick-sheet"
+          ? QUICK_SHEET_ROUTE
+          : HOME_ROUTE;
 
     if (window.location.pathname !== nextPath) {
       window.history.pushState({}, "", nextPath);
@@ -2901,10 +5735,13 @@ function App() {
 
       const normalizedSheets = (payload.sheets ?? []).map((sheet) => {
         const imagemUrl = getSheetPreviewImageUrl(sheet);
+        const grupo = (sheet.grupo ?? "").trim() || "Grupo 1";
 
         return {
           ...sheet,
-          imagemUrl,
+          grupo,
+          imagemUrl: sheet.imagemUrl,
+          imagemViewUrl: sheet.imagemViewUrl || imagemUrl,
           imageUrl: imagemUrl,
           fotoUrl: imagemUrl,
         };
@@ -2920,9 +5757,140 @@ function App() {
     }
   };
 
+  const mapGroupApiSummaryToRecord = (
+    group: GroupApiSummary,
+  ): GroupRecord | null => {
+    const key = normalizeGroupKey(
+      String(group.nome ?? group.name ?? "").trim(),
+    );
+
+    if (!key) {
+      return null;
+    }
+
+    const imageUrl =
+      (typeof group.imagemViewUrl === "string" && group.imagemViewUrl) ||
+      (typeof group.imageUrl === "string" && group.imageUrl) ||
+      (typeof group.fotoUrl === "string" && group.fotoUrl) ||
+      "";
+
+    return {
+      id: String(group.id ?? ""),
+      key,
+      name: String(group.nome ?? group.name ?? key).trim() || key,
+      imageUrl,
+      sheetCount: Number(group.sheetCount ?? 0),
+      attachmentCount: Number(group.attachmentCount ?? 0),
+      attachments: [],
+    };
+  };
+
+  const fetchGroupFiles = async (
+    groupId: string,
+  ): Promise<GroupAttachment[]> => {
+    if (!groupId) {
+      return [];
+    }
+
+    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/files`);
+    const payload = (await response.json()) as {
+      files?: GroupFileApiSummary[];
+      message?: string;
+    };
+
+    if (!response.ok) {
+      throw new Error(
+        payload.message ?? "Falha ao carregar arquivos do grupo.",
+      );
+    }
+
+    return (payload.files ?? []).map((file) => ({
+      id: String(file.id ?? crypto.randomUUID()),
+      name: String(file.nome ?? "Arquivo"),
+      size: Number(file.tamanhoBytes ?? 0),
+      mimeType: String(file.mimeType ?? "application/octet-stream"),
+      url: String(file.url ?? ""),
+      createdAt:
+        typeof file.createdAt === "string" ? file.createdAt : undefined,
+    }));
+  };
+
+  const fetchGroupList = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/groups`);
+      const payload = (await response.json()) as {
+        groups?: GroupApiSummary[];
+        message?: string;
+      };
+
+      if (!response.ok) {
+        setApiError(
+          (current) =>
+            current ?? payload.message ?? "Falha ao carregar grupos do banco.",
+        );
+        return;
+      }
+
+      const backendGroups = (payload.groups ?? [])
+        .map((group) => mapGroupApiSummaryToRecord(group))
+        .filter((group): group is GroupRecord => group !== null);
+
+      setGroupRecords((current) => {
+        const currentById = new Map(current.map((group) => [group.id, group]));
+
+        return backendGroups.map((group) => {
+          const cached = currentById.get(group.id);
+          return {
+            ...group,
+            attachments: cached?.attachments ?? [],
+          };
+        });
+      });
+    } catch {
+      setApiError(
+        (current) =>
+          current ??
+          "Nao foi possivel conectar ao backend. Verifique se o server esta rodando.",
+      );
+    }
+  };
+
   useEffect(() => {
     void fetchSheetList();
+    void fetchGroupList();
   }, []);
+
+  useEffect(() => {
+    if (screen !== "group" || !selectedGroup) {
+      return;
+    }
+
+    const currentGroup = groupRecords.find(
+      (group) => group.key === normalizeGroupKey(selectedGroup),
+    );
+
+    if (!currentGroup?.id) {
+      return;
+    }
+
+    void (async () => {
+      try {
+        const files = await fetchGroupFiles(currentGroup.id);
+        setGroupRecords((current) =>
+          current.map((group) =>
+            group.id === currentGroup.id
+              ? {
+                  ...group,
+                  attachments: files,
+                }
+              : group,
+          ),
+        );
+      } catch {
+        toast.error("Nao foi possivel carregar os arquivos do grupo.");
+      }
+    })();
+  }, [screen, selectedGroup]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -2934,6 +5902,85 @@ function App() {
       window.removeEventListener("popstate", onPopState);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || characters.length === 0) {
+      return;
+    }
+
+    const currentPrincipalId =
+      characters.find((character) => !character.parentId)?.id ??
+      getCharacterPrincipalId(characters[0]);
+
+    const existingDraft = readDraftFromLocalStorage();
+    const existingCharacters = (existingDraft?.characters ?? []).filter(
+      (character): character is CharacterSheet => !!character,
+    );
+    const mergedCharacters = [
+      ...existingCharacters.filter(
+        (character) =>
+          getCharacterPrincipalId(character) !== currentPrincipalId,
+      ),
+      ...characters,
+    ];
+
+    const payload: LocalDraftPayload = {
+      characters: mergedCharacters,
+      selectedId,
+      activeSheetId,
+      activeEditorTab,
+      poderesPanelAtivo,
+      naipePoderSelecionado,
+      catalogoSearch,
+      catalogoFiltroAcao,
+      catalogoFiltroDuracao,
+      catalogoFiltroTipo,
+      equipamentosEra,
+      equipamentosTipo,
+      equipamentosSubcategoria,
+      fichaGeradaPagina,
+      tecnicaDraft,
+      vantagemCategoriaSelecionada,
+      vantagemSelecionadaId,
+      vantagemGraduacao,
+      desvantagemCategoriaSelecionada,
+      desvantagemSelecionadaId,
+      desvantagemGraduacao,
+      pretipoSelecionado,
+    };
+
+    try {
+      window.localStorage.setItem(
+        CHARACTER_DRAFT_STORAGE_KEY,
+        JSON.stringify(payload),
+      );
+    } catch {
+      // Ignore quota/private mode failures and keep app flow alive.
+    }
+  }, [
+    characters,
+    selectedId,
+    activeSheetId,
+    activeEditorTab,
+    poderesPanelAtivo,
+    naipePoderSelecionado,
+    catalogoSearch,
+    catalogoFiltroAcao,
+    catalogoFiltroDuracao,
+    catalogoFiltroTipo,
+    equipamentosEra,
+    equipamentosTipo,
+    equipamentosSubcategoria,
+    fichaGeradaPagina,
+    tecnicaDraft,
+    vantagemCategoriaSelecionada,
+    vantagemSelecionadaId,
+    vantagemGraduacao,
+    desvantagemCategoriaSelecionada,
+    desvantagemSelecionadaId,
+    desvantagemGraduacao,
+    pretipoSelecionado,
+  ]);
 
   useEffect(() => {
     if (characters.length === 0) {
@@ -2960,8 +6007,571 @@ function App() {
     );
   }, [selectedId]);
 
-  const createNewSheet = () => {
-    const next = createEmptyCharacter();
+  useEffect(() => {
+    if (screen !== "quick-sheet") {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        navigateToScreen("editor");
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [screen]);
+
+  // Sincronizar automaticamente as graduações dos poderes base com o arsenal do personagem
+  useEffect(() => {
+    if (!selectedCharacter || tecnicaDraft.poderesBase.length === 0) {
+      return;
+    }
+
+    const nivel = parseNatural(selectedCharacter.nivel);
+    const limitePoder = nivel + 10;
+    const poderesArsenal = new Map(
+      selectedCharacter.poderes.map((p) => [
+        p.powerId,
+        clamp(parseNatural(p.graduacao), 1, limitePoder),
+      ]),
+    );
+
+    const hasChanges = tecnicaDraft.poderesBase.some((base) => {
+      const graduacaoArsenal = poderesArsenal.get(base.powerId);
+      if (!graduacaoArsenal) return false;
+      return String(graduacaoArsenal) !== base.graduacao;
+    });
+
+    if (hasChanges) {
+      setTecnicaDraft((current) => ({
+        ...current,
+        poderesBase: current.poderesBase.map((base) => {
+          const graduacaoArsenal = poderesArsenal.get(base.powerId);
+          return {
+            ...base,
+            graduacao: graduacaoArsenal
+              ? String(graduacaoArsenal)
+              : base.graduacao,
+          };
+        }),
+      }));
+    }
+  }, [selectedCharacter?.poderes]);
+
+  // Helpers para gerenciar grupos
+  const getGroupByKey = (groupKey: string): GroupRecord | null => {
+    return (
+      groupRecords.find((group) => group.key === normalizeGroupKey(groupKey)) ??
+      null
+    );
+  };
+
+  const getAllGroups = (): GroupRecord[] => {
+    return [...groupRecords].sort((a, b) =>
+      a.name.localeCompare(b.name, "pt-BR"),
+    );
+  };
+
+  const getSheetsInGroup = (groupKey: string): SheetSummary[] => {
+    const targetKey = normalizeGroupKey(groupKey);
+    return savedSheets.filter(
+      (sheet) =>
+        normalizeGroupKey((sheet.grupo ?? "").trim() || "Grupo 1") ===
+        targetKey,
+    );
+  };
+
+  const navigateToGroup = (groupKey: string) => {
+    setSelectedGroup(normalizeGroupKey(groupKey));
+    setScreen("group");
+  };
+
+  const navigateToHome = () => {
+    setSelectedGroup(null);
+    setScreen("home");
+  };
+
+  const openGroupSelectModal = () => {
+    setGroupSelectInput("");
+    setGroupSelectError("");
+    setGroupSelectModalOpen(true);
+  };
+
+  const closeGroupSelectModal = () => {
+    setGroupSelectModalOpen(false);
+    setGroupSelectInput("");
+    setGroupSelectError("");
+  };
+
+  const closeGroupEditorModal = () => {
+    setGroupEditorModalOpen(false);
+    setGroupEditorKey(null);
+    setGroupEditorName("");
+    setGroupEditorImageUrl("");
+    setGroupEditorImageFile(null);
+    setGroupEditorInitialImageUrl("");
+    setGroupEditorAttachments([]);
+    setGroupEditorInitialAttachmentIds([]);
+    setGroupEditorError("");
+  };
+
+  const openCreateGroupModal = () => {
+    setGroupEditorKey(null);
+    setGroupEditorName("");
+    setGroupEditorImageUrl("");
+    setGroupEditorImageFile(null);
+    setGroupEditorInitialImageUrl("");
+    setGroupEditorAttachments([]);
+    setGroupEditorInitialAttachmentIds([]);
+    setGroupEditorError("");
+    setGroupEditorModalOpen(true);
+  };
+
+  const openEditGroupModal = async (groupKey: string) => {
+    const group = getGroupByKey(groupKey);
+    if (!group || !group.id) {
+      toast.error("Grupo nao encontrado.");
+      return;
+    }
+
+    try {
+      const files = await fetchGroupFiles(group.id);
+
+      setGroupRecords((current) =>
+        current.map((item) =>
+          item.id === group.id
+            ? {
+                ...item,
+                attachments: files,
+              }
+            : item,
+        ),
+      );
+
+      setGroupEditorKey(group.key);
+      setGroupEditorName(group.name);
+      setGroupEditorImageUrl(group.imageUrl);
+      setGroupEditorImageFile(null);
+      setGroupEditorInitialImageUrl(group.imageUrl);
+      setGroupEditorAttachments(files);
+      setGroupEditorInitialAttachmentIds(
+        files.map((attachment) => attachment.id),
+      );
+      setGroupEditorError("");
+      setGroupEditorModalOpen(true);
+    } catch {
+      toast.error("Nao foi possivel carregar os arquivos do grupo.");
+    }
+  };
+
+  const addAttachmentsToEditor = (files: FileList | null) => {
+    if (!files || files.length === 0) {
+      return;
+    }
+
+    const attachments = Array.from(files).map((file) => ({
+      id: crypto.randomUUID(),
+      name: file.name,
+      size: file.size,
+      mimeType: file.type || "application/octet-stream",
+      url: URL.createObjectURL(file),
+      file,
+    }));
+
+    setGroupEditorAttachments((current) => [...current, ...attachments]);
+  };
+
+  const onGroupEditorImageFileSelected = (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Selecione um arquivo de imagem valido.");
+      return;
+    }
+
+    setGroupEditorImageFile(file);
+    setGroupEditorImageUrl(URL.createObjectURL(file));
+  };
+
+  const removeEditorAttachment = (attachmentId: string) => {
+    setGroupEditorAttachments((current) =>
+      current.filter((attachment) => attachment.id !== attachmentId),
+    );
+  };
+
+  const setGroupAttachmentsById = (
+    groupId: string,
+    attachments: GroupAttachment[],
+  ) => {
+    setGroupRecords((current) =>
+      current.map((group) =>
+        group.id === groupId
+          ? {
+              ...group,
+              attachments,
+            }
+          : group,
+      ),
+    );
+  };
+
+  const saveGroupEditor = async () => {
+    const nextName = groupEditorName.trim();
+
+    if (!nextName) {
+      setGroupEditorError("Nome do grupo e obrigatorio.");
+      return;
+    }
+
+    setIsSavingGroup(true);
+    setGroupEditorError("");
+
+    try {
+      const editingGroup = groupEditorKey
+        ? getGroupByKey(groupEditorKey)
+        : null;
+      let targetGroupId = editingGroup?.id ?? "";
+      let targetGroupKey = normalizeGroupKey(nextName);
+
+      if (editingGroup) {
+        const renameResponse = await fetch(
+          `${API_BASE_URL}/groups/${editingGroup.id}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ nome: nextName }),
+          },
+        );
+
+        const renamePayload = (await renameResponse.json()) as {
+          group?: GroupApiSummary;
+          message?: string;
+        };
+
+        if (!renameResponse.ok) {
+          setGroupEditorError(
+            renamePayload.message ?? "Falha ao atualizar grupo.",
+          );
+          return;
+        }
+
+        const updatedGroup = renamePayload.group
+          ? mapGroupApiSummaryToRecord(renamePayload.group)
+          : null;
+        if (updatedGroup?.id) {
+          targetGroupId = updatedGroup.id;
+          targetGroupKey = updatedGroup.key;
+        }
+      } else {
+        const createResponse = await fetch(`${API_BASE_URL}/groups`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ nome: nextName }),
+        });
+
+        const createPayload = (await createResponse.json()) as {
+          group?: GroupApiSummary;
+          message?: string;
+        };
+
+        if (!createResponse.ok) {
+          setGroupEditorError(createPayload.message ?? "Falha ao criar grupo.");
+          return;
+        }
+
+        const createdGroup = createPayload.group
+          ? mapGroupApiSummaryToRecord(createPayload.group)
+          : null;
+
+        if (!createdGroup?.id) {
+          setGroupEditorError("Falha ao identificar o grupo criado.");
+          return;
+        }
+
+        targetGroupId = createdGroup.id;
+        targetGroupKey = createdGroup.key;
+      }
+
+      if (!targetGroupId) {
+        setGroupEditorError("Grupo invalido para sincronizacao.");
+        return;
+      }
+
+      if (groupEditorImageFile) {
+        const imageFormData = new FormData();
+        imageFormData.append("image", groupEditorImageFile);
+
+        const imageResponse = await fetch(
+          `${API_BASE_URL}/groups/${targetGroupId}/image`,
+          {
+            method: "POST",
+            body: imageFormData,
+          },
+        );
+
+        const imagePayload = (await imageResponse.json()) as {
+          message?: string;
+        };
+        if (!imageResponse.ok) {
+          setGroupEditorError(
+            imagePayload.message ?? "Falha ao salvar imagem do grupo.",
+          );
+          return;
+        }
+      } else if (!groupEditorImageUrl && groupEditorInitialImageUrl) {
+        const deleteImageResponse = await fetch(
+          `${API_BASE_URL}/groups/${targetGroupId}/image`,
+          {
+            method: "DELETE",
+          },
+        );
+
+        const deleteImagePayload = (await deleteImageResponse.json()) as {
+          message?: string;
+        };
+
+        if (!deleteImageResponse.ok) {
+          setGroupEditorError(
+            deleteImagePayload.message ?? "Falha ao remover imagem do grupo.",
+          );
+          return;
+        }
+      }
+
+      const currentAttachmentIds = new Set(
+        groupEditorAttachments
+          .filter((attachment) => !attachment.file)
+          .map((attachment) => attachment.id),
+      );
+
+      const removedAttachmentIds = groupEditorInitialAttachmentIds.filter(
+        (attachmentId) => !currentAttachmentIds.has(attachmentId),
+      );
+
+      for (const attachmentId of removedAttachmentIds) {
+        const removeResponse = await fetch(
+          `${API_BASE_URL}/groups/${targetGroupId}/files/${attachmentId}`,
+          {
+            method: "DELETE",
+          },
+        );
+
+        const removePayload = (await removeResponse.json()) as {
+          message?: string;
+        };
+        if (!removeResponse.ok) {
+          setGroupEditorError(
+            removePayload.message ?? "Falha ao remover arquivo do grupo.",
+          );
+          return;
+        }
+      }
+
+      const newAttachments = groupEditorAttachments.filter(
+        (attachment) => attachment.file,
+      );
+
+      for (const attachment of newAttachments) {
+        const file = attachment.file;
+        if (!file) {
+          continue;
+        }
+
+        const fileFormData = new FormData();
+        fileFormData.append("file", file);
+
+        const uploadResponse = await fetch(
+          `${API_BASE_URL}/groups/${targetGroupId}/files`,
+          {
+            method: "POST",
+            body: fileFormData,
+          },
+        );
+
+        const uploadPayload = (await uploadResponse.json()) as {
+          message?: string;
+        };
+        if (!uploadResponse.ok) {
+          setGroupEditorError(
+            uploadPayload.message ?? "Falha ao enviar arquivo para o grupo.",
+          );
+          return;
+        }
+      }
+
+      await fetchGroupList();
+      await fetchSheetList();
+
+      const syncedFiles = await fetchGroupFiles(targetGroupId);
+      setGroupAttachmentsById(targetGroupId, syncedFiles);
+
+      closeGroupEditorModal();
+      if (
+        selectedGroup &&
+        groupEditorKey &&
+        groupEditorKey !== targetGroupKey
+      ) {
+        setSelectedGroup(targetGroupKey);
+      }
+      navigateToGroup(targetGroupKey);
+      toast.success(
+        editingGroup
+          ? "Grupo atualizado com sucesso."
+          : "Grupo criado com sucesso.",
+      );
+    } catch {
+      setGroupEditorError(
+        "Nao foi possivel conectar ao backend para sincronizar o grupo.",
+      );
+    } finally {
+      setIsSavingGroup(false);
+    }
+  };
+
+  const addAttachmentsToGroup = async (
+    groupKey: string,
+    files: FileList | null,
+  ) => {
+    if (!files || files.length === 0) {
+      return;
+    }
+
+    const group = getGroupByKey(groupKey);
+    if (!group?.id) {
+      toast.error("Grupo nao encontrado.");
+      return;
+    }
+
+    try {
+      for (const file of Array.from(files)) {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response = await fetch(
+          `${API_BASE_URL}/groups/${group.id}/files`,
+          {
+            method: "POST",
+            body: formData,
+          },
+        );
+
+        const payload = (await response.json()) as { message?: string };
+        if (!response.ok) {
+          toast.error(payload.message ?? "Falha ao anexar arquivo ao grupo.");
+          return;
+        }
+      }
+
+      const syncedFiles = await fetchGroupFiles(group.id);
+      setGroupAttachmentsById(group.id, syncedFiles);
+      toast.success("Arquivos anexados ao grupo.");
+    } catch {
+      toast.error("Erro de conexao ao anexar arquivos ao grupo.");
+    }
+  };
+
+  const removeGroupAttachment = async (
+    groupKey: string,
+    attachmentId: string,
+  ) => {
+    const group = getGroupByKey(groupKey);
+    if (!group?.id) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/groups/${group.id}/files/${attachmentId}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      const payload = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        toast.error(payload.message ?? "Falha ao remover arquivo do grupo.");
+        return;
+      }
+
+      const syncedFiles = await fetchGroupFiles(group.id);
+      setGroupAttachmentsById(group.id, syncedFiles);
+      toast.success("Arquivo removido do grupo.");
+    } catch {
+      toast.error("Erro de conexao ao remover arquivo do grupo.");
+    }
+  };
+
+  const handleGroupSelectSubmit = async (groupName: string) => {
+    const normalizedName = groupName.trim();
+    if (!normalizedName) {
+      setGroupSelectError("Nome do grupo nao pode ser vazio.");
+      return;
+    }
+
+    const existing = getAllGroups().find(
+      (group) =>
+        group.name.toLowerCase() === normalizedName.toLowerCase() ||
+        group.key.toLowerCase() === normalizedName.toLowerCase(),
+    );
+
+    let targetKey = existing?.key;
+
+    if (!targetKey) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/groups`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ nome: normalizedName }),
+        });
+
+        const payload = (await response.json()) as {
+          group?: GroupApiSummary;
+          message?: string;
+        };
+
+        if (!response.ok) {
+          setGroupSelectError(payload.message ?? "Falha ao criar grupo.");
+          return;
+        }
+
+        const createdGroup = payload.group
+          ? mapGroupApiSummaryToRecord(payload.group)
+          : null;
+        targetKey = createdGroup?.key ?? normalizeGroupKey(normalizedName);
+        await fetchGroupList();
+      } catch {
+        setGroupSelectError("Nao foi possivel conectar ao backend.");
+        return;
+      }
+    }
+
+    if (selectedCharacter) {
+      updateCharacter((current) => ({
+        ...current,
+        grupo: targetKey,
+      }));
+    }
+    closeGroupSelectModal();
+    toast.success(`Grupo definido para: ${targetKey}`);
+  };
+
+  const createNewSheet = (groupKey?: string) => {
+    const next = {
+      ...createEmptyCharacter(),
+      grupo: groupKey ?? "",
+    };
     setCharacters([next]);
     setSelectedId(next.id);
     setActiveSheetId(null);
@@ -2974,11 +6584,19 @@ function App() {
     setDeleteSheetTarget(null);
     setDeleteSheetPasswordInput("");
     setDeleteSheetError("");
+    setMoveSheetModalOpen(false);
+    setMoveSheetTarget(null);
+    setMoveSheetPasswordInput("");
+    setMoveSheetDestinationInput("");
+    setMoveSheetError("");
     setPendingConfirmation(null);
     setSavePasswordModalOpen(false);
     setSavePasswordInput("");
     setSavePasswordConfirmInput("");
     setSavePasswordError("");
+    setConfirmSavePasswordModalOpen(false);
+    setConfirmSavePasswordInput("");
+    setConfirmSavePasswordError("");
     setApiError(null);
     navigateToScreen("editor");
   };
@@ -2991,6 +6609,12 @@ function App() {
   const resetDeleteSheetForm = () => {
     setDeleteSheetPasswordInput("");
     setDeleteSheetError("");
+  };
+
+  const resetMoveSheetForm = () => {
+    setMoveSheetPasswordInput("");
+    setMoveSheetDestinationInput("");
+    setMoveSheetError("");
   };
 
   const closeUnlockSheetModal = () => {
@@ -3023,6 +6647,22 @@ function App() {
     setDeleteSheetTarget(summary);
     setDeleteSheetModalOpen(true);
     resetDeleteSheetForm();
+  };
+
+  const closeMoveSheetModal = () => {
+    if (isMovingSheet) {
+      return;
+    }
+
+    setMoveSheetModalOpen(false);
+    setMoveSheetTarget(null);
+    resetMoveSheetForm();
+  };
+
+  const openMoveSheetModal = (summary: SheetSummary) => {
+    setMoveSheetTarget(summary);
+    setMoveSheetModalOpen(true);
+    resetMoveSheetForm();
   };
 
   const unlockSheetForEditing = async () => {
@@ -3063,9 +6703,23 @@ function App() {
         return;
       }
 
-      setCharacters([payload.character]);
-      setSelectedId(payload.character.id);
-      setActiveSheetId(unlockSheetTarget.id);
+      const normalizedCharacter = normalizeCharacterSheet(payload.character);
+      const principalId = unlockSheetTarget.id;
+
+      const existingDraft = readDraftFromLocalStorage();
+      const scopedCharacters = (existingDraft?.characters ?? [])
+        .filter((character): character is CharacterSheet => !!character)
+        .map((character) => normalizeCharacterSheet(character))
+        .filter(
+          (character) => getCharacterPrincipalId(character) === principalId,
+        );
+
+      setCharacters([
+        normalizedCharacter,
+        ...scopedCharacters.filter((character) => character.id !== principalId),
+      ]);
+      setSelectedId(principalId);
+      setActiveSheetId(principalId);
       setActiveSheetPassword(password);
       setUnlockSheetModalOpen(false);
       setUnlockSheetTarget(null);
@@ -3122,7 +6776,12 @@ function App() {
         return;
       }
 
+      removeDraftGroupFromLocalStorage(deleteSheetTarget.id);
+
       if (activeSheetId === deleteSheetTarget.id) {
+        const next = createEmptyCharacter();
+        setCharacters([next]);
+        setSelectedId(next.id);
         setActiveSheetId(null);
         setActiveSheetPassword("");
       }
@@ -3142,6 +6801,152 @@ function App() {
     }
   };
 
+  const moveSheetToGroup = async () => {
+    if (!moveSheetTarget) {
+      return;
+    }
+
+    const password = moveSheetPasswordInput.trim();
+    if (!password) {
+      setMoveSheetError("Digite a senha da ficha para mover.");
+      return;
+    }
+
+    const destinationGroup = moveSheetDestinationInput.trim();
+    if (!destinationGroup) {
+      setMoveSheetError("Informe o grupo de destino.");
+      return;
+    }
+
+    const currentGroupName = (moveSheetTarget.grupo ?? "").trim() || "Grupo 1";
+    if (
+      normalizeGroupKey(destinationGroup) ===
+      normalizeGroupKey(currentGroupName)
+    ) {
+      setMoveSheetError("A ficha ja esta neste grupo.");
+      return;
+    }
+
+    setApiError(null);
+    setIsMovingSheet(true);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/sheets/${moveSheetTarget.id}/group`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            password,
+            grupo: destinationGroup,
+          }),
+        },
+      );
+
+      const payload = (await response.json()) as {
+        message?: string;
+        moved?: boolean;
+      };
+
+      if (!response.ok) {
+        const message =
+          payload.message ?? "Nao foi possivel mover a ficha de grupo.";
+        setMoveSheetError(message);
+        toast.error(message);
+        return;
+      }
+
+      await fetchSheetList();
+      await fetchGroupList();
+      setMoveSheetModalOpen(false);
+      setMoveSheetTarget(null);
+      resetMoveSheetForm();
+      toast.success("Ficha movida de grupo com sucesso.");
+    } catch {
+      toast.error("Erro de conexao ao mover a ficha.");
+    } finally {
+      setIsMovingSheet(false);
+    }
+  };
+
+  const openDeleteGroupModal = (groupKey: string) => {
+    const group = groupRecords.find((g) => g.key === groupKey);
+    if (!group) {
+      return;
+    }
+    setDeleteGroupTarget(group);
+    setDeleteGroupDestinationInput("");
+    setDeleteGroupError("");
+    setDeleteGroupModalOpen(true);
+  };
+
+  const closeDeleteGroupModal = () => {
+    if (isDeletingGroup) {
+      return;
+    }
+    setDeleteGroupModalOpen(false);
+    setDeleteGroupTarget(null);
+    setDeleteGroupDestinationInput("");
+    setDeleteGroupError("");
+  };
+
+  const deleteGroup = async () => {
+    if (!deleteGroupTarget) {
+      return;
+    }
+
+    setApiError(null);
+    setIsDeletingGroup(true);
+
+    try {
+      const body: Record<string, string> = {};
+      if (deleteGroupDestinationInput.trim()) {
+        body.moveToGroupName = deleteGroupDestinationInput.trim();
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/groups/${deleteGroupTarget.id}`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+
+      const payload = (await response.json()) as {
+        message?: string;
+        sheetCount?: number;
+      };
+
+      if (response.status === 409) {
+        setDeleteGroupError(
+          `Este grupo possui ${payload.sheetCount ?? "algumas"} ficha(s). Informe o grupo de destino para as fichas.`,
+        );
+        return;
+      }
+
+      if (!response.ok) {
+        const message = payload.message ?? "Não foi possível excluir o grupo.";
+        setDeleteGroupError(message);
+        toast.error(message);
+        return;
+      }
+
+      await fetchGroupList();
+      await fetchSheetList();
+      setDeleteGroupModalOpen(false);
+      setDeleteGroupTarget(null);
+      setSelectedGroup("");
+      toast.success("Grupo excluído com sucesso.");
+    } catch {
+      toast.error("Erro de conexão ao excluir o grupo.");
+    } finally {
+      setIsDeletingGroup(false);
+    }
+  };
+
   const resetSavePasswordForm = () => {
     setSavePasswordInput("");
     setSavePasswordConfirmInput("");
@@ -3157,8 +6962,74 @@ function App() {
     resetSavePasswordForm();
   };
 
+  const resetConfirmSavePasswordForm = () => {
+    setConfirmSavePasswordInput("");
+    setConfirmSavePasswordError("");
+  };
+
+  const closeConfirmSavePasswordModal = () => {
+    if (isSavingSheet) {
+      return;
+    }
+
+    setConfirmSavePasswordModalOpen(false);
+    resetConfirmSavePasswordForm();
+  };
+
+  const handleConfirmSavePasswordSubmit = (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+
+    if (!confirmSavePasswordInput.trim()) {
+      setConfirmSavePasswordError("Digite a senha atual da ficha.");
+      return;
+    }
+
+    setConfirmSavePasswordError("");
+    void persistSelectedCharacter(confirmSavePasswordInput);
+  };
+
   const closeConfirmationModal = () => {
     setPendingConfirmation(null);
+  };
+
+  const resetPrincipalConfirmed = (characterId: string) => {
+    const targetCharacter = characters.find(
+      (character) => character.id === characterId,
+    );
+
+    if (!targetCharacter || targetCharacter.parentId) {
+      return;
+    }
+
+    const blankPrincipal = createEmptyCharacter();
+
+    setCharacters((current) =>
+      current.map((character) =>
+        character.id === characterId
+          ? {
+              ...blankPrincipal,
+              id: character.id,
+              parentId: undefined,
+              localSaved: character.localSaved,
+            }
+          : character,
+      ),
+    );
+
+    toast.success("Perfil principal resetado.");
+  };
+
+  const openResetPrincipalConfirmation = (characterId: string) => {
+    setPendingConfirmation({
+      title: "Resetar perfil principal",
+      message:
+        "Isso vai limpar todos os campos da ficha principal. Prototipos locais nao serao alterados.",
+      confirmLabel: "Resetar principal",
+      variant: "danger",
+      action: { type: "reset-principal", characterId },
+    });
   };
 
   const renderGlobalOverlays = () => (
@@ -3176,10 +7047,10 @@ function App() {
             aria-labelledby="save-sheet-password-title"
             onClick={(event) => event.stopPropagation()}
           >
-            <h3 id="save-sheet-password-title">Salvar nova ficha</h3>
+            <h3 id="save-sheet-password-title">Cadastrar nova ficha</h3>
             <p>
-              Crie uma senha para proteger esta ficha no banco. Ela sera pedida
-              para abrir a ficha depois.
+              Crie uma senha para sua conta. Esta sera usada para acessar todas
+              as suas fichas salvas no banco.
             </p>
             <form
               className="save-password-form"
@@ -3234,7 +7105,70 @@ function App() {
                   Cancelar
                 </button>
                 <button type="submit" disabled={isSavingSheet}>
-                  {isSavingSheet ? "Salvando..." : "Salvar ficha"}
+                  {isSavingSheet ? "Cadastrando..." : "Cadastrar ficha"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {confirmSavePasswordModalOpen ? (
+        <div
+          className="save-password-modal-backdrop"
+          role="presentation"
+          onClick={closeConfirmSavePasswordModal}
+        >
+          <div
+            className="save-password-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-save-password-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="confirm-save-password-title">Salvar alteracoes</h3>
+            <p>
+              Confirme a senha da sua conta para salvar as edicoes desta ficha
+              no banco.
+            </p>
+            <form
+              className="save-password-form"
+              onSubmit={handleConfirmSavePasswordSubmit}
+            >
+              <label>
+                Senha atual
+                <input
+                  type="password"
+                  value={confirmSavePasswordInput}
+                  onChange={(event) => {
+                    setConfirmSavePasswordInput(event.target.value);
+                    if (confirmSavePasswordError) {
+                      setConfirmSavePasswordError("");
+                    }
+                  }}
+                  disabled={isSavingSheet}
+                  autoComplete="current-password"
+                  autoFocus
+                  required
+                />
+              </label>
+
+              {confirmSavePasswordError ? (
+                <p className="save-password-error">
+                  {confirmSavePasswordError}
+                </p>
+              ) : null}
+
+              <div className="save-password-actions">
+                <button
+                  type="button"
+                  onClick={closeConfirmSavePasswordModal}
+                  disabled={isSavingSheet}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" disabled={isSavingSheet}>
+                  {isSavingSheet ? "Salvando..." : "Salvar"}
                 </button>
               </div>
             </form>
@@ -3375,6 +7309,224 @@ function App() {
         </div>
       ) : null}
 
+      {moveSheetModalOpen && moveSheetTarget ? (
+        <div
+          className="save-password-modal-backdrop"
+          role="presentation"
+          onClick={closeMoveSheetModal}
+        >
+          <div
+            className="save-password-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="move-sheet-group-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="move-sheet-group-title">Mover ficha</h3>
+            <p>
+              Escolha o grupo de destino para a ficha de{" "}
+              <strong>{moveSheetTarget.nome || "Sem nome"}</strong> e confirme
+              com a senha.
+            </p>
+            <form
+              className="save-password-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void moveSheetToGroup();
+              }}
+            >
+              <fieldset>
+                <legend>Grupos disponíveis:</legend>
+                <div className="group-select-list">
+                  {getAllGroups()
+                    .filter(
+                      (group) =>
+                        normalizeGroupKey(group.key) !==
+                        normalizeGroupKey(
+                          (moveSheetTarget.grupo ?? "").trim() || "Grupo 1",
+                        ),
+                    )
+                    .map((group) => (
+                      <button
+                        key={group.key}
+                        type="button"
+                        className="group-select-button"
+                        onClick={() => {
+                          setMoveSheetDestinationInput(group.name);
+                          if (moveSheetError) {
+                            setMoveSheetError("");
+                          }
+                        }}
+                      >
+                        {group.name}
+                      </button>
+                    ))}
+                </div>
+              </fieldset>
+
+              <label>
+                Grupo de destino
+                <input
+                  type="text"
+                  placeholder="Nome do grupo..."
+                  value={moveSheetDestinationInput}
+                  onChange={(event) => {
+                    setMoveSheetDestinationInput(event.target.value);
+                    if (moveSheetError) {
+                      setMoveSheetError("");
+                    }
+                  }}
+                  autoFocus
+                  required
+                />
+              </label>
+
+              <label>
+                Senha
+                <input
+                  type="password"
+                  value={moveSheetPasswordInput}
+                  onChange={(event) => {
+                    setMoveSheetPasswordInput(event.target.value);
+                    if (moveSheetError) {
+                      setMoveSheetError("");
+                    }
+                  }}
+                  disabled={isMovingSheet}
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+
+              {moveSheetError ? (
+                <p className="save-password-error">{moveSheetError}</p>
+              ) : null}
+
+              <div className="save-password-actions">
+                <button
+                  type="button"
+                  onClick={closeMoveSheetModal}
+                  disabled={isMovingSheet}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" disabled={isMovingSheet}>
+                  {isMovingSheet ? "Movendo..." : "Mover ficha"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteGroupModalOpen && deleteGroupTarget ? (
+        <div
+          className="save-password-modal-backdrop"
+          role="presentation"
+          onClick={closeDeleteGroupModal}
+        >
+          <div
+            className="save-password-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-group-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="delete-group-title">Excluir grupo</h3>
+            <p>
+              Você está prestes a excluir o grupo{" "}
+              <strong>{deleteGroupTarget.name}</strong>.
+              {deleteGroupTarget.sheetCount > 0 ? (
+                <>
+                  {" "}
+                  Este grupo possui{" "}
+                  <strong>{deleteGroupTarget.sheetCount}</strong> ficha(s).
+                  Informe o grupo de destino para mover as fichas antes de
+                  excluir.
+                </>
+              ) : (
+                " O grupo está vazio e será excluído permanentemente."
+              )}
+            </p>
+            <form
+              className="save-password-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void deleteGroup();
+              }}
+            >
+              {deleteGroupTarget.sheetCount > 0 ? (
+                <>
+                  <fieldset>
+                    <legend>Grupos disponíveis:</legend>
+                    <div className="group-select-list">
+                      {getAllGroups()
+                        .filter(
+                          (g) =>
+                            normalizeGroupKey(g.key) !==
+                            normalizeGroupKey(deleteGroupTarget.key),
+                        )
+                        .map((g) => (
+                          <button
+                            key={g.key}
+                            type="button"
+                            className="group-select-button"
+                            onClick={() => {
+                              setDeleteGroupDestinationInput(g.name);
+                              if (deleteGroupError) {
+                                setDeleteGroupError("");
+                              }
+                            }}
+                          >
+                            {g.name}
+                          </button>
+                        ))}
+                    </div>
+                  </fieldset>
+                  <label>
+                    Grupo de destino
+                    <input
+                      type="text"
+                      placeholder="Nome do grupo de destino..."
+                      value={deleteGroupDestinationInput}
+                      onChange={(event) => {
+                        setDeleteGroupDestinationInput(event.target.value);
+                        if (deleteGroupError) {
+                          setDeleteGroupError("");
+                        }
+                      }}
+                      disabled={isDeletingGroup}
+                      required
+                    />
+                  </label>
+                </>
+              ) : null}
+
+              {deleteGroupError ? (
+                <p className="save-password-error">{deleteGroupError}</p>
+              ) : null}
+
+              <div className="save-password-actions">
+                <button
+                  type="button"
+                  onClick={closeDeleteGroupModal}
+                  disabled={isDeletingGroup}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="danger-button"
+                  disabled={isDeletingGroup}
+                >
+                  {isDeletingGroup ? "Excluindo..." : "Excluir grupo"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
       {pendingConfirmation ? (
         <div
           className="save-password-modal-backdrop"
@@ -3412,12 +7564,218 @@ function App() {
                     );
                   }
 
+                  if (pendingConfirmation.action.type === "reset-principal") {
+                    resetPrincipalConfirmed(
+                      pendingConfirmation.action.characterId,
+                    );
+                  }
+
                   closeConfirmationModal();
                 }}
               >
                 {pendingConfirmation.confirmLabel}
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {groupSelectModalOpen ? (
+        <div
+          className="save-password-modal-backdrop"
+          role="presentation"
+          onClick={closeGroupSelectModal}
+        >
+          <div
+            className="save-password-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="group-select-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="group-select-title">Escolher grupo</h3>
+            <p>Selecione um grupo existente ou crie um novo.</p>
+            <form
+              className="save-password-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleGroupSelectSubmit(groupSelectInput);
+              }}
+            >
+              {getAllGroups().length > 0 ? (
+                <fieldset>
+                  <legend>Grupos disponíveis:</legend>
+                  <div className="group-select-list">
+                    {getAllGroups().map((group) => (
+                      <button
+                        key={group.key}
+                        type="button"
+                        className="group-select-button"
+                        onClick={() => {
+                          void handleGroupSelectSubmit(group.key);
+                        }}
+                      >
+                        {group.name}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+              ) : null}
+
+              <div className="group-select-divider">ou</div>
+
+              <label>
+                Criar novo grupo
+                <input
+                  type="text"
+                  placeholder="Nome do grupo..."
+                  value={groupSelectInput}
+                  onChange={(event) => {
+                    setGroupSelectInput(event.target.value);
+                    if (groupSelectError) {
+                      setGroupSelectError("");
+                    }
+                  }}
+                  autoFocus
+                />
+              </label>
+
+              {groupSelectError ? (
+                <p className="save-password-error">{groupSelectError}</p>
+              ) : null}
+
+              <div className="save-password-actions">
+                <button type="button" onClick={closeGroupSelectModal}>
+                  Cancelar
+                </button>
+                <button type="submit" disabled={!groupSelectInput.trim()}>
+                  Criar/Escolher grupo
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {groupEditorModalOpen ? (
+        <div
+          className="save-password-modal-backdrop"
+          role="presentation"
+          onClick={closeGroupEditorModal}
+        >
+          <div
+            className="save-password-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="group-editor-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="group-editor-title">
+              {groupEditorKey ? "Editar grupo" : "Criar grupo"}
+            </h3>
+            <form
+              className="save-password-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveGroupEditor();
+              }}
+            >
+              <label>
+                Nome do grupo (obrigatorio)
+                <input
+                  type="text"
+                  value={groupEditorName}
+                  onChange={(event) => {
+                    setGroupEditorName(event.target.value);
+                    if (groupEditorError) {
+                      setGroupEditorError("");
+                    }
+                  }}
+                  autoFocus
+                  required
+                />
+              </label>
+
+              <label>
+                Imagem do grupo (somente upload)
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => {
+                    onGroupEditorImageFileSelected(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+
+              {groupEditorImageUrl ? (
+                <div className="group-image-preview">
+                  <img src={groupEditorImageUrl} alt="Preview do grupo" />
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={() => {
+                      setGroupEditorImageUrl("");
+                      setGroupEditorImageFile(null);
+                    }}
+                  >
+                    Remover imagem
+                  </button>
+                </div>
+              ) : null}
+
+              <label>
+                Anexar arquivos
+                <input
+                  type="file"
+                  multiple
+                  onChange={(event) => {
+                    addAttachmentsToEditor(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+
+              {groupEditorAttachments.length > 0 ? (
+                <ul className="group-attachments-list group-attachments-list-editor">
+                  {groupEditorAttachments.map((attachment) => (
+                    <li key={attachment.id}>
+                      <span>
+                        {attachment.name} ({formatFileSize(attachment.size)})
+                      </span>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => removeEditorAttachment(attachment.id)}
+                      >
+                        Remover
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              {groupEditorError ? (
+                <p className="save-password-error">{groupEditorError}</p>
+              ) : null}
+
+              <div className="save-password-actions">
+                <button
+                  type="button"
+                  onClick={closeGroupEditorModal}
+                  disabled={isSavingGroup}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" disabled={isSavingGroup}>
+                  {isSavingGroup
+                    ? "Sincronizando..."
+                    : groupEditorKey
+                      ? "Salvar grupo"
+                      : "Criar grupo"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}
@@ -3436,22 +7794,26 @@ function App() {
       return;
     }
 
-    if (password.trim().length < SHEET_PASSWORD_MIN_LENGTH) {
-      toast.error(
-        `Senha invalida. Use no minimo ${SHEET_PASSWORD_MIN_LENGTH} caracteres.`,
-      );
-      return;
-    }
+    const isVariation = !!selectedCharacter.parentId;
+
+    const isCreating =
+      isVariation ||
+      activeSheetId === null ||
+      selectedCharacter.id !== activeSheetId;
+    const targetSheetId = isCreating ? null : selectedCharacter.id;
 
     setIsSavingSheet(true);
     setApiError(null);
 
     try {
-      const isCreating = activeSheetId === null;
       const endpoint = isCreating
         ? `${API_BASE_URL}/sheets`
-        : `${API_BASE_URL}/sheets/${activeSheetId}`;
+        : `${API_BASE_URL}/sheets/${targetSheetId}`;
       const method = isCreating ? "POST" : "PUT";
+
+      const characterToSave = isVariation
+        ? { ...selectedCharacter, parentId: undefined }
+        : selectedCharacter;
 
       const response = await fetch(endpoint, {
         method,
@@ -3460,7 +7822,7 @@ function App() {
         },
         body: JSON.stringify({
           password,
-          character: selectedCharacter,
+          character: characterToSave,
         }),
       });
 
@@ -3470,13 +7832,18 @@ function App() {
       };
 
       if (!response.ok) {
-        toast.error(payload.message ?? "Falha ao salvar a ficha.");
+        toast.error(
+          payload.message ??
+            (isCreating
+              ? "Falha ao cadastrar a ficha."
+              : "Falha ao salvar a ficha."),
+        );
         return;
       }
 
       const persistedId = isCreating
-        ? (payload.id ?? activeSheetId)
-        : activeSheetId;
+        ? (payload.id ?? selectedCharacter.id)
+        : targetSheetId;
 
       if (persistedId) {
         setCharacters((current) =>
@@ -3495,10 +7862,21 @@ function App() {
       if (isCreating) {
         setSavePasswordModalOpen(false);
         resetSavePasswordForm();
+      } else {
+        setConfirmSavePasswordModalOpen(false);
+        resetConfirmSavePasswordForm();
       }
-      toast.success("Ficha salva com sucesso no banco.");
+      toast.success(
+        isCreating
+          ? "Ficha cadastrada com sucesso no banco."
+          : "Ficha salva com sucesso no banco.",
+      );
     } catch {
-      toast.error("Erro de conexao ao salvar a ficha.");
+      toast.error(
+        isCreating
+          ? "Erro de conexao ao cadastrar a ficha."
+          : "Erro de conexao ao salvar a ficha.",
+      );
     } finally {
       setIsSavingSheet(false);
     }
@@ -3578,19 +7956,151 @@ function App() {
     );
   }
 
+  const isSelectedCharacterPersisted =
+    activeSheetId !== null && selectedCharacter.id === activeSheetId;
+  const isSelectedVariation = !!selectedCharacter.parentId;
+
   const saveSelectedCharacter = async () => {
     if (!selectedCharacter) {
       return;
     }
 
-    if (activeSheetId === null) {
-      setSavePasswordError("");
-      setSavePasswordModalOpen(true);
+    if (isSelectedVariation) {
       return;
     }
 
     await persistSelectedCharacter(activeSheetPassword);
   };
+
+  const principalCharacter =
+    characters.find((character) => !character.parentId) ??
+    characters[0] ??
+    null;
+  const prototypeCharacters = principalCharacter
+    ? characters.filter((character) => character.id !== principalCharacter.id)
+    : [];
+
+  const renderCharacterListItem = (character: CharacterSheet) => (
+    <li
+      key={character.id}
+      className={`character-local-item${!character.parentId ? " character-local-item--principal" : ""}`}
+    >
+      <button
+        type="button"
+        className={`character-local-select ${character.id === selectedId ? "active" : ""}`}
+        onClick={() => {
+          setSelectedId(character.id);
+
+          const principalId = character.parentId ?? character.id;
+          const isSavedPrincipal = savedSheets.some(
+            (sheet) => sheet.id === principalId,
+          );
+
+          if (isSavedPrincipal) {
+            setActiveSheetId(principalId);
+          } else {
+            setActiveSheetId(null);
+            setActiveSheetPassword("");
+          }
+        }}
+      >
+        <strong>
+          {!character.parentId ? (
+            <span className="character-principal-label">Principal</span>
+          ) : null}
+          <span className="character-name-text">
+            {character.nome || "Sem nome"}
+          </span>
+          {character.parentId ? (
+            <span
+              className="character-variation-badge"
+              title="Versao local (teste)"
+            >
+              Local
+            </span>
+          ) : null}
+        </strong>
+      </button>
+      <div className="character-local-tools">
+        {!character.parentId ? (
+          <>
+            <button
+              type="button"
+              className="character-icon-button"
+              aria-label={`Duplicar ${character.nome || "personagem"}`}
+              title={`Duplicar ${character.nome || "personagem"}`}
+              onClick={() => duplicateCharacterById(character.id)}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M8 8h10v10H8zM5 5h10v2H7v8H5z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="character-icon-button"
+              aria-label={`Resetar ${character.nome || "perfil principal"}`}
+              title="Resetar principal"
+              onClick={() => openResetPrincipalConfirmation(character.id)}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-4.9 6H5.08A7 7 0 1 0 12 5Z" />
+              </svg>
+            </button>
+          </>
+        ) : character.localSaved ? (
+          <>
+            <button
+              type="button"
+              className="character-icon-button"
+              aria-label={`Duplicar ${character.nome || "personagem"}`}
+              title={`Duplicar ${character.nome || "personagem"}`}
+              onClick={() => duplicateCharacterById(character.id)}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M8 8h10v10H8zM5 5h10v2H7v8H5z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="character-icon-button danger"
+              aria-label={`Excluir ${character.nome || "personagem"}`}
+              title={`Excluir ${character.nome || "personagem"}`}
+              onClick={() => deleteCharacterById(character.id)}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M7 7h10l-1 13H8zm3-3h4l1 2h4v2H5V6h4z" />
+              </svg>
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="character-icon-button"
+              aria-label={`Salvar ${character.nome || "versao"}`}
+              title="Confirmar versao local"
+              onClick={() => saveVariationLocally(character.id)}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M5 3h11l3 3v15H5zm2 2v5h8V5zm0 14h10v-7H7z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="character-icon-button danger"
+              aria-label={`Excluir ${character.nome || "personagem"}`}
+              title={`Excluir ${character.nome || "personagem"}`}
+              onClick={() => deleteCharacterById(character.id)}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M7 7h10l-1 13H8zm3-3h4l1 2h4v2H5V6h4z" />
+              </svg>
+            </button>
+          </>
+        )}
+      </div>
+    </li>
+  );
 
   if (screen === "home") {
     return (
@@ -3627,7 +8137,17 @@ function App() {
               <button
                 type="button"
                 className="home-create-button"
-                onClick={createNewSheet}
+                onClick={openCreateGroupModal}
+              >
+                Criar grupo
+              </button>
+              <button
+                type="button"
+                className="home-create-button"
+                onClick={() => {
+                  createNewSheet();
+                  openGroupSelectModal();
+                }}
               >
                 <GiScrollQuill size={16} aria-hidden="true" />
                 Criar ficha
@@ -3636,17 +8156,189 @@ function App() {
           </header>
 
           <section className="home-list block home-list-panel">
-            <h2>Fichas criadas ({savedSheets.length})</h2>
-            {isLoadingSheets ? <p>Carregando fichas...</p> : null}
+            {isLoadingSheets ? <p>Carregando grupos...</p> : null}
             {apiError ? <p className="danger-value">{apiError}</p> : null}
-            {!isLoadingSheets && savedSheets.length === 0 ? (
+            {getAllGroups().length === 0 ? (
+              <div>
+                <h2>Nenhum grupo criado ainda</h2>
+                <p className="home-empty-state">
+                  Crie uma ficha para começar um grupo!
+                </p>
+              </div>
+            ) : (
+              <div>
+                <h2>Grupos ({getAllGroups().length})</h2>
+                <div className="home-card-grid home-group-grid">
+                  {getAllGroups().map((group) => {
+                    const sheetsInGroup = getSheetsInGroup(group.key);
+                    const groupSheetCount = Math.max(
+                      sheetsInGroup.length,
+                      group.sheetCount,
+                    );
+                    const latestSheet = sheetsInGroup.sort(
+                      (a, b) =>
+                        new Date(b.updatedAt).getTime() -
+                        new Date(a.updatedAt).getTime(),
+                    )[0];
+                    const previewImageUrl =
+                      group.imageUrl ||
+                      (latestSheet ? getSheetPreviewImageUrl(latestSheet) : "");
+
+                    return (
+                      <article key={group.key} className="home-card">
+                        <button
+                          type="button"
+                          className="home-card-open"
+                          onClick={() => navigateToGroup(group.key)}
+                        >
+                          {previewImageUrl ? (
+                            <img
+                              className="home-card-avatar"
+                              src={
+                                group.imageUrl ||
+                                latestSheet?.imagemViewUrl ||
+                                previewImageUrl
+                              }
+                              alt={`Grupo ${group.name}`}
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="home-card-avatar placeholder">
+                              {group.name}
+                            </div>
+                          )}
+                          <div className="home-card-meta">
+                            <strong>{group.name}</strong>
+                            <span className="home-card-player">
+                              Fichas: {groupSheetCount}
+                            </span>
+                          </div>
+                        </button>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+        {renderGlobalOverlays()}
+      </>
+    );
+  }
+
+  if (screen === "group" && selectedGroup) {
+    const groupSheets = getSheetsInGroup(selectedGroup);
+    const group = getGroupByKey(selectedGroup);
+
+    return (
+      <>
+        <div className="home-page">
+          <header className="home-header">
+            <div className="home-header-content">
+              <button
+                type="button"
+                className="home-back-button"
+                onClick={navigateToHome}
+                title="Voltar para grupos"
+              >
+                ← Voltar
+              </button>
+              <h1 className="home-group-title">
+                {group?.name || selectedGroup}
+              </h1>
+            </div>
+            <div className="home-header-actions">
+              <button
+                type="button"
+                className="home-create-button"
+                onClick={() => {
+                  void openEditGroupModal(selectedGroup);
+                }}
+              >
+                Editar grupo
+              </button>
+              {group &&
+              normalizeGroupKey(group.name) !==
+                normalizeGroupKey("Sem grupo") ? (
+                <button
+                  type="button"
+                  className="home-delete-group-button"
+                  onClick={() => {
+                    openDeleteGroupModal(selectedGroup);
+                  }}
+                >
+                  Excluir grupo
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="home-create-button"
+                onClick={() => {
+                  createNewSheet(selectedGroup);
+                }}
+              >
+                <GiScrollQuill size={16} aria-hidden="true" />
+                Criar ficha
+              </button>
+            </div>
+          </header>
+
+          <section className="home-list block home-list-panel">
+            <div className="group-manage-panel">
+              <h3>Arquivos do grupo</h3>
+              <label className="group-attachments-input">
+                <span>Anexar arquivos</span>
+                <input
+                  type="file"
+                  multiple
+                  onChange={(event) => {
+                    void addAttachmentsToGroup(
+                      selectedGroup,
+                      event.target.files,
+                    );
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+              {group?.attachments?.length ? (
+                <ul className="group-attachments-list">
+                  {group.attachments.map((attachment) => (
+                    <li key={attachment.id}>
+                      <a
+                        href={attachment.url}
+                        download={attachment.name}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {attachment.name}
+                      </a>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() =>
+                          removeGroupAttachment(selectedGroup, attachment.id)
+                        }
+                      >
+                        Remover
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="home-empty-state">Sem anexos neste grupo.</p>
+              )}
+            </div>
+
+            <h2>Fichas do grupo ({groupSheets.length})</h2>
+            {groupSheets.length === 0 ? (
               <p className="home-empty-state">
-                Nenhuma ficha cadastrada ainda.
+                Nenhuma ficha neste grupo ainda.
               </p>
             ) : null}
 
             <div className="home-card-grid">
-              {savedSheets.map((sheet) => {
+              {groupSheets.map((sheet) => {
                 const previewImageUrl = getSheetPreviewImageUrl(sheet);
 
                 return (
@@ -3659,7 +8351,7 @@ function App() {
                       {previewImageUrl ? (
                         <img
                           className="home-card-avatar"
-                          src={previewImageUrl}
+                          src={sheet.imagemViewUrl || previewImageUrl}
                           alt={`Retrato de ${sheet.nome || "personagem"}`}
                           loading="lazy"
                         />
@@ -3681,21 +8373,32 @@ function App() {
                         Ultima atualizacao:{" "}
                         {new Date(sheet.updatedAt).toLocaleString("pt-BR")}
                       </small>
-                      <button
-                        type="button"
-                        className="home-card-delete"
-                        aria-label={`Excluir ficha ${sheet.nome || "sem nome"}`}
-                        title="Excluir ficha"
-                        onClick={() => openDeleteSheetModal(sheet)}
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
-                          focusable="false"
+                      <div className="home-card-actions">
+                        <button
+                          type="button"
+                          className="home-card-move"
+                          aria-label={`Mover ficha ${sheet.nome || "sem nome"}`}
+                          title="Mover ficha"
+                          onClick={() => openMoveSheetModal(sheet)}
                         >
-                          <path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h2v9H7V9Zm4 0h2v9h-2V9Zm4 0h2v9h-2V9Z" />
-                        </svg>
-                      </button>
+                          Mover
+                        </button>
+                        <button
+                          type="button"
+                          className="home-card-delete"
+                          aria-label={`Excluir ficha ${sheet.nome || "sem nome"}`}
+                          title="Excluir ficha"
+                          onClick={() => openDeleteSheetModal(sheet)}
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                            focusable="false"
+                          >
+                            <path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h2v9H7V9Zm4 0h2v9h-2V9Zm4 0h2v9h-2V9Z" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </article>
                 );
@@ -3809,6 +8512,7 @@ function App() {
       vantagens: builtVantagens,
       desvantagens: builtDesvantagens,
       poderes: builtPoderes,
+      tecnicasDesenvolvidas: [],
       equipamentos: "",
     }));
     setPretipoSelecionado("");
@@ -3830,9 +8534,34 @@ function App() {
   };
 
   const addCharacter = () => {
-    const newCharacter = createEmptyCharacter();
+    const principalId = selectedCharacter
+      ? (selectedCharacter.parentId ?? selectedCharacter.id)
+      : null;
+    const isPrincipalPersisted =
+      principalId !== null &&
+      savedSheets.some((sheet) => sheet.id === principalId);
+
+    const newCharacter: CharacterSheet = {
+      ...createEmptyCharacter(),
+      parentId: principalId ?? undefined,
+    };
+
     setCharacters((current) => [...current, newCharacter]);
     setSelectedId(newCharacter.id);
+    setActiveSheetId(isPrincipalPersisted ? principalId : null);
+    if (!isPrincipalPersisted) {
+      setActiveSheetPassword("");
+    }
+  };
+
+  const saveVariationLocally = (characterId: string) => {
+    setCharacters((current) =>
+      current.map((character) =>
+        character.id === characterId
+          ? { ...character, localSaved: true }
+          : character,
+      ),
+    );
   };
 
   const deleteCharacterConfirmed = (characterId: string) => {
@@ -3851,11 +8580,6 @@ function App() {
   };
 
   const deleteCharacterById = (characterId: string) => {
-    if (characters.length <= 1) {
-      toast.warn("Mantenha pelo menos um personagem na lista.");
-      return;
-    }
-
     const targetCharacter = characters.find(
       (character) => character.id === characterId,
     );
@@ -3863,9 +8587,14 @@ function App() {
       return;
     }
 
+    if (!targetCharacter.parentId) {
+      toast.warn("O perfil principal nao pode ser excluido, apenas duplicado.");
+      return;
+    }
+
     setPendingConfirmation({
-      title: "Excluir personagem local",
-      message: `Excluir ${targetCharacter.nome || "personagem sem nome"}? Essa acao remove apenas a copia local atual.`,
+      title: "Excluir versao local",
+      message: `Excluir "${targetCharacter.nome || "versao sem nome"}"? Essa acao remove apenas esta copia local.`,
       confirmLabel: "Excluir",
       variant: "danger",
       action: {
@@ -3888,10 +8617,35 @@ function App() {
       ...sourceCharacter,
       id: crypto.randomUUID(),
       nome: sourceCharacter.nome ? `${sourceCharacter.nome} (Copia)` : "",
+      parentId: sourceCharacter.parentId ?? sourceCharacter.id,
+      localSaved: sourceCharacter.localSaved ?? true,
     };
 
-    setCharacters((current) => [...current, cloned]);
+    const principalId = sourceCharacter.parentId ?? sourceCharacter.id;
+    const isPrincipalPersisted = savedSheets.some(
+      (sheet) => sheet.id === principalId,
+    );
+
+    setCharacters((current) => {
+      const sourceIndex = current.findIndex(
+        (character) => character.id === characterId,
+      );
+
+      if (sourceIndex < 0) {
+        return [...current, cloned];
+      }
+
+      const next = [...current];
+      next.splice(sourceIndex + 1, 0, cloned);
+      return next;
+    });
     setSelectedId(cloned.id);
+    setActiveSheetId(isPrincipalPersisted ? principalId : null);
+    if (!isPrincipalPersisted) {
+      setActiveSheetPassword("");
+    }
+
+    toast.success("Prototipo duplicado com sucesso.");
   };
 
   const onImageFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
@@ -4082,6 +8836,230 @@ function App() {
     }));
   };
 
+  const nivel = parseNatural(selectedCharacter.nivel);
+  const limitePericia = nivel + 5;
+  const limitePoder = nivel + 10;
+  const limiteTecnica = nivel + 10;
+  const limiteDefesaTotal = nivel + 18;
+  const limiteResistenciaTotal = nivel + 6;
+
+  const poderesDisponiveisParaTecnica = selectedCharacter.poderes
+    .map((entry) => {
+      const power = POWER_BY_ID.get(entry.powerId);
+      if (!power) {
+        return null;
+      }
+
+      return {
+        power,
+        graduacaoAtual: clamp(parseNatural(entry.graduacao), 1, limitePoder),
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+
+  const tecnicaBaseResolvida = tecnicaDraft.poderesBase
+    .map((base) => {
+      const power = POWER_BY_ID.get(base.powerId);
+      if (!power) {
+        return null;
+      }
+
+      const graduacao = clamp(parseNatural(base.graduacao), 1, limitePoder);
+
+      return {
+        ...base,
+        power,
+        graduacao,
+        custoBasePE: getEterCostByGraduacao(graduacao),
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+
+  const tecnicaCustoBasePE = tecnicaBaseResolvida.reduce(
+    (total, base) => total + base.custoBasePE,
+    0,
+  );
+
+  const tecnicaBonusDano = clamp(
+    parseNatural(tecnicaDraft.modificadores.bonusDano),
+    0,
+    5,
+  );
+  const tecnicaBonusPrecisao = clamp(
+    parseNatural(tecnicaDraft.modificadores.bonusPrecisao),
+    0,
+    3,
+  );
+  const tecnicaPenetracao = Math.max(
+    0,
+    parseNatural(tecnicaDraft.modificadores.penetracao),
+  );
+  const tecnicaDanoAmpliado = Math.max(
+    0,
+    parseNatural(tecnicaDraft.modificadores.danoAmpliado),
+  );
+  const tecnicaBonusDefesa = clamp(
+    parseNatural(tecnicaDraft.modificadores.bonusDefesa),
+    0,
+    2,
+  );
+  const tecnicaReducaoDano = clamp(
+    parseNatural(tecnicaDraft.modificadores.reducaoDanoRecebido),
+    0,
+    2,
+  );
+  const tecnicaCustomCusto = Number.parseInt(
+    tecnicaDraft.modificadores.modificadorPersonalizadoCusto,
+    10,
+  );
+  const tecnicaCustomCustoNormalizado = Number.isFinite(tecnicaCustomCusto)
+    ? tecnicaCustomCusto
+    : 0;
+
+  const tecnicaCustoModificadoresPE =
+    tecnicaBonusDano * 2 +
+    getPrecisaoCost(tecnicaBonusPrecisao) +
+    tecnicaPenetracao * 2 +
+    tecnicaDanoAmpliado +
+    ATTACK_MULTIPLE_COST[tecnicaDraft.modificadores.ataqueMultiplo] +
+    AREA_COST[tecnicaDraft.modificadores.area] +
+    CONTROLE_COST[tecnicaDraft.modificadores.controleNivel] +
+    ALCANCE_ETAPAS_COST[tecnicaDraft.modificadores.alcanceEtapas] +
+    DURACAO_COST[tecnicaDraft.modificadores.duracao] +
+    (tecnicaDraft.modificadores.duracaoEstendida ? 2 : 0) +
+    QUICK_ACTIVATION_COST[tecnicaDraft.modificadores.ativacaoRapida] +
+    tecnicaBonusDefesa * 2 +
+    tecnicaReducaoDano * 2 +
+    (tecnicaDraft.modificadores.absorcao ? 3 : 0) +
+    (tecnicaDraft.modificadores.reflexo ? 2 : 0) +
+    tecnicaCustomCustoNormalizado;
+
+  const tecnicaReducoesPE =
+    PREPARATION_REDUCTION[tecnicaDraft.modificadores.preparacao] +
+    (tecnicaDraft.modificadores.limitacaoPerdeMovimento ? 1 : 0) +
+    (tecnicaDraft.modificadores.limitacaoCondicaoEspecifica ? 1 : 0) +
+    (tecnicaDraft.modificadores.limitacaoContatoDireto ? 1 : 0) +
+    (tecnicaDraft.modificadores.limitacaoAlvoEspecifico ? 1 : 0) +
+    (tecnicaDraft.modificadores.limitacaoUsoCena ? 1 : 0);
+
+  const tecnicaAdicionalAplicadoPE = Math.max(
+    0,
+    tecnicaCustoModificadoresPE - tecnicaReducoesPE,
+  );
+  const tecnicaLimiteAdicional =
+    TECHNIQUE_ADDITIONAL_LIMIT_BY_TYPE[tecnicaDraft.tipo];
+  const tecnicaExcedeLimite =
+    tecnicaAdicionalAplicadoPE > tecnicaLimiteAdicional;
+  const tecnicaCustoFinalPE = Math.max(
+    1,
+    tecnicaCustoBasePE + tecnicaCustoModificadoresPE - tecnicaReducoesPE,
+  );
+
+  const tecnicaMaiorGraduacaoBase = tecnicaBaseResolvida.reduce(
+    (max, base) => Math.max(max, base.graduacao),
+    0,
+  );
+  const tecnicaBonusDiretoBruto =
+    tecnicaBonusDano + tecnicaDanoAmpliado + tecnicaPenetracao;
+  const tecnicaBonusDiretoAplicado = Math.min(
+    tecnicaBonusDiretoBruto,
+    tecnicaMaiorGraduacaoBase,
+  );
+
+  const adicionarPoderBaseTecnica = () => {
+    setTecnicaDraft((current) => ({
+      ...current,
+      poderesBase: [
+        ...current.poderesBase,
+        createEmptyDevelopedTechniqueBasePower(),
+      ],
+    }));
+  };
+
+  const removerPoderBaseTecnica = (baseId: string) => {
+    setTecnicaDraft((current) => ({
+      ...current,
+      poderesBase:
+        current.poderesBase.length <= 1
+          ? current.poderesBase
+          : current.poderesBase.filter((base) => base.id !== baseId),
+    }));
+  };
+
+  const salvarTecnicaDesenvolvida = () => {
+    const nomeNormalizado = tecnicaDraft.nome.trim();
+    if (!nomeNormalizado) {
+      toast.error("Defina um nome para a tecnica.");
+      return;
+    }
+
+    if (tecnicaBaseResolvida.length === 0) {
+      toast.error("Selecione ao menos um poder base valido.");
+      return;
+    }
+
+    if (tecnicaExcedeLimite) {
+      toast.error(
+        `A tecnica excede o limite de +${tecnicaLimiteAdicional} PE adicional para tipo ${tecnicaDraft.tipo}.`,
+      );
+      return;
+    }
+
+    const tecnica: DevelopedTechnique = {
+      id: crypto.randomUUID(),
+      nome: nomeNormalizado,
+      tipo: tecnicaDraft.tipo,
+      conceito: tecnicaDraft.conceito.trim(),
+      efeito: tecnicaDraft.efeito.trim(),
+      acao: tecnicaDraft.acao.trim(),
+      alcance: tecnicaDraft.alcance.trim(),
+      alvo: tecnicaDraft.alvo.trim(),
+      duracao: tecnicaDraft.duracao.trim(),
+      gatilho: tecnicaDraft.gatilho.trim(),
+      poderesBase: tecnicaBaseResolvida.map((base) => ({
+        id: base.id,
+        powerId: base.powerId,
+        graduacao: String(base.graduacao),
+      })),
+      modificadores: {
+        ...tecnicaDraft.modificadores,
+        bonusDano: String(tecnicaBonusDano),
+        bonusPrecisao: String(tecnicaBonusPrecisao),
+        penetracao: String(tecnicaPenetracao),
+        danoAmpliado: String(tecnicaDanoAmpliado),
+        bonusDefesa: String(tecnicaBonusDefesa),
+        reducaoDanoRecebido: String(tecnicaReducaoDano),
+        modificadorPersonalizadoCusto: String(tecnicaCustomCustoNormalizado),
+      },
+      custoBasePE: tecnicaCustoBasePE,
+      custoModificadoresPE: tecnicaCustoModificadoresPE,
+      reducoesPE: tecnicaReducoesPE,
+      custoFinalPE: tecnicaCustoFinalPE,
+      limiteAdicionalPE: tecnicaLimiteAdicional,
+      adicionalAplicadoPE: tecnicaAdicionalAplicadoPE,
+      maiorGraduacaoBase: tecnicaMaiorGraduacaoBase,
+      bonusDiretoAplicado: tecnicaBonusDiretoAplicado,
+      createdAt: new Date().toISOString(),
+    };
+
+    updateCharacter((current) => ({
+      ...current,
+      tecnicasDesenvolvidas: [...current.tecnicasDesenvolvidas, tecnica],
+    }));
+
+    setTecnicaDraft(createDevelopedTechniqueDraft());
+    toast.success("Tecnica cadastrada na ficha.");
+  };
+
+  const removerTecnicaDesenvolvida = (tecnicaId: string) => {
+    updateCharacter((current) => ({
+      ...current,
+      tecnicasDesenvolvidas: current.tecnicasDesenvolvidas.filter(
+        (tecnica) => tecnica.id !== tecnicaId,
+      ),
+    }));
+  };
+
   const conhecimentosEditaveis = getEditableConhecimentos(
     selectedCharacter.conhecimentos,
   );
@@ -4131,11 +9109,6 @@ function App() {
       };
     });
   };
-
-  const nivel = parseNatural(selectedCharacter.nivel);
-  const limitePericia = nivel + 10;
-  const limiteDefesaTotal = nivel + 18;
-  const limiteResistenciaTotal = nivel + 6;
 
   const atributosSpent = ATRIBUTOS.reduce(
     (total, atributo) =>
@@ -4191,7 +9164,11 @@ function App() {
   const resistenciasDePoderDisponiveis = RESISTENCIA_PODERES_POSSIVEIS.map(
     (fonte) => ({
       fonte,
-      graduacao: getPowerGraduacaoForResistenciaFonte(selectedCharacter, fonte),
+      graduacao: getPowerGraduacaoForResistenciaFonte(
+        selectedCharacter,
+        fonte,
+        limitePoder,
+      ),
     }),
   );
 
@@ -4238,7 +9215,7 @@ function App() {
     const graduacao = clamp(
       parseNatural(selectedCharacter.tecnicasBasicas[tecnica.nome].graduacao),
       0,
-      limitePericia,
+      limiteTecnica,
     );
 
     return total + graduacao * tecnica.custoPPPorGraduacao;
@@ -4250,11 +9227,7 @@ function App() {
       return total;
     }
 
-    const graduacao = clamp(
-      parseNatural(powerEntry.graduacao),
-      1,
-      MAX_POWER_GRADUATION_LIMIT,
-    );
+    const graduacao = clamp(parseNatural(powerEntry.graduacao), 1, limitePoder);
     const multiplicadorNaipe = getPowerNaipeMultiplier(
       selectedCharacter.naipe,
       power.naipe,
@@ -4297,6 +9270,304 @@ function App() {
   const movimentoAtual = String(movimentoBase);
   const cargaAtual = String(cargaBase);
 
+  const periciasSelecionadas = PERICIAS.filter(
+    (pericia) => parseNatural(selectedCharacter.pericias[pericia]) > 0,
+  ).map((pericia) => ({
+    nome: pericia,
+    graduacao: parseNatural(selectedCharacter.pericias[pericia]),
+  }));
+
+  const conhecimentosSelecionados = selectedCharacter.conhecimentos.filter(
+    (conhecimento) =>
+      conhecimento.area.trim() !== "" ||
+      parseNatural(conhecimento.graduacoes) > 0,
+  );
+
+  const tecnicasBasicasSelecionadas = TECNICAS_BASICAS.map((tecnica) => {
+    const graduacao = clamp(
+      parseNatural(selectedCharacter.tecnicasBasicas[tecnica.nome].graduacao),
+      0,
+      limiteTecnica,
+    );
+
+    return {
+      tecnica,
+      graduacao,
+      derived: getTecnicaBasicaDerived(
+        tecnica,
+        String(graduacao),
+        limiteTecnica,
+      ),
+    };
+  }).filter((item) => item.graduacao > 0);
+
+  const poderesSelecionadosResumo = selectedCharacter.poderes
+    .map((powerEntry) => {
+      const power = POWER_BY_ID.get(powerEntry.powerId);
+      if (!power) {
+        return null;
+      }
+
+      const graduacao = clamp(
+        parseNatural(powerEntry.graduacao),
+        1,
+        limitePoder,
+      );
+      const custoBase = getPowerTotalCost(
+        power,
+        graduacao,
+        powerEntry.extrasSelecionados,
+        powerEntry.falhasSelecionadas,
+      );
+      const multiplicadorNaipe = getPowerNaipeMultiplier(
+        selectedCharacter.naipe,
+        power.naipe,
+      );
+
+      return {
+        id: powerEntry.id,
+        nome: power.nome,
+        naipe: power.naipe,
+        tipo: power.tipo,
+        graduacao,
+        custoFinal: custoBase * multiplicadorNaipe,
+        extras: powerEntry.extrasSelecionados,
+        falhas: powerEntry.falhasSelecionadas,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+
+  if (screen === "quick-sheet") {
+    return (
+      <>
+        <div className="quick-sheet-screen">
+          <header className="quick-sheet-header">
+            <div>
+              <p className="quick-sheet-kicker">Ficha de consulta rapida</p>
+              <h1>{selectedCharacter.nome || "Personagem sem nome"}</h1>
+              <p>
+                Jogador: {selectedCharacter.jogador || "Nao informado"} | Nivel{" "}
+                {selectedCharacter.nivel || "0"}
+              </p>
+            </div>
+            <div className="quick-sheet-header-actions">
+              <button
+                type="button"
+                className="quick-sheet-nav-btn"
+                onClick={() => navigateToScreen("editor")}
+              >
+                Voltar ao editor
+              </button>
+              <button
+                type="button"
+                className="quick-sheet-nav-btn"
+                onClick={() => navigateToScreen("home")}
+              >
+                Inicio
+              </button>
+            </div>
+          </header>
+
+          <nav className="quick-sheet-nav" aria-label="Secoes da ficha rapida">
+            <button
+              type="button"
+              className={fichaGeradaPagina === 1 ? "active" : ""}
+              onClick={() => setFichaGeradaPagina(1)}
+            >
+              Macro geral
+            </button>
+            <button
+              type="button"
+              className={fichaGeradaPagina === 2 ? "active" : ""}
+              onClick={() => setFichaGeradaPagina(2)}
+            >
+              Poderes e tecnicas
+            </button>
+          </nav>
+
+          {fichaGeradaPagina === 1 ? (
+            <div className="quick-sheet-grid">
+              <section className="quick-sheet-card">
+                <h2>Identidade</h2>
+                <p>
+                  <strong>Conceito:</strong> {selectedCharacter.conceito || "-"}
+                </p>
+                <p>
+                  <strong>Naipe:</strong>{" "}
+                  {selectedCharacter.naipe || "Nao definido"}
+                </p>
+                <p>
+                  <strong>XP:</strong> {selectedCharacter.xp || "0"}
+                </p>
+              </section>
+
+              <section className="quick-sheet-card">
+                <h2>Status</h2>
+                <p>
+                  <strong>Vida:</strong> {vidaMaxima}
+                </p>
+                <p>
+                  <strong>Eter:</strong> {eterMaximo}
+                </p>
+                <p>
+                  <strong>Defesa:</strong> {defesaAtual} | <strong>Res:</strong>{" "}
+                  {resistenciaTotalEfetiva}
+                </p>
+                <p>
+                  <strong>Mov:</strong> {movimentoAtual}m |{" "}
+                  <strong>Carga:</strong> {cargaAtual}kg
+                </p>
+              </section>
+
+              <section className="quick-sheet-card">
+                <h2>Atributos</h2>
+                <ul className="quick-sheet-list">
+                  {ATRIBUTOS.map((atributo) => (
+                    <li key={atributo}>
+                      {atributo}: {selectedCharacter.atributos[atributo]}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+
+              <section className="quick-sheet-card">
+                <h2>Pericias</h2>
+                {periciasSelecionadas.length === 0 ? (
+                  <p>Sem pericias com graduacao.</p>
+                ) : (
+                  <ul className="quick-sheet-list">
+                    {periciasSelecionadas.map((pericia) => (
+                      <li key={pericia.nome}>
+                        {pericia.nome}: {pericia.graduacao}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section className="quick-sheet-card quick-sheet-card-wide">
+                <h2>Conhecimentos</h2>
+                {conhecimentosSelecionados.length === 0 ? (
+                  <p>Sem conhecimentos cadastrados.</p>
+                ) : (
+                  <ul className="quick-sheet-list">
+                    {conhecimentosSelecionados.map((conhecimento, index) => (
+                      <li key={`quick-conhecimento-${index}`}>
+                        {conhecimento.area || "Area nao definida"}:{" "}
+                        {parseNatural(conhecimento.graduacoes)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section className="quick-sheet-card">
+                <h2>Vantagens</h2>
+                {selectedCharacter.vantagens.length === 0 ? (
+                  <p>Nenhuma vantagem.</p>
+                ) : (
+                  <ul className="quick-sheet-list">
+                    {selectedCharacter.vantagens.map((vantagem) => (
+                      <li key={vantagem.id}>
+                        {vantagem.nome}
+                        {vantagem.temGraduacao
+                          ? ` (Grad. ${vantagem.graduacao})`
+                          : ""}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section className="quick-sheet-card">
+                <h2>Desvantagens</h2>
+                {selectedCharacter.desvantagens.length === 0 ? (
+                  <p>Nenhuma desvantagem.</p>
+                ) : (
+                  <ul className="quick-sheet-list">
+                    {selectedCharacter.desvantagens.map((desvantagem) => (
+                      <li key={desvantagem.id}>
+                        {desvantagem.nome} ({desvantagem.nivel})
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section className="quick-sheet-card quick-sheet-card-wide">
+                <h2>Equipamentos e notas</h2>
+                <p>
+                  {selectedCharacter.equipamentos?.trim() ||
+                    "Sem anotacoes de equipamentos."}
+                </p>
+              </section>
+            </div>
+          ) : (
+            <div className="quick-sheet-grid">
+              <section className="quick-sheet-card quick-sheet-card-wide">
+                <h2>Tecnicas basicas montadas</h2>
+                {tecnicasBasicasSelecionadas.length === 0 ? (
+                  <p>Nenhuma tecnica basica configurada.</p>
+                ) : (
+                  <ul className="quick-sheet-list">
+                    {tecnicasBasicasSelecionadas.map((item) => (
+                      <li key={item.tecnica.nome}>
+                        <strong>{item.tecnica.nome}</strong> | Grad.{" "}
+                        {item.graduacao} | VE {item.derived.ve} | Custo{" "}
+                        {item.derived.custoPE} PE
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section className="quick-sheet-card quick-sheet-card-wide">
+                <h2>Poderes montados</h2>
+                {poderesSelecionadosResumo.length === 0 ? (
+                  <p>Nenhum poder no arsenal.</p>
+                ) : (
+                  <ul className="quick-sheet-list">
+                    {poderesSelecionadosResumo.map((poder) => (
+                      <li key={poder.id}>
+                        <strong>{poder.nome}</strong> ({poder.naipe}) |{" "}
+                        {poder.tipo} | Grad. {poder.graduacao} | Custo{" "}
+                        {poder.custoFinal} PP
+                        {poder.extras.length > 0
+                          ? ` | Extras: ${poder.extras.join(", ")}`
+                          : ""}
+                        {poder.falhas.length > 0
+                          ? ` | Falhas: ${poder.falhas.join(", ")}`
+                          : ""}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section className="quick-sheet-card quick-sheet-card-wide">
+                <h2>Tecnicas desenvolvidas</h2>
+                {selectedCharacter.tecnicasDesenvolvidas.length === 0 ? (
+                  <p>Nenhuma tecnica cadastrada.</p>
+                ) : (
+                  <ul className="quick-sheet-list">
+                    {selectedCharacter.tecnicasDesenvolvidas.map((tecnica) => (
+                      <li key={tecnica.id}>
+                        <strong>{tecnica.nome}</strong> ({tecnica.tipo}) | Custo{" "}
+                        {tecnica.custoFinalPE} PE
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </div>
+          )}
+        </div>
+
+        {renderGlobalOverlays()}
+      </>
+    );
+  }
+
   return (
     <>
       <div className="page">
@@ -4308,69 +9579,69 @@ function App() {
               className="sheet-brand-logo"
             />
           </h1>
-          <p className="sheet-brand-subtitle">Monte sua ficha</p>
 
           <div className="character-primary-actions">
-            <button type="button" onClick={() => void saveSelectedCharacter()}>
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M5 3h11l3 3v15H5zm2 2v5h8V5zm0 14h10v-7H7z" />
-              </svg>
-              {isSavingSheet ? "Salvando..." : "Salvar"}
-            </button>
+            {!isSelectedVariation ? (
+              <button
+                type="button"
+                onClick={() => void saveSelectedCharacter()}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M5 3h11l3 3v15H5zm2 2v5h8V5zm0 14h10v-7H7z" />
+                </svg>
+                {isSavingSheet
+                  ? !isSelectedCharacterPersisted
+                    ? "Cadastrando..."
+                    : "Salvando..."
+                  : !isSelectedCharacterPersisted
+                    ? "Cadastrar"
+                    : "Salvar"}
+              </button>
+            ) : null}
             <button type="button" onClick={addCharacter}>
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z" />
               </svg>
               Nova
             </button>
+            <button
+              type="button"
+              className="generate-sheet-button"
+              onClick={() => {
+                setFichaGeradaPagina(1);
+                navigateToScreen("quick-sheet");
+              }}
+            >
+              Gerar ficha
+            </button>
           </div>
           {apiError ? <p className="danger-value">{apiError}</p> : null}
 
-          <ul className="character-local-list">
-            {characters.map((character) => (
-              <li key={character.id} className="character-local-item">
-                <button
-                  type="button"
-                  className={`character-local-select ${character.id === selectedId ? "active" : ""}`}
-                  onClick={() => setSelectedId(character.id)}
-                >
-                  <strong>{character.nome || "Sem nome"}</strong>
-                </button>
-                <div className="character-local-tools">
-                  <button
-                    type="button"
-                    className="character-icon-button"
-                    aria-label={`Duplicar ${character.nome || "personagem"}`}
-                    title={`Duplicar ${character.nome || "personagem"}`}
-                    onClick={() => duplicateCharacterById(character.id)}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                      focusable="false"
-                    >
-                      <path d="M8 8h10v10H8zM5 5h10v2H7v8H5z" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className="character-icon-button danger"
-                    aria-label={`Excluir ${character.nome || "personagem"}`}
-                    title={`Excluir ${character.nome || "personagem"}`}
-                    onClick={() => deleteCharacterById(character.id)}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                      focusable="false"
-                    >
-                      <path d="M7 7h10l-1 13H8zm3-3h4l1 2h4v2H5V6h4z" />
-                    </svg>
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          {principalCharacter ? (
+            <ul className="character-local-list character-local-list--principal">
+              {renderCharacterListItem(principalCharacter)}
+            </ul>
+          ) : null}
+
+          <section
+            className="character-prototype-panel"
+            aria-label="Prototipos locais"
+          >
+            <div className="character-prototype-header">
+              Prototipos locais ({prototypeCharacters.length})
+            </div>
+            <div className="character-prototype-scroll">
+              {prototypeCharacters.length === 0 ? (
+                <p className="character-prototype-empty">
+                  Nenhum prototipo criado.
+                </p>
+              ) : (
+                <ul className="character-local-list character-local-list--prototypes">
+                  {prototypeCharacters.map(renderCharacterListItem)}
+                </ul>
+              )}
+            </div>
+          </section>
 
           <div className="character-list-footer">
             <button type="button" onClick={() => void goBackToHome()}>
@@ -4623,10 +9894,10 @@ function App() {
                       Adicione uma URL ou envie um arquivo local.
                     </p>
                     <div className="identity-image-row">
-                      {selectedCharacter.imagemUrl ? (
+                      {getCharacterImageForDisplay(selectedCharacter) ? (
                         <img
                           className="identity-portrait"
-                          src={selectedCharacter.imagemUrl}
+                          src={getCharacterImageForDisplay(selectedCharacter)}
                           alt={`Retrato de ${selectedCharacter.nome || "personagem"}`}
                         />
                       ) : (
@@ -4642,12 +9913,20 @@ function App() {
                           type="url"
                           placeholder="https://..."
                           value={selectedCharacter.imagemUrl ?? ""}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            // Don't allow endpoint URLs in imagemUrl (reserve for base64)
+                            if (value && isApiImageUrl(value)) {
+                              toast.error(
+                                "Use uma URL externa ou envie um arquivo.",
+                              );
+                              return;
+                            }
                             updateCharacter((current) => ({
                               ...current,
-                              imagemUrl: event.target.value,
-                            }))
-                          }
+                              imagemUrl: value,
+                            }));
+                          }}
                           className="identity-url-input"
                         />
                         <div className="identity-file-row">
@@ -4675,9 +9954,12 @@ function App() {
                               updateCharacter((current) => ({
                                 ...current,
                                 imagemUrl: "",
+                                imagemViewUrl: "",
                               }))
                             }
-                            disabled={!selectedCharacter.imagemUrl}
+                            disabled={
+                              !getCharacterImageForDisplay(selectedCharacter)
+                            }
                           >
                             Remover imagem
                           </button>
@@ -5365,7 +10647,7 @@ function App() {
                       </ul>
                       <p>
                         <strong>Custo:</strong> cada graduacao custa 0,5 PP.
-                        Limite por pericia: Nivel + 10.
+                        Limite por pericia: Nivel + 5.
                       </p>
                     </div>
                     <div className="pericias-intro-column">
@@ -5390,7 +10672,7 @@ function App() {
                   </div>
                   <p className="pericias-intro-status">
                     Limite atual por pericia/conhecimento: {limitePericia}
-                    (Nivel + 10). Total investido: {periciasPontosTotal}
+                    (Nivel + 5). Total investido: {periciasPontosTotal}
                     graduacoes = {periciasSpent} PP ({periciasPontos} em
                     Pericias e {conhecimentosPontos} em Conhecimentos).
                   </p>
@@ -5590,54 +10872,94 @@ function App() {
                 <article className="block manipulacoes tecnicas-basicas-wide">
                   <h3>Tecnicas Basicas</h3>
                   <div className="tecnicas-intro">
-                    <p>
-                      As Tecnicas Basicas sao as formas mais diretas de
-                      manipulacao do Eter. Nao sao refinadas como poderes, mas
-                      sao confiaveis, rapidas e versateis para reagir,
-                      posicionar-se e sobreviver em combate.
-                    </p>
-                    <p>
-                      Cada tecnica possui Graduacao, convertida em VE (Valor
-                      Efetivo), e consome PE (Pontos de Eter) ao ser utilizada.
-                    </p>
                     <div className="tecnicas-intro-columns">
                       <div className="tecnicas-intro-column">
+                        <p className="tecnicas-intro-chapter-title">
+                          ✦ CAPÍTULO 9 — TÉCNICAS BÁSICAS
+                        </p>
                         <p>
-                          <strong>Progressao (rendimento decrescente):</strong>
+                          As Técnicas Básicas representam as formas mais diretas
+                          de manipulação do Éter. Todo usuário, ao aprender a
+                          perceber o fluxo em seu próprio corpo, eventualmente
+                          descobre que esse fluxo pode ser controlado. As
+                          técnicas surgem desse domínio inicial: não são
+                          refinadas como poderes, mas são confiáveis, rápidas e
+                          extremamente versáteis.
+                        </p>
+                        <p>
+                          Enquanto os poderes definem o que um personagem é
+                          capaz de fazer, as técnicas básicas determinam como
+                          ele reage, como se posiciona e como se mantém ativo em
+                          combate. Cada técnica possui uma Graduação, convertida
+                          em VE (Valor Efetivo), e consome PE (Pontos de Éter)
+                          ao ser utilizada.
+                        </p>
+
+                        <p className="tecnicas-intro-chapter-title">
+                          ✦ PROGRESSÃO
+                        </p>
+                        <p>
+                          As Técnicas Básicas evoluem por meio de graduação. Nos
+                          níveis iniciais o avanço é direto; à medida que
+                          aumenta, o ganho de eficiência se torna mais sutil,
+                          exigindo maior refinamento e controle. O limite máximo
+                          de graduação é nível + 10 ({limiteTecnica} no nível
+                          atual).
                         </p>
                         <ul className="tecnicas-intro-list">
-                          <li>Graduacao 1-5: progresso normal (VE igual).</li>
+                          <li>Graduação 1–4: progresso normal (VE igual).</li>
                           <li>
-                            Graduacao 6 em diante: cada 2 niveis concedem +1 VE.
+                            A partir da graduação 5: cada 2 graduações concedem
+                            +1 VE.
                           </li>
-                          <li>1=1, 2=2, 3=3, 4=4, 5-6=5, 7-8=6, 9-10=7.</li>
-                          <li>11-12=8, e assim por diante.</li>
-                          <li>
-                            Limite de Graduacao: Nivel + 10 ({limitePericia}
-                            no nivel atual).
-                          </li>
+                          <li>1=1, 2=2, 3=3, 4=4, 5–6=5, 7–8=6, 9–10=7.</li>
                         </ul>
                       </div>
+
                       <div className="tecnicas-intro-column">
+                        <p className="tecnicas-intro-chapter-title">
+                          ✦ CONSUMO DE ÉTER
+                        </p>
                         <p>
-                          <strong>Consumo e Regras Gerais:</strong>
+                          Cada técnica possui um custo próprio de PE, definido
+                          por sua natureza e forma de aplicação. Técnicas
+                          instantâneas consomem PE no momento da ativação;
+                          técnicas sustentadas consomem PE a cada turno em que
+                          permanecem ativas. Algumas podem possuir custos
+                          adicionais ou escaláveis ao longo do tempo.
+                        </p>
+
+                        <p className="tecnicas-intro-chapter-title">
+                          ✦ REGRAS GERAIS
                         </p>
                         <ul className="tecnicas-intro-list">
                           <li>
-                            PE = Base + arredondamento para cima de (VE / 2).
+                            Apenas 1 técnica sustentada ativa por vez. Ativar
+                            outra encerra automaticamente a anterior.
                           </li>
-                          <li>Tecnicas sustentadas consomem PE por turno.</li>
-                          <li>Tecnicas instantaneas consomem PE por uso.</li>
-                          <li>Apenas 1 tecnica sustentada ativa por vez.</li>
-                          <li>Cada reacao adicional no turno custa +1 PE.</li>
                           <li>
-                            Apos reagir: -2 em testes de Tecnica ate o proximo
-                            turno.
+                            Cada reação adicional no mesmo turno custa +1 PE
+                            cumulativo.
+                          </li>
+                          <li>
+                            Após reagir: –2 em testes de Técnica até o início do
+                            próximo turno.
                           </li>
                         </ul>
+
+                        <p className="tecnicas-intro-chapter-title">
+                          ✦ TESTES DE TÉCNICA
+                        </p>
                         <p>
-                          <strong>Teste de Tecnica:</strong> quando exigido, CD
-                          = 10 + graduacao.
+                          Quando uma técnica exigir resolução, role um teste de
+                          Técnica:
+                        </p>
+                        <p className="tecnicas-intro-formula">
+                          1d20 + graduação &nbsp;·&nbsp; CD = 10 + graduação
+                        </p>
+                        <p>
+                          O Mestre pode ajustar a CD conforme pressão,
+                          interferência externa ou instabilidade do Éter.
                         </p>
                       </div>
                     </div>
@@ -5657,7 +10979,7 @@ function App() {
                           const derived = getTecnicaBasicaDerived(
                             tecnica,
                             graduacao,
-                            limitePericia,
+                            limiteTecnica,
                           );
 
                           return (
@@ -5667,7 +10989,7 @@ function App() {
                                   <span>Graduacao</span>
                                   <NumericStepperInput
                                     min={0}
-                                    max={limitePericia}
+                                    max={limiteTecnica}
                                     value={graduacao}
                                     ariaLabel={`Graduacao de ${tecnica.nome}`}
                                     onChange={(value) =>
@@ -5724,12 +11046,811 @@ function App() {
                     ))}
                   </div>
                   <p className="rule-note">
-                    Limite de graduacao: Nivel + 10 = {limitePericia}. VE usa
-                    rendimento decrescente a partir da graduacao 6. Tecnicas
+                    Limite de graduacao: Nivel + 10 = {limiteTecnica}. VE usa
+                    rendimento decrescente a partir da graduacao 5. Tecnicas
                     sustentadas consomem PE por turno, tecnicas instantaneas por
                     uso, e apenas 1 tecnica sustentada pode ficar ativa por vez.
+                    Cada reacao adicional no turno custa +1 PE e, apos reagir,
+                    voce sofre -2 em testes de Tecnica ate o proximo turno.
                   </p>
                 </article>
+              </section>
+            ) : null}
+
+            {activeEditorTab === "tecnicas-desenvolvimento" ? (
+              <section className="block tecnicas-dev-panel">
+                <h3>Desenvolvimento de Tecnicas</h3>
+                <div className="tecnicas-dev-intro">
+                  <p>
+                    Construa tecnicas a partir de poderes base e aplique
+                    modificadores/reducoes conforme o Capitulo 11. A tecnica e
+                    resolvida como uma unica acao.
+                  </p>
+                  <p>
+                    Custo de aquisicao por tipo: Primaria
+                    {` (${TECHNIQUE_PP_BY_TYPE.Primaria} PP)`}, Avancada
+                    {` (${TECHNIQUE_PP_BY_TYPE.Avancada} PP)`} e Especial
+                    {` (${TECHNIQUE_PP_BY_TYPE.Especial} PP)`}.
+                  </p>
+                </div>
+
+                <div className="tecnicas-dev-grid">
+                  <label>
+                    Nome da tecnica
+                    <input
+                      value={tecnicaDraft.nome}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          nome: event.target.value,
+                        }))
+                      }
+                      placeholder="Ex: Lamina Perfurante"
+                    />
+                  </label>
+
+                  <label>
+                    Tipo
+                    <select
+                      value={tecnicaDraft.tipo}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          tipo: event.target.value as DevelopedTechniqueType,
+                        }))
+                      }
+                    >
+                      <option value="Primaria">Primaria</option>
+                      <option value="Avancada">Avancada</option>
+                      <option value="Especial">Especial</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    Acao
+                    <input
+                      value={tecnicaDraft.acao}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          acao: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    Alcance
+                    <input
+                      value={tecnicaDraft.alcance}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          alcance: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    Alvo
+                    <input
+                      value={tecnicaDraft.alvo}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          alvo: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    Duracao
+                    <input
+                      value={tecnicaDraft.duracao}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          duracao: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+
+                <div className="tecnicas-dev-textareas">
+                  <label>
+                    Conceito
+                    <textarea
+                      value={tecnicaDraft.conceito}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          conceito: event.target.value,
+                        }))
+                      }
+                      placeholder="Defina a intencao e identidade da tecnica."
+                    />
+                  </label>
+                  <label>
+                    Efeito completo
+                    <textarea
+                      value={tecnicaDraft.efeito}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          efeito: event.target.value,
+                        }))
+                      }
+                      placeholder="Descreva resolucao mecanica objetiva."
+                    />
+                  </label>
+                  <label>
+                    Gatilho / condicao
+                    <textarea
+                      value={tecnicaDraft.gatilho}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          gatilho: event.target.value,
+                        }))
+                      }
+                      placeholder="Opcional. Ex: exige preparacao."
+                    />
+                  </label>
+                </div>
+
+                <section className="tecnicas-dev-subsection">
+                  <h4>Poderes Base</h4>
+                  {tecnicaDraft.poderesBase.map((base, index) => {
+                    const selectedPowerData =
+                      poderesDisponiveisParaTecnica.find(
+                        (item) => item.power.id === base.powerId,
+                      );
+                    const displayGraduacao =
+                      selectedPowerData?.graduacaoAtual ?? base.graduacao;
+
+                    return (
+                      <div className="tecnica-base-row" key={base.id}>
+                        <label>
+                          Poder #{index + 1}
+                          <select
+                            value={base.powerId}
+                            onChange={(event) => {
+                              const newPowerId = event.target.value;
+                              const newPowerData =
+                                poderesDisponiveisParaTecnica.find(
+                                  (item) => item.power.id === newPowerId,
+                                );
+                              setTecnicaDraft((current) => ({
+                                ...current,
+                                poderesBase: current.poderesBase.map((item) =>
+                                  item.id === base.id
+                                    ? {
+                                        ...item,
+                                        powerId: newPowerId,
+                                        graduacao: newPowerData
+                                          ? String(newPowerData.graduacaoAtual)
+                                          : item.graduacao,
+                                      }
+                                    : item,
+                                ),
+                              }));
+                            }}
+                          >
+                            <option value="">
+                              Selecione um poder do arsenal
+                            </option>
+                            {poderesDisponiveisParaTecnica.map((item) => (
+                              <option key={item.power.id} value={item.power.id}>
+                                {item.power.nome} ({item.power.naipe}) - Grad.{" "}
+                                {item.graduacaoAtual}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label>
+                          Graduacao
+                          <input
+                            type="number"
+                            value={displayGraduacao}
+                            disabled
+                            aria-label={`Graduacao do poder base ${index + 1} (fixo)`}
+                          />
+                        </label>
+
+                        <button
+                          type="button"
+                          className="danger"
+                          onClick={() => removerPoderBaseTecnica(base.id)}
+                          disabled={tecnicaDraft.poderesBase.length <= 1}
+                        >
+                          Remover
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <button type="button" onClick={adicionarPoderBaseTecnica}>
+                    Adicionar poder base
+                  </button>
+                </section>
+
+                <section className="tecnicas-dev-subsection">
+                  <h4>Modificadores e Reducoes</h4>
+                  <div className="tecnicas-dev-grid">
+                    <label>
+                      +Dano (max 5)
+                      <NumericStepperInput
+                        min={0}
+                        max={5}
+                        value={tecnicaDraft.modificadores.bonusDano}
+                        ariaLabel="Bonus de dano"
+                        onChange={(value) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              bonusDano: value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Precisao (0 a 3)
+                      <NumericStepperInput
+                        min={0}
+                        max={3}
+                        value={tecnicaDraft.modificadores.bonusPrecisao}
+                        ariaLabel="Bonus de precisao"
+                        onChange={(value) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              bonusPrecisao: value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Penetracao
+                      <NumericStepperInput
+                        min={0}
+                        value={tecnicaDraft.modificadores.penetracao}
+                        ariaLabel="Penetracao"
+                        onChange={(value) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              penetracao: value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Dano ampliado
+                      <NumericStepperInput
+                        min={0}
+                        value={tecnicaDraft.modificadores.danoAmpliado}
+                        ariaLabel="Dano ampliado"
+                        onChange={(value) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              danoAmpliado: value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Ataque multiplo
+                      <select
+                        value={tecnicaDraft.modificadores.ataqueMultiplo}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              ataqueMultiplo: event.target
+                                .value as DevelopedTechniqueModifierSet["ataqueMultiplo"],
+                            },
+                          }))
+                        }
+                      >
+                        <option value="1">1 ataque</option>
+                        <option value="2">2 ataques</option>
+                        <option value="3">3 ataques</option>
+                      </select>
+                    </label>
+                    <label>
+                      Area
+                      <select
+                        value={tecnicaDraft.modificadores.area}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              area: event.target
+                                .value as DevelopedTechniqueModifierSet["area"],
+                            },
+                          }))
+                        }
+                      >
+                        <option value="">Sem area</option>
+                        <option value="3m">3m</option>
+                        <option value="5m">5m</option>
+                        <option value="10m">10m</option>
+                      </select>
+                    </label>
+                    <label>
+                      Controle
+                      <select
+                        value={tecnicaDraft.modificadores.controleNivel}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              controleNivel: event.target
+                                .value as DevelopedTechniqueModifierSet["controleNivel"],
+                            },
+                          }))
+                        }
+                      >
+                        <option value="">Sem controle</option>
+                        <option value="Leve">Leve</option>
+                        <option value="Moderado">Moderado</option>
+                        <option value="Forte">Forte</option>
+                      </select>
+                    </label>
+                    <label>
+                      Estado de controle
+                      <input
+                        value={tecnicaDraft.modificadores.controleEstado}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              controleEstado: event.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="Ex: Imobilizado"
+                      />
+                    </label>
+                    <label>
+                      Atributo de resistencia
+                      <select
+                        value={
+                          tecnicaDraft.modificadores.controleAtributoResistencia
+                        }
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              controleAtributoResistencia: event.target
+                                .value as DevelopedTechniqueModifierSet["controleAtributoResistencia"],
+                            },
+                          }))
+                        }
+                      >
+                        <option value="Forca">Forca</option>
+                        <option value="Agilidade">Agilidade</option>
+                        <option value="Vontade">Vontade</option>
+                      </select>
+                    </label>
+                    <label>
+                      Etapas de alcance
+                      <select
+                        value={tecnicaDraft.modificadores.alcanceEtapas}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              alcanceEtapas: event.target
+                                .value as DevelopedTechniqueModifierSet["alcanceEtapas"],
+                            },
+                          }))
+                        }
+                      >
+                        <option value="0">Sem aumento</option>
+                        <option value="1">1 etapa</option>
+                        <option value="2">2 etapas</option>
+                        <option value="3">3 etapas</option>
+                        <option value="4">4 etapas</option>
+                      </select>
+                    </label>
+                    <label>
+                      Duracao
+                      <select
+                        value={tecnicaDraft.modificadores.duracao}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              duracao: event.target
+                                .value as DevelopedTechniqueModifierSet["duracao"],
+                            },
+                          }))
+                        }
+                      >
+                        <option value="">Sem alteracao</option>
+                        <option value="Sustentada">
+                          Instantanea para Sustentada
+                        </option>
+                        <option value="Continua">
+                          Sustentada para Continua
+                        </option>
+                      </select>
+                    </label>
+                    <label>
+                      Ativacao rapida
+                      <select
+                        value={tecnicaDraft.modificadores.ativacaoRapida}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              ativacaoRapida: event.target
+                                .value as DevelopedTechniqueModifierSet["ativacaoRapida"],
+                            },
+                          }))
+                        }
+                      >
+                        <option value="">Sem alteracao</option>
+                        <option value="Livre">Acao Livre</option>
+                        <option value="Reacao">Reacao</option>
+                      </select>
+                    </label>
+                    <label>
+                      Preparacao
+                      <select
+                        value={tecnicaDraft.modificadores.preparacao}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              preparacao: event.target
+                                .value as DevelopedTechniqueModifierSet["preparacao"],
+                            },
+                          }))
+                        }
+                      >
+                        <option value="">Sem preparacao</option>
+                        <option value="preparacao">Exige preparacao</option>
+                        <option value="turno-completo">
+                          Exige 1 turno completo
+                        </option>
+                      </select>
+                    </label>
+                    <label>
+                      Defesa bonus
+                      <NumericStepperInput
+                        min={0}
+                        max={2}
+                        value={tecnicaDraft.modificadores.bonusDefesa}
+                        ariaLabel="Bonus de defesa"
+                        onChange={(value) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              bonusDefesa: value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Reducao dano recebido
+                      <NumericStepperInput
+                        min={0}
+                        max={2}
+                        value={tecnicaDraft.modificadores.reducaoDanoRecebido}
+                        ariaLabel="Reducao de dano recebido"
+                        onChange={(value) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              reducaoDanoRecebido: value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Modificador personalizado (nome)
+                      <input
+                        value={
+                          tecnicaDraft.modificadores
+                            .modificadorPersonalizadoNome
+                        }
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              modificadorPersonalizadoNome: event.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="Ex: Ruido ritual"
+                      />
+                    </label>
+                    <label>
+                      Modificador personalizado (PE)
+                      <input
+                        type="number"
+                        value={
+                          tecnicaDraft.modificadores
+                            .modificadorPersonalizadoCusto
+                        }
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              modificadorPersonalizadoCusto: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+
+                  <div className="tecnicas-dev-checks">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={tecnicaDraft.modificadores.absorcao}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              absorcao: event.target.checked,
+                            },
+                          }))
+                        }
+                      />
+                      Absorcao (+3 PE)
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={tecnicaDraft.modificadores.reflexo}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              reflexo: event.target.checked,
+                            },
+                          }))
+                        }
+                      />
+                      Reflexo (+2 PE)
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={tecnicaDraft.modificadores.duracaoEstendida}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              duracaoEstendida: event.target.checked,
+                            },
+                          }))
+                        }
+                      />
+                      Duracao estendida (+2 PE)
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={
+                          tecnicaDraft.modificadores.limitacaoPerdeMovimento
+                        }
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              limitacaoPerdeMovimento: event.target.checked,
+                            },
+                          }))
+                        }
+                      />
+                      Perde acao de movimento (-1 PE)
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={
+                          tecnicaDraft.modificadores.limitacaoCondicaoEspecifica
+                        }
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              limitacaoCondicaoEspecifica: event.target.checked,
+                            },
+                          }))
+                        }
+                      />
+                      Exige condicao especifica (-1 PE)
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={
+                          tecnicaDraft.modificadores.limitacaoContatoDireto
+                        }
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              limitacaoContatoDireto: event.target.checked,
+                            },
+                          }))
+                        }
+                      />
+                      Exige contato direto (-1 PE)
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={
+                          tecnicaDraft.modificadores.limitacaoAlvoEspecifico
+                        }
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              limitacaoAlvoEspecifico: event.target.checked,
+                            },
+                          }))
+                        }
+                      />
+                      So funciona contra alvo especifico (-1 PE)
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={tecnicaDraft.modificadores.limitacaoUsoCena}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            modificadores: {
+                              ...current.modificadores,
+                              limitacaoUsoCena: event.target.checked,
+                            },
+                          }))
+                        }
+                      />
+                      Uso limitado por cena (-1 PE)
+                    </label>
+                  </div>
+                </section>
+
+                <section className="tecnicas-dev-subsection tecnica-cost-summary">
+                  <h4>Calculo Final</h4>
+                  <p>
+                    <strong>Custo Base:</strong> {tecnicaCustoBasePE} PE
+                  </p>
+                  <p>
+                    <strong>Modificadores:</strong> +
+                    {tecnicaCustoModificadoresPE} PE
+                  </p>
+                  <p>
+                    <strong>Reducoes:</strong> -{tecnicaReducoesPE} PE
+                  </p>
+                  <p>
+                    <strong>Adicional aplicado:</strong> +
+                    {tecnicaAdicionalAplicadoPE} PE
+                    {` (limite ${tecnicaDraft.tipo}: +${tecnicaLimiteAdicional})`}
+                  </p>
+                  <p>
+                    <strong>Custo Final:</strong> {tecnicaCustoFinalPE} PE
+                  </p>
+                  <p>
+                    <strong>Limite de escala:</strong> bonus direto bruto =
+                    {` ${tecnicaBonusDiretoBruto}`} | aplicado =
+                    {` ${tecnicaBonusDiretoAplicado}`} | maior graduacao base =
+                    {` ${tecnicaMaiorGraduacaoBase}`}.
+                  </p>
+                  {tecnicaExcedeLimite ? (
+                    <p className="danger-value">
+                      Excede limite de PE adicional para tecnica{" "}
+                      {tecnicaDraft.tipo}.
+                    </p>
+                  ) : null}
+                  <button type="button" onClick={salvarTecnicaDesenvolvida}>
+                    Cadastrar tecnica
+                  </button>
+                </section>
+
+                <section className="tecnicas-dev-subsection">
+                  <h4>Tecnicas cadastradas</h4>
+                  {selectedCharacter.tecnicasDesenvolvidas.length === 0 ? (
+                    <p>Nenhuma tecnica cadastrada.</p>
+                  ) : (
+                    <div className="tecnica-dev-list">
+                      {selectedCharacter.tecnicasDesenvolvidas.map(
+                        (tecnica) => (
+                          <article
+                            key={tecnica.id}
+                            className="tecnica-dev-item"
+                          >
+                            <div>
+                              <strong>
+                                {tecnica.nome} ({tecnica.tipo})
+                              </strong>
+                              <span>
+                                Custo: {tecnica.custoFinalPE} PE | Aquisicao:{" "}
+                                {TECHNIQUE_PP_BY_TYPE[tecnica.tipo]} PP
+                              </span>
+                              <span>
+                                Base: {tecnica.custoBasePE} | Mods: +
+                                {tecnica.custoModificadoresPE} | Reducoes: -
+                                {tecnica.reducoesPE}
+                              </span>
+                              <p>
+                                {tecnica.efeito ||
+                                  tecnica.conceito ||
+                                  "Sem descricao."}
+                              </p>
+                              <ul className="ficha-inline-list">
+                                {tecnica.poderesBase.map((base) => {
+                                  const power = POWER_BY_ID.get(base.powerId);
+                                  return (
+                                    <li key={base.id}>
+                                      {power?.nome ?? "Poder removido"} | Grad.{" "}
+                                      {base.graduacao}
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </div>
+                            <button
+                              type="button"
+                              className="trash-button"
+                              onClick={() =>
+                                removerTecnicaDesenvolvida(tecnica.id)
+                              }
+                              aria-label={`Remover tecnica ${tecnica.nome}`}
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9z" />
+                              </svg>
+                            </button>
+                          </article>
+                        ),
+                      )}
+                    </div>
+                  )}
+                </section>
               </section>
             ) : null}
 
@@ -6074,17 +12195,367 @@ function App() {
             ) : null}
 
             {activeEditorTab === "equipamentos" ? (
-              <section className="block lined-textarea equipamentos-wide">
+              <section className="block equipamentos-panel equipamentos-wide">
                 <h3>Equipamentos</h3>
-                <textarea
-                  value={selectedCharacter.equipamentos}
-                  onChange={(event) =>
-                    updateCharacter((current) => ({
-                      ...current,
-                      equipamentos: event.target.value,
-                    }))
-                  }
-                />
+                <div className="equipamentos-intro">
+                  <p>
+                    Equipamentos sao recursos externos que ampliam
+                    possibilidades de acao. Eles nao definem o nivel de poder do
+                    personagem, apenas como esse poder e aplicado em situacoes
+                    especificas.
+                  </p>
+                  <p>
+                    <strong>Uso na campanha:</strong> opcional, com relevancia
+                    definida pelo mestre. Campanhas focadas em Eter podem
+                    reduzir equipamentos; campanhas taticas podem torna-los
+                    centrais; campanhas narrativas podem trata-los como recurso
+                    pontual.
+                  </p>
+                  <p>
+                    <strong>Autoridade do mestre:</strong> decide existencia,
+                    disponibilidade, acesso inicial, concessao/restricao e
+                    ajustes de equilibrio.
+                  </p>
+                </div>
+
+                <div className="equipamentos-grid">
+                  <article className="equip-card">
+                    <h4>Aquisicao</h4>
+                    <ul>
+                      <li>Escolha inicial (se permitida).</li>
+                      <li>Aquisicao narrativa (conquistas e descobertas).</li>
+                      <li>Recompensa por eventos e progressao.</li>
+                    </ul>
+                  </article>
+                  <article className="equip-card">
+                    <h4>Escolha Inicial</h4>
+                    <ul>
+                      <li>{`Ate ${EQUIPAMENTOS_LIMITE_INICIAL.armas} armas (Comum).`}</li>
+                      <li>{`Ate ${EQUIPAMENTOS_LIMITE_INICIAL.protecoes} protecoes (Comum).`}</li>
+                      <li>{`Ate ${EQUIPAMENTOS_LIMITE_INICIAL.utilitarios} utilitarios (Comum).`}</li>
+                      <li>Itens devem respeitar cenario, conceito e tom.</li>
+                    </ul>
+                  </article>
+                  <article className="equip-card">
+                    <h4>Nivel de Acesso</h4>
+                    <ul>
+                      {EQUIPAMENTOS_ACESSO_NIVEIS.map((nivel) => (
+                        <li key={nivel}>{nivel}</li>
+                      ))}
+                    </ul>
+                  </article>
+                </div>
+
+                <div className="equip-regras-wrap">
+                  <h4>Regras Gerais</h4>
+                  <ul className="equip-regras-list">
+                    {EQUIPAMENTOS_REGRAS_GERAIS.map((regra) => (
+                      <li key={regra}>{regra}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="equip-regras-wrap equip-principios-wrap">
+                  <h4>Principios do Capitulo</h4>
+                  <ul className="equip-regras-list">
+                    <li>
+                      <strong>Armas:</strong> nao substituem dano base; alteram
+                      como o ataque acontece.
+                    </li>
+                    <li>
+                      <strong>Protecoes:</strong> complementam resistencia
+                      dentro dos limites do sistema.
+                    </li>
+                    <li>
+                      <strong>Utilitarios:</strong> ampliam possibilidades;
+                      valor esta na decisao, nao no poder bruto.
+                    </li>
+                    <li>
+                      <strong>Equilibrio:</strong> equipamentos nao substituem
+                      atributos/tecnicas, nao ignoram totalmente defesa ou
+                      resistencia, nao escalam acima das mecanicas centrais e
+                      nao eliminam decisoes.
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="progression-table-wrap equip-desgaste-wrap">
+                  <h4>Desgaste de Equipamentos</h4>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Estado</th>
+                        <th>Efeito</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {EQUIPAMENTOS_DESGASTE.map((item) => (
+                        <tr key={item.estado}>
+                          <td>{item.estado}</td>
+                          <td>{item.efeitos}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="rule-note equip-rule-note">
+                    O desgaste e aplicado quando fizer sentido narrativo,
+                    especialmente em falhas criticas, impactos intensos, uso
+                    excessivo e situacoes de alto risco. Cada nivel de desgaste
+                    exige reparo (ferramentas, especialistas, recursos
+                    narrativos, tecnicas ou poderes).
+                  </p>
+                </div>
+
+                <div className="equip-filtros">
+                  <label>
+                    Era
+                    <select
+                      value={equipamentosEra}
+                      onChange={(event) => {
+                        setEquipamentosEra(event.target.value as EquipmentEra);
+                        setEquipamentosSubcategoria("");
+                      }}
+                    >
+                      <option value="Medieval">Medieval</option>
+                      <option value="Moderno">Moderno</option>
+                      <option value="Futurista">Futurista</option>
+                    </select>
+                  </label>
+                  <label>
+                    Tipo
+                    <select
+                      value={equipamentosTipo}
+                      onChange={(event) => {
+                        setEquipamentosTipo(
+                          event.target.value as EquipmentKind,
+                        );
+                        setEquipamentosSubcategoria("");
+                      }}
+                    >
+                      <option value="Armas">Armas</option>
+                      <option value="Protecoes">Protecoes</option>
+                      <option value="Utilitarios">Itens Utilitarios</option>
+                    </select>
+                  </label>
+                  <label>
+                    Subcategoria
+                    <select
+                      value={equipamentosSubcategoria}
+                      onChange={(event) =>
+                        setEquipamentosSubcategoria(event.target.value)
+                      }
+                    >
+                      <option value="">Todas</option>
+                      {equipamentosSubcategorias.map((subcategoria) => (
+                        <option key={subcategoria} value={subcategoria}>
+                          {subcategoria}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                {equipamentosTipo === "Armas" ? (
+                  <div className="progression-table-wrap equip-table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Arma</th>
+                          <th>Categoria</th>
+                          <th>Tipo</th>
+                          <th>Alcance</th>
+                          <th>Dano</th>
+                          <th>Acerto</th>
+                          <th>Efeito</th>
+                          <th>Peso</th>
+                          <th>Acesso</th>
+                          <th>Acoes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(equipamentosFiltrados as EquipmentWeaponEntry[]).map(
+                          (item) => {
+                            const noLimite = destaqueArmaNoLimite(item);
+
+                            return (
+                              <tr
+                                key={`${item.subcategoria}-${item.nome}`}
+                                className={noLimite ? "equip-row-cap" : ""}
+                              >
+                                <td>{item.nome}</td>
+                                <td>{item.subcategoria}</td>
+                                <td>{item.tipo}</td>
+                                <td>{item.alcance}</td>
+                                <td>{item.dano}</td>
+                                <td>{item.acerto}</td>
+                                <td>{item.efeito}</td>
+                                <td>{item.peso}</td>
+                                <td>
+                                  <span
+                                    className={`equip-acesso-badge ${getAcessoBadgeClass(item.acesso)}`}
+                                  >
+                                    {item.acesso}
+                                  </span>
+                                </td>
+                                <td>
+                                  <button
+                                    type="button"
+                                    className="equip-add-btn"
+                                    onClick={() =>
+                                      adicionarNotaEquipamento(
+                                        `[${equipamentosEra} | Arma] ${item.nome} (${item.subcategoria}) | Alcance ${item.alcance} | Dano ${item.dano} | Acerto ${item.acerto} | Acesso ${item.acesso} | Efeito: ${item.efeito}`,
+                                      )
+                                    }
+                                  >
+                                    Adicionar
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          },
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+
+                {equipamentosTipo === "Protecoes" ? (
+                  <div className="progression-table-wrap equip-table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Protecao</th>
+                          <th>Categoria</th>
+                          <th>Tipo</th>
+                          <th>Resistencia</th>
+                          <th>Defesa</th>
+                          <th>Efeito</th>
+                          <th>Penalidade</th>
+                          <th>Peso</th>
+                          <th>Acesso</th>
+                          <th>Acoes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(
+                          equipamentosFiltrados as EquipmentProtectionEntry[]
+                        ).map((item) => {
+                          const noLimite = destaqueProtecaoNoLimite(item);
+
+                          return (
+                            <tr
+                              key={`${item.subcategoria}-${item.nome}`}
+                              className={noLimite ? "equip-row-cap" : ""}
+                            >
+                              <td>{item.nome}</td>
+                              <td>{item.subcategoria}</td>
+                              <td>{item.tipo}</td>
+                              <td>{item.resistencia}</td>
+                              <td>{item.defesa}</td>
+                              <td>{item.efeito}</td>
+                              <td>{item.penalidade}</td>
+                              <td>{item.peso}</td>
+                              <td>
+                                <span
+                                  className={`equip-acesso-badge ${getAcessoBadgeClass(item.acesso)}`}
+                                >
+                                  {item.acesso}
+                                </span>
+                              </td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="equip-add-btn"
+                                  onClick={() =>
+                                    adicionarNotaEquipamento(
+                                      `[${equipamentosEra} | Protecao] ${item.nome} (${item.subcategoria}) | RES ${item.resistencia} | DEF ${item.defesa} | Acesso ${item.acesso} | Efeito: ${item.efeito}`,
+                                    )
+                                  }
+                                >
+                                  Adicionar
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+
+                {equipamentosTipo === "Utilitarios" ? (
+                  <div className="progression-table-wrap equip-table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Item</th>
+                          <th>Categoria</th>
+                          <th>Tipo</th>
+                          <th>Efeito</th>
+                          <th>Limite</th>
+                          <th>Peso</th>
+                          <th>Acesso</th>
+                          <th>Acoes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(equipamentosFiltrados as EquipmentUtilityEntry[]).map(
+                          (item) => {
+                            const noLimite = destaqueUtilitarioNoLimite(item);
+
+                            return (
+                              <tr
+                                key={`${item.subcategoria}-${item.nome}`}
+                                className={noLimite ? "equip-row-cap" : ""}
+                              >
+                                <td>{item.nome}</td>
+                                <td>{item.subcategoria}</td>
+                                <td>{item.tipo}</td>
+                                <td>{item.efeito}</td>
+                                <td>{item.limite}</td>
+                                <td>{item.peso}</td>
+                                <td>
+                                  <span
+                                    className={`equip-acesso-badge ${getAcessoBadgeClass(item.acesso)}`}
+                                  >
+                                    {item.acesso}
+                                  </span>
+                                </td>
+                                <td>
+                                  <button
+                                    type="button"
+                                    className="equip-add-btn"
+                                    onClick={() =>
+                                      adicionarNotaEquipamento(
+                                        `[${equipamentosEra} | Utilitario] ${item.nome} (${item.subcategoria}) | Tipo ${item.tipo} | Limite ${item.limite} | Acesso ${item.acesso} | Efeito: ${item.efeito}`,
+                                      )
+                                    }
+                                  >
+                                    Adicionar
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          },
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+
+                <div className="equip-notes lined-textarea">
+                  <h4>Anotacoes da Ficha</h4>
+                  <textarea
+                    value={selectedCharacter.equipamentos}
+                    onChange={(event) =>
+                      updateCharacter((current) => ({
+                        ...current,
+                        equipamentos: event.target.value,
+                      }))
+                    }
+                    placeholder="Armas equipadas, protecoes ativas, itens consumidos, desgaste e reparos..."
+                  />
+                </div>
               </section>
             ) : null}
 
@@ -6434,7 +12905,7 @@ function App() {
                         const graduacao = clamp(
                           parseNatural(powerEntry.graduacao),
                           1,
-                          limitePericia,
+                          limiteTecnica,
                         );
                         const custoPoder = getPowerTotalCost(
                           power,
@@ -6472,7 +12943,7 @@ function App() {
                               Graduacao
                               <NumericStepperInput
                                 min={1}
-                                max={MAX_POWER_GRADUATION_LIMIT}
+                                max={limitePoder}
                                 value={powerEntry.graduacao}
                                 ariaLabel={`Graduacao de ${power.nome}`}
                                 onChange={(value) =>
@@ -6613,8 +13084,7 @@ function App() {
                       })
                     )}
                     <p className="rule-note powers-note">
-                      Limite de graduacao por poder:{" "}
-                      {MAX_POWER_GRADUATION_LIMIT - 1}
+                      Limite de graduacao por poder: {limitePoder}
                     </p>
                   </div>
                 )}
