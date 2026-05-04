@@ -1951,7 +1951,7 @@ const TECNICAS_BASICAS: BasicTechniqueDefinition[] = [
     custoPPPorGraduacao: 3,
     acao: "Livre",
     duracao: "Sustentada",
-    basePE: 2,
+    basePE: 3,
     descricao:
       "Projeta o Eter ao redor do corpo formando uma zona sensorial continua. Dentro dessa area detecta automaticamente qualquer presenca de Eter, movimentacoes e alteracoes de fluxo, independentemente de linha de visao.",
     limitacoes:
@@ -3994,9 +3994,9 @@ const EDITOR_TABS: EditorTabDefinition[] = [
   },
   {
     id: "tecnicas",
-    label: "Tecnicas Basicas",
+    label: "Fluxos",
     descricao:
-      "Ajuste graduacoes das tecnicas fundamentais e acompanhe VE, custo de Eter e limitacoes.",
+      "Ajuste graduacoes dos Fluxos Naturais e acompanhe Valor Efetivo, custo de Eter e limitacoes.",
   },
   {
     id: "tecnicas-desenvolvimento",
@@ -4541,13 +4541,15 @@ const getTecnicaBasicaDerived = (
         custoPE,
         efeito: `+${graduacao} em Percepcao. Detecta presenca de Eter no ambiente mesmo sem linha de visao direta, identifica ativacoes de tecnicas e movimentacoes de fluxo energetico.`,
       };
-    case "Campo":
+    case "Campo": {
+      const custoPECampo = 3 + graduacao;
       return {
         graduacao,
         ve,
-        custoPE,
-        efeito: `+${graduacao} em Percepcao na area. Detecta automaticamente qualquer presenca de Eter na zona sensorial. Efeitos de ocultacao de Eter com graduacao inferior sao anulados. Raio: ${getCampoRaio(graduacao)}.`,
+        custoPE: custoPECampo,
+        efeito: `Detecta automaticamente qualquer presenca de Eter na zona sensorial. Efeitos de ocultacao de Eter com graduacao inferior sao anulados. Alcance atual: ${getCampoRaio(graduacao)}.`,
       };
+    }
     case "Guarda": {
       const reducao = Math.ceil(graduacao / 2);
       return {
@@ -8839,7 +8841,7 @@ function App() {
   const nivel = parseNatural(selectedCharacter.nivel);
   const limitePericia = nivel + 5;
   const limitePoder = nivel + 10;
-  const limiteTecnica = nivel + 10;
+  const limiteTecnica = nivel + 5;
   const limiteDefesaTotal = nivel + 18;
   const limiteResistenciaTotal = nivel + 6;
 
@@ -9283,6 +9285,41 @@ function App() {
       parseNatural(conhecimento.graduacoes) > 0,
   );
 
+  const toQuickNarrative = (text?: string, maxLength = 140): string => {
+    if (!text) {
+      return "";
+    }
+
+    const normalized = text.replace(/\s+/g, " ").trim();
+    if (normalized.length <= maxLength) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, maxLength - 1).trimEnd()}...`;
+  };
+
+  const getFluxoAplicacaoValorEfetivo = (
+    nomeFluxo: string,
+    graduacao: number,
+  ): string => {
+    switch (nomeFluxo) {
+      case "Supressao":
+        return "Furtividade";
+      case "Foco":
+        return "Percepcao";
+      case "Campo":
+        return `Metros de distancia (raio atual: ${getCampoRaio(graduacao)})`;
+      case "Guarda":
+        return "Resistencia";
+      case "Impulso":
+        return "Ataque ou Dano";
+      case "Ruptura":
+        return "Dano ou Resistencia";
+      default:
+        return "Efeito da tecnica";
+    }
+  };
+
   const tecnicasBasicasSelecionadas = TECNICAS_BASICAS.map((tecnica) => {
     const graduacao = clamp(
       parseNatural(selectedCharacter.tecnicasBasicas[tecnica.nome].graduacao),
@@ -9331,6 +9368,7 @@ function App() {
         tipo: power.tipo,
         graduacao,
         custoFinal: custoBase * multiplicadorNaipe,
+        narrativa: toQuickNarrative(power.efeitoPrincipal ?? power.resumo, 150),
         extras: powerEntry.extrasSelecionados,
         falhas: powerEntry.falhasSelecionadas,
       };
@@ -9343,7 +9381,7 @@ function App() {
         <div className="quick-sheet-screen">
           <header className="quick-sheet-header">
             <div>
-              <p className="quick-sheet-kicker">Ficha de consulta rapida</p>
+              <p className="quick-sheet-kicker">Ficha gerada</p>
               <h1>{selectedCharacter.nome || "Personagem sem nome"}</h1>
               <p>
                 Jogador: {selectedCharacter.jogador || "Nao informado"} | Nivel{" "}
@@ -9412,6 +9450,10 @@ function App() {
                 <p>
                   <strong>Defesa:</strong> {defesaAtual} | <strong>Res:</strong>{" "}
                   {resistenciaTotalEfetiva}
+                </p>
+                <p>
+                  <strong>CaC:</strong> {selectedCharacter.combate.ataqueCac} |{" "}
+                  <strong>Disparo:</strong> {selectedCharacter.combate.disparo}
                 </p>
                 <p>
                   <strong>Mov:</strong> {movimentoAtual}m |{" "}
@@ -9505,16 +9547,43 @@ function App() {
           ) : (
             <div className="quick-sheet-grid">
               <section className="quick-sheet-card quick-sheet-card-wide">
-                <h2>Tecnicas basicas montadas</h2>
+                <h2>Fluxos naturais</h2>
+                <p className="quick-sheet-section-note">
+                  Fluxos natural direto para resposta imediata em combate,
+                  leitura do campo e sustentacao do personagem.
+                </p>
                 {tecnicasBasicasSelecionadas.length === 0 ? (
-                  <p>Nenhuma tecnica basica configurada.</p>
+                  <p>Nenhum fluxo natural configurado.</p>
                 ) : (
                   <ul className="quick-sheet-list">
                     {tecnicasBasicasSelecionadas.map((item) => (
-                      <li key={item.tecnica.nome}>
-                        <strong>{item.tecnica.nome}</strong> | Grad.{" "}
-                        {item.graduacao} | VE {item.derived.ve} | Custo{" "}
-                        {item.derived.custoPE} PE
+                      <li
+                        key={item.tecnica.nome}
+                        className="quick-sheet-item-rich"
+                      >
+                        <div className="quick-sheet-item-head">
+                          <strong>{item.tecnica.nome}</strong>
+                          <span className="quick-sheet-item-tag">
+                            {item.tecnica.tipo}
+                          </span>
+                        </div>
+                        <span className="quick-sheet-item-meta">
+                          Grad. {item.graduacao} · Valor Efetivo{" "}
+                          {item.tecnica.nome === "Campo"
+                            ? getCampoRaio(item.graduacao)
+                            : item.derived.ve}{" "}
+                          · Custo {item.derived.custoPE} PE
+                        </span>
+                        <p className="quick-sheet-item-meta quick-sheet-item-meta-extra">
+                          Aplicacao do Valor Efetivo:{" "}
+                          {getFluxoAplicacaoValorEfetivo(
+                            item.tecnica.nome,
+                            item.graduacao,
+                          )}
+                        </p>
+                        <p className="quick-sheet-item-note">
+                          {toQuickNarrative(item.tecnica.descricao, 150)}
+                        </p>
                       </li>
                     ))}
                   </ul>
@@ -9522,22 +9591,42 @@ function App() {
               </section>
 
               <section className="quick-sheet-card quick-sheet-card-wide">
-                <h2>Poderes montados</h2>
+                <h2>Poderes</h2>
+                <p className="quick-sheet-section-note">
+                  Poderes configurados por naipe para formar seu arsenal ativo,
+                  com graduacao, custo final e ajustes aplicados.
+                </p>
                 {poderesSelecionadosResumo.length === 0 ? (
                   <p>Nenhum poder no arsenal.</p>
                 ) : (
                   <ul className="quick-sheet-list">
                     {poderesSelecionadosResumo.map((poder) => (
-                      <li key={poder.id}>
-                        <strong>{poder.nome}</strong> ({poder.naipe}) |{" "}
-                        {poder.tipo} | Grad. {poder.graduacao} | Custo{" "}
-                        {poder.custoFinal} PP
-                        {poder.extras.length > 0
-                          ? ` | Extras: ${poder.extras.join(", ")}`
-                          : ""}
-                        {poder.falhas.length > 0
-                          ? ` | Falhas: ${poder.falhas.join(", ")}`
-                          : ""}
+                      <li key={poder.id} className="quick-sheet-item-rich">
+                        <div className="quick-sheet-item-head">
+                          <strong>{poder.nome}</strong>
+                          <span className="quick-sheet-item-tag">
+                            {poder.naipe}
+                          </span>
+                        </div>
+                        <span className="quick-sheet-item-meta">
+                          {poder.tipo} · Grad. {poder.graduacao} · Custo{" "}
+                          {poder.custoFinal} PP
+                        </span>
+                        {poder.narrativa ? (
+                          <p className="quick-sheet-item-note">
+                            {poder.narrativa}
+                          </p>
+                        ) : null}
+                        {poder.extras.length > 0 || poder.falhas.length > 0 ? (
+                          <p className="quick-sheet-item-meta quick-sheet-item-meta-extra">
+                            {poder.extras.length > 0
+                              ? `Extras: ${poder.extras.join(", ")}`
+                              : "Sem extras"}
+                            {poder.falhas.length > 0
+                              ? ` · Falhas: ${poder.falhas.join(", ")}`
+                              : ""}
+                          </p>
+                        ) : null}
                       </li>
                     ))}
                   </ul>
@@ -9546,14 +9635,33 @@ function App() {
 
               <section className="quick-sheet-card quick-sheet-card-wide">
                 <h2>Tecnicas desenvolvidas</h2>
+                <p className="quick-sheet-section-note">
+                  Tecnicas Primarias, Avancadas e Especiais montadas a partir de
+                  poderes base e modificadores customizados.
+                </p>
                 {selectedCharacter.tecnicasDesenvolvidas.length === 0 ? (
                   <p>Nenhuma tecnica cadastrada.</p>
                 ) : (
                   <ul className="quick-sheet-list">
                     {selectedCharacter.tecnicasDesenvolvidas.map((tecnica) => (
-                      <li key={tecnica.id}>
-                        <strong>{tecnica.nome}</strong> ({tecnica.tipo}) | Custo{" "}
-                        {tecnica.custoFinalPE} PE
+                      <li key={tecnica.id} className="quick-sheet-item-rich">
+                        <div className="quick-sheet-item-head">
+                          <strong>{tecnica.nome}</strong>
+                          <span className="quick-sheet-item-tag">
+                            {tecnica.tipo}
+                          </span>
+                        </div>
+                        <span className="quick-sheet-item-meta">
+                          Custo final: {tecnica.custoFinalPE} PE
+                        </span>
+                        {tecnica.conceito || tecnica.efeito ? (
+                          <p className="quick-sheet-item-note">
+                            {toQuickNarrative(
+                              tecnica.conceito || tecnica.efeito,
+                              150,
+                            )}
+                          </p>
+                        ) : null}
                       </li>
                     ))}
                   </ul>
@@ -10870,97 +10978,72 @@ function App() {
             {activeEditorTab === "tecnicas" ? (
               <section>
                 <article className="block manipulacoes tecnicas-basicas-wide">
-                  <h3>Tecnicas Basicas</h3>
+                  <h3>Fluxos Naturais</h3>
                   <div className="tecnicas-intro">
                     <div className="tecnicas-intro-columns">
                       <div className="tecnicas-intro-column">
                         <p className="tecnicas-intro-chapter-title">
-                          ✦ CAPÍTULO 9 — TÉCNICAS BÁSICAS
+                          Fluxos Naturais
                         </p>
                         <p>
-                          As Técnicas Básicas representam as formas mais diretas
-                          de manipulação do Éter. Todo usuário, ao aprender a
-                          perceber o fluxo em seu próprio corpo, eventualmente
-                          descobre que esse fluxo pode ser controlado. As
-                          técnicas surgem desse domínio inicial: não são
-                          refinadas como poderes, mas são confiáveis, rápidas e
-                          extremamente versáteis.
+                          Fluxos Naturais sao usos diretos do Eter para reacao,
+                          leitura, defesa e reforco em combate.
                         </p>
                         <p>
-                          Enquanto os poderes definem o que um personagem é
-                          capaz de fazer, as técnicas básicas determinam como
-                          ele reage, como se posiciona e como se mantém ativo em
-                          combate. Cada técnica possui uma Graduação, convertida
-                          em VE (Valor Efetivo), e consome PE (Pontos de Éter)
-                          ao ser utilizada.
+                          Cada tecnica tem Graduacao, Valor Efetivo e consumo de
+                          PE. O Valor Efetivo segue uma progressao comum, mas o
+                          efeito e o custo real dependem de cada tecnica.
                         </p>
 
                         <p className="tecnicas-intro-chapter-title">
-                          ✦ PROGRESSÃO
-                        </p>
-                        <p>
-                          As Técnicas Básicas evoluem por meio de graduação. Nos
-                          níveis iniciais o avanço é direto; à medida que
-                          aumenta, o ganho de eficiência se torna mais sutil,
-                          exigindo maior refinamento e controle. O limite máximo
-                          de graduação é nível + 10 ({limiteTecnica} no nível
-                          atual).
+                          Progressao
                         </p>
                         <ul className="tecnicas-intro-list">
-                          <li>Graduação 1–4: progresso normal (VE igual).</li>
                           <li>
-                            A partir da graduação 5: cada 2 graduações concedem
-                            +1 VE.
+                            Graduacao 1-4: Valor Efetivo igual a graduacao.
                           </li>
-                          <li>1=1, 2=2, 3=3, 4=4, 5–6=5, 7–8=6, 9–10=7.</li>
+                          <li>
+                            A partir da graduacao 5: cada 2 graduacoes concedem
+                            +1 Valor Efetivo.
+                          </li>
+                          <li>1=1, 2=2, 3=3, 4=4, 5-6=5, 7-8=6, 9-10=7.</li>
+                          <li>
+                            Limite de Graduacao: nivel + 5 ({limiteTecnica} no
+                            nivel atual).
+                          </li>
                         </ul>
+
+                        <p className="tecnicas-intro-chapter-title">
+                          Consumo de Eter
+                        </p>
+                        <p>
+                          O consumo de PE e individual por tecnica. Tecnicas
+                          instantaneas gastam por uso; tecnicas sustentadas, por
+                          turno.
+                        </p>
                       </div>
 
                       <div className="tecnicas-intro-column">
                         <p className="tecnicas-intro-chapter-title">
-                          ✦ CONSUMO DE ÉTER
-                        </p>
-                        <p>
-                          Cada técnica possui um custo próprio de PE, definido
-                          por sua natureza e forma de aplicação. Técnicas
-                          instantâneas consomem PE no momento da ativação;
-                          técnicas sustentadas consomem PE a cada turno em que
-                          permanecem ativas. Algumas podem possuir custos
-                          adicionais ou escaláveis ao longo do tempo.
-                        </p>
-
-                        <p className="tecnicas-intro-chapter-title">
-                          ✦ REGRAS GERAIS
+                          Regras Gerais
                         </p>
                         <ul className="tecnicas-intro-list">
                           <li>
-                            Apenas 1 técnica sustentada ativa por vez. Ativar
-                            outra encerra automaticamente a anterior.
+                            Valor Efetivo segue a progressao geral mostrada ao
+                            lado.
                           </li>
+                          <li>Tecnicas sustentadas consomem PE por turno.</li>
+                          <li>Tecnicas instantaneas consomem PE por uso.</li>
                           <li>
-                            Cada reação adicional no mesmo turno custa +1 PE
-                            cumulativo.
+                            Apenas 1 tecnica sustentada pode ficar ativa por
+                            vez.
                           </li>
+                          <li>Cada reacao adicional no turno custa +1 PE.</li>
                           <li>
-                            Após reagir: –2 em testes de Técnica até o início do
-                            próximo turno.
+                            Apos reagir: -2 em testes de Tecnica ate o proximo
+                            turno.
                           </li>
                         </ul>
-
-                        <p className="tecnicas-intro-chapter-title">
-                          ✦ TESTES DE TÉCNICA
-                        </p>
-                        <p>
-                          Quando uma técnica exigir resolução, role um teste de
-                          Técnica:
-                        </p>
-                        <p className="tecnicas-intro-formula">
-                          1d20 + graduação &nbsp;·&nbsp; CD = 10 + graduação
-                        </p>
-                        <p>
-                          O Mestre pode ajustar a CD conforme pressão,
-                          interferência externa ou instabilidade do Éter.
-                        </p>
                       </div>
                     </div>
                   </div>
@@ -10981,7 +11064,6 @@ function App() {
                             graduacao,
                             limiteTecnica,
                           );
-
                           return (
                             <>
                               <div className="manip-stats-grid">
@@ -11010,7 +11092,9 @@ function App() {
                                     Valor Efetivo
                                   </span>
                                   <span className="manip-stat-value">
-                                    {derived.ve}
+                                    {tecnica.nome === "Campo"
+                                      ? getCampoRaio(derived.graduacao)
+                                      : derived.ve}
                                   </span>
                                 </div>
                                 <div className="manip-stat-chip">
@@ -11046,12 +11130,9 @@ function App() {
                     ))}
                   </div>
                   <p className="rule-note">
-                    Limite de graduacao: Nivel + 10 = {limiteTecnica}. VE usa
-                    rendimento decrescente a partir da graduacao 5. Tecnicas
-                    sustentadas consomem PE por turno, tecnicas instantaneas por
-                    uso, e apenas 1 tecnica sustentada pode ficar ativa por vez.
-                    Cada reacao adicional no turno custa +1 PE e, apos reagir,
-                    voce sofre -2 em testes de Tecnica ate o proximo turno.
+                    Limite atual: {limiteTecnica}. Valor Efetivo tem rendimento
+                    decrescente a partir da graduacao 5. Efeito e consumo de PE
+                    devem ser lidos em cada tecnica.
                   </p>
                 </article>
               </section>
