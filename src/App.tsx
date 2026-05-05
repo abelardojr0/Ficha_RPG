@@ -7971,6 +7971,11 @@ function App() {
       return;
     }
 
+    if (!isSelectedCharacterPersisted) {
+      setSavePasswordModalOpen(true);
+      return;
+    }
+
     await persistSelectedCharacter(activeSheetPassword);
   };
 
