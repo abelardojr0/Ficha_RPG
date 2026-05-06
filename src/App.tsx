@@ -5551,6 +5551,12 @@ function App() {
   const [isSavingGroup, setIsSavingGroup] = useState(false);
   const [isSavingSheet, setIsSavingSheet] = useState(false);
   const [isUnlockingSheet, setIsUnlockingSheet] = useState(false);
+  const [groupUnlockModalOpen, setGroupUnlockModalOpen] = useState(false);
+  const [groupUnlockTarget, setGroupUnlockTarget] =
+    useState<GroupRecord | null>(null);
+  const [groupUnlockPasswordInput, setGroupUnlockPasswordInput] = useState("");
+  const [groupUnlockError, setGroupUnlockError] = useState("");
+  const [isUnlockingGroup, setIsUnlockingGroup] = useState(false);
   const [isDeletingSheet, setIsDeletingSheet] = useState(false);
   const [activeSheetId, setActiveSheetId] = useState<string | null>(
     () => restoredDraft?.activeSheetId ?? null,
@@ -6099,8 +6105,70 @@ function App() {
   };
 
   const navigateToGroup = (groupKey: string) => {
+    const group = getGroupByKey(groupKey);
+    if (group?.hasPassword) {
+      setGroupUnlockTarget(group);
+      setGroupUnlockPasswordInput("");
+      setGroupUnlockError("");
+      setGroupUnlockModalOpen(true);
+      return;
+    }
     setSelectedGroup(normalizeGroupKey(groupKey));
     setScreen("group");
+  };
+
+  const closeGroupUnlockModal = () => {
+    if (isUnlockingGroup) return;
+    setGroupUnlockModalOpen(false);
+    setGroupUnlockTarget(null);
+    setGroupUnlockPasswordInput("");
+    setGroupUnlockError("");
+  };
+
+  const unlockGroupAndNavigate = async () => {
+    if (!groupUnlockTarget) return;
+
+    const password = groupUnlockPasswordInput.trim();
+    if (!password) {
+      setGroupUnlockError("Digite a senha do grupo.");
+      return;
+    }
+
+    setIsUnlockingGroup(true);
+    setGroupUnlockError("");
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/groups/${groupUnlockTarget.id}/unlock`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+        },
+      );
+
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        message?: string;
+      };
+
+      if (!response.ok) {
+        setGroupUnlockError(payload.message ?? "Senha incorreta.");
+        return;
+      }
+
+      const targetKey = groupUnlockTarget.key;
+      setGroupUnlockModalOpen(false);
+      setGroupUnlockTarget(null);
+      setGroupUnlockPasswordInput("");
+      setGroupUnlockError("");
+      setSelectedGroup(normalizeGroupKey(targetKey));
+      setScreen("group");
+    } catch {
+      setGroupUnlockError("Erro de conexao ao verificar senha.");
+    } finally {
+      setIsUnlockingGroup(false);
+    }
   };
 
   const navigateToHome = () => {
@@ -7269,6 +7337,70 @@ function App() {
                 </button>
                 <button type="submit" disabled={isUnlockingSheet}>
                   {isUnlockingSheet ? "Abrindo..." : "Abrir ficha"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {groupUnlockModalOpen && groupUnlockTarget ? (
+        <div
+          className="save-password-modal-backdrop"
+          role="presentation"
+          onClick={closeGroupUnlockModal}
+        >
+          <div
+            className="save-password-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="unlock-group-password-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="unlock-group-password-title">Acessar grupo</h3>
+            <p>
+              O grupo <strong>{groupUnlockTarget.name}</strong> está protegido
+              por senha.
+            </p>
+            <form
+              className="save-password-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void unlockGroupAndNavigate();
+              }}
+            >
+              <label>
+                Senha
+                <input
+                  type="password"
+                  value={groupUnlockPasswordInput}
+                  onChange={(event) => {
+                    setGroupUnlockPasswordInput(event.target.value);
+                    if (groupUnlockError) {
+                      setGroupUnlockError("");
+                    }
+                  }}
+                  disabled={isUnlockingGroup}
+                  autoComplete="current-password"
+                  autoFocus
+                  required
+                />
+              </label>
+
+              {groupUnlockError ? (
+                <p className="save-password-error">{groupUnlockError}</p>
+              ) : null}
+
+              <div className="save-password-actions">
+                <button
+                  type="button"
+                  onClick={closeGroupUnlockModal}
+                  disabled={isUnlockingGroup}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" disabled={isUnlockingGroup}>
+                  {isUnlockingGroup ? "Verificando..." : "Entrar"}
                 </button>
               </div>
             </form>
