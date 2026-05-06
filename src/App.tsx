@@ -9876,23 +9876,6 @@ function App() {
     ? `${tecnicaDanoTotal} de dano${tecnicaSomaDanoBase ? ` (inclui dano base de ${danoBaseAtributoTecnica}: +${danoBaseTecnica})` : ""}${tecnicaMetadeGradNoDano ? " (graduacao reduzida a metade)" : ""}${tecnicaDanoAmpliado > 0 ? ` | dano ampliado: +${tecnicaDanoAmpliado}` : ""}${tecnicaMods.ataqueMultiplo !== "1" ? ` | ${tecnicaMods.ataqueMultiplo} ataques (dano dividido)` : ""}${tecnicaMods.area ? ` | area ${tecnicaMods.area} (penalidade por alvo adicional)` : ""}`
     : "Sem dano de ataque automatico.";
 
-  useEffect(() => {
-    setTecnicaDraft((current) => {
-      if (
-        current.acerto === tecnicaAcertoResumo &&
-        current.dano === tecnicaDanoResumo
-      ) {
-        return current;
-      }
-
-      return {
-        ...current,
-        acerto: tecnicaAcertoResumo,
-        dano: tecnicaDanoResumo,
-      };
-    });
-  }, [tecnicaAcertoResumo, tecnicaDanoResumo]);
-
   const adicionarPoderBaseTecnica = () => {
     setTecnicaDraft((current) => ({
       ...current,
@@ -9978,8 +9961,8 @@ function App() {
       alvo: tecnicaDraft.alvo.trim(),
       duracao: tecnicaDraft.duracao.trim(),
       gatilho: tecnicaDraft.gatilho.trim(),
-      acerto: tecnicaDraft.acerto.trim(),
-      dano: tecnicaDraft.dano.trim(),
+      acerto: tecnicaAcertoResumo,
+      dano: tecnicaDanoResumo,
       poderesBase: tecnicaBaseResolvida.map((base) => ({
         id: base.id,
         powerId: base.powerId,
@@ -12603,7 +12586,7 @@ function App() {
                     <input
                       disabled={!tecnicaTemPoderBaseSelecionado}
                       readOnly
-                      value={tecnicaDraft.acerto ?? ""}
+                      value={tecnicaAcertoResumo}
                     />
                   </label>
 
@@ -12612,7 +12595,7 @@ function App() {
                     <input
                       disabled={!tecnicaTemPoderBaseSelecionado}
                       readOnly
-                      value={tecnicaDraft.dano ?? ""}
+                      value={tecnicaDanoResumo}
                     />
                   </label>
                 </div>
