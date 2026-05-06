@@ -338,6 +338,8 @@ type GroupRecord = {
   id: string;
   key: string;
   name: string;
+  description: string;
+  hasPassword: boolean;
   imageUrl: string;
   sheetCount: number;
   attachmentCount: number;
@@ -348,6 +350,9 @@ type GroupApiSummary = {
   id?: string;
   nome?: string;
   name?: string;
+  descricao?: string;
+  description?: string;
+  hasPassword?: boolean;
   imagemUrl?: string;
   imagemViewUrl?: string;
   imageUrl?: string;
@@ -5526,6 +5531,11 @@ function App() {
   const [groupEditorModalOpen, setGroupEditorModalOpen] = useState(false);
   const [groupEditorKey, setGroupEditorKey] = useState<string | null>(null);
   const [groupEditorName, setGroupEditorName] = useState("");
+  const [groupEditorDescription, setGroupEditorDescription] = useState("");
+  const [groupEditorPassword, setGroupEditorPassword] = useState("");
+  const [groupEditorHasPassword, setGroupEditorHasPassword] = useState(false);
+  const [groupEditorRemovePassword, setGroupEditorRemovePassword] =
+    useState(false);
   const [groupEditorImageUrl, setGroupEditorImageUrl] = useState("");
   const [groupEditorImageFile, setGroupEditorImageFile] = useState<File | null>(
     null,
@@ -5780,6 +5790,8 @@ function App() {
       id: String(group.id ?? ""),
       key,
       name: String(group.nome ?? group.name ?? key).trim() || key,
+      description: String(group.descricao ?? group.description ?? "").trim(),
+      hasPassword: Boolean(group.hasPassword),
       imageUrl,
       sheetCount: Number(group.sheetCount ?? 0),
       attachmentCount: Number(group.attachmentCount ?? 0),
@@ -6112,6 +6124,10 @@ function App() {
     setGroupEditorModalOpen(false);
     setGroupEditorKey(null);
     setGroupEditorName("");
+    setGroupEditorDescription("");
+    setGroupEditorPassword("");
+    setGroupEditorHasPassword(false);
+    setGroupEditorRemovePassword(false);
     setGroupEditorImageUrl("");
     setGroupEditorImageFile(null);
     setGroupEditorInitialImageUrl("");
@@ -6123,6 +6139,10 @@ function App() {
   const openCreateGroupModal = () => {
     setGroupEditorKey(null);
     setGroupEditorName("");
+    setGroupEditorDescription("");
+    setGroupEditorPassword("");
+    setGroupEditorHasPassword(false);
+    setGroupEditorRemovePassword(false);
     setGroupEditorImageUrl("");
     setGroupEditorImageFile(null);
     setGroupEditorInitialImageUrl("");
@@ -6155,6 +6175,10 @@ function App() {
 
       setGroupEditorKey(group.key);
       setGroupEditorName(group.name);
+      setGroupEditorDescription(group.description || "");
+      setGroupEditorPassword("");
+      setGroupEditorHasPassword(Boolean(group.hasPassword));
+      setGroupEditorRemovePassword(false);
       setGroupEditorImageUrl(group.imageUrl);
       setGroupEditorImageFile(null);
       setGroupEditorInitialImageUrl(group.imageUrl);
@@ -6225,6 +6249,8 @@ function App() {
 
   const saveGroupEditor = async () => {
     const nextName = groupEditorName.trim();
+    const nextDescription = groupEditorDescription.trim();
+    const nextPassword = groupEditorPassword.trim();
 
     if (!nextName) {
       setGroupEditorError("Nome do grupo e obrigatorio.");
@@ -6242,6 +6268,8 @@ function App() {
       let targetGroupKey = normalizeGroupKey(nextName);
 
       if (editingGroup) {
+        const shouldRemovePassword =
+          groupEditorHasPassword && groupEditorRemovePassword && !nextPassword;
         const renameResponse = await fetch(
           `${API_BASE_URL}/groups/${editingGroup.id}`,
           {
@@ -6249,7 +6277,12 @@ function App() {
             headers: {
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ nome: nextName }),
+            body: JSON.stringify({
+              nome: nextName,
+              descricao: nextDescription,
+              ...(nextPassword ? { senha: nextPassword } : {}),
+              ...(shouldRemovePassword ? { removerSenha: true } : {}),
+            }),
           },
         );
 
@@ -6278,7 +6311,11 @@ function App() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ nome: nextName }),
+          body: JSON.stringify({
+            nome: nextName,
+            descricao: nextDescription,
+            ...(nextPassword ? { senha: nextPassword } : {}),
+          }),
         });
 
         const createPayload = (await createResponse.json()) as {
@@ -6416,6 +6453,8 @@ function App() {
 
       const syncedFiles = await fetchGroupFiles(targetGroupId);
       setGroupAttachmentsById(targetGroupId, syncedFiles);
+      setGroupEditorPassword("");
+      setGroupEditorRemovePassword(false);
 
       closeGroupEditorModal();
       if (
@@ -6559,14 +6598,9 @@ function App() {
       }
     }
 
-    if (selectedCharacter) {
-      updateCharacter((current) => ({
-        ...current,
-        grupo: targetKey,
-      }));
-    }
+    createNewSheet(targetKey);
     closeGroupSelectModal();
-    toast.success(`Grupo definido para: ${targetKey}`);
+    toast.success(`Ficha criada no grupo: ${targetKey}`);
   };
 
   const createNewSheet = (groupKey?: string) => {
@@ -7699,6 +7733,53 @@ function App() {
               </label>
 
               <label>
+                Descricao do grupo
+                <textarea
+                  value={groupEditorDescription}
+                  onChange={(event) => {
+                    setGroupEditorDescription(event.target.value);
+                    if (groupEditorError) {
+                      setGroupEditorError("");
+                    }
+                  }}
+                  rows={3}
+                  placeholder="Descricao opcional do grupo..."
+                />
+              </label>
+
+              <label>
+                Senha do grupo (opcional)
+                <input
+                  type="password"
+                  value={groupEditorPassword}
+                  onChange={(event) => {
+                    setGroupEditorPassword(event.target.value);
+                    if (groupEditorError) {
+                      setGroupEditorError("");
+                    }
+                  }}
+                  placeholder={
+                    groupEditorHasPassword
+                      ? "Digite para alterar a senha"
+                      : "Digite para definir uma senha"
+                  }
+                />
+              </label>
+
+              {groupEditorKey && groupEditorHasPassword ? (
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={groupEditorRemovePassword}
+                    onChange={(event) => {
+                      setGroupEditorRemovePassword(event.target.checked);
+                    }}
+                  />
+                  Remover senha atual do grupo
+                </label>
+              ) : null}
+
+              <label>
                 Imagem do grupo (somente upload)
                 <input
                   type="file"
@@ -8152,7 +8233,6 @@ function App() {
                 type="button"
                 className="home-create-button"
                 onClick={() => {
-                  createNewSheet();
                   openGroupSelectModal();
                 }}
               >

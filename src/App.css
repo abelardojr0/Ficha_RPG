@@ -4710,6 +4710,12 @@ button.danger:hover,
   color: color-mix(in srgb, var(--accent-soft) 78%, white);
 }
 
+.save-password-modal .group-select-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
 /* Sidebar and editor top strip restructure */
 .character-list {
   display: flex;
