@@ -167,7 +167,18 @@ type DevelopedTechniqueModifierSet = {
   controleNivel: "" | "Leve" | "Moderado" | "Forte";
   controleEstado: string;
   controleAtributoResistencia: "Forca" | "Agilidade" | "Vontade";
-  alcanceDelta: "-5" | "-4" | "-3" | "-2" | "-1" | "0" | "1" | "2" | "3" | "4" | "5";
+  alcanceDelta:
+    | "-5"
+    | "-4"
+    | "-3"
+    | "-2"
+    | "-1"
+    | "0"
+    | "1"
+    | "2"
+    | "3"
+    | "4"
+    | "5";
   duracaoDelta: "-2" | "-1" | "0" | "1" | "2";
   ativacaoAjuste:
     | ""
@@ -180,7 +191,12 @@ type DevelopedTechniqueModifierSet = {
     | "Lenta3";
   exigeTurnoCompleto: boolean;
   deslocamentoMetros: string;
-  deslocamentoTipo: "" | "Empurrar" | "Puxar" | "Reposicionar" | "Movimento proprio";
+  deslocamentoTipo:
+    | ""
+    | "Empurrar"
+    | "Puxar"
+    | "Reposicionar"
+    | "Movimento proprio";
   seletivo: boolean;
   indireto: "" | "Basico" | "Avancado";
   rastreamento: boolean;
@@ -4247,14 +4263,12 @@ const INCONSTANTE_REDUCTION: Record<"" | "Parcial" | "Metade", number> = {
   Metade: 2,
 };
 
-const EFEITO_COLATERAL_REDUCTION: Record<
-  "" | "Ocasional" | "Sempre",
-  number
-> = {
-  "": 0,
-  Ocasional: 1,
-  Sempre: 2,
-};
+const EFEITO_COLATERAL_REDUCTION: Record<"" | "Ocasional" | "Sempre", number> =
+  {
+    "": 0,
+    Ocasional: 1,
+    Sempre: 2,
+  };
 
 const CONDICIONAL_REDUCTION: Record<"" | "Simples" | "Restrita", number> = {
   "": 0,
@@ -4454,7 +4468,9 @@ const getTechniqueTargetFromMultipleAttacks = (
   return "1 alvo";
 };
 
-const normalizeRangeToProgress = (value: string): TechniqueRangeProgress | null => {
+const normalizeRangeToProgress = (
+  value: string,
+): TechniqueRangeProgress | null => {
   const normalized = value.toLowerCase();
 
   if (normalized === "pessoal") return "Pessoal";
@@ -4496,7 +4512,9 @@ const normalizeDurationToProgress = (
   return null;
 };
 
-const normalizeActionToProgress = (value: string): TechniqueActionProgress | null => {
+const normalizeActionToProgress = (
+  value: string,
+): TechniqueActionProgress | null => {
   const normalized = value.toLowerCase();
 
   if (normalized === "completa") return "Completa";
@@ -4518,7 +4536,10 @@ const getTechniqueSelectableRange = (value: string): string =>
 const getTechniqueSelectableDuration = (value: string): string =>
   normalizeDurationToProgress(value) ?? "Instantanea";
 
-const getRangeSignedCostFromBase = (baseRange: string, targetRange: string): number => {
+const getRangeSignedCostFromBase = (
+  baseRange: string,
+  targetRange: string,
+): number => {
   const base = normalizeRangeToProgress(baseRange);
   const target = normalizeRangeToProgress(targetRange);
   if (!base || !target) return 0;
@@ -4526,7 +4547,9 @@ const getRangeSignedCostFromBase = (baseRange: string, targetRange: string): num
   const baseIndex = TECHNIQUE_RANGE_PROGRESS.indexOf(base);
   const targetIndex = TECHNIQUE_RANGE_PROGRESS.indexOf(target);
   const delta = targetIndex - baseIndex;
-  const deltaAsString = String(delta) as DevelopedTechniqueModifierSet["alcanceDelta"];
+  const deltaAsString = String(
+    delta,
+  ) as DevelopedTechniqueModifierSet["alcanceDelta"];
 
   return getAlcanceDeltaSignedCost(deltaAsString);
 };
@@ -4542,7 +4565,9 @@ const getDurationSignedCostFromBase = (
   const baseIndex = TECHNIQUE_DURATION_PROGRESS.indexOf(base);
   const targetIndex = TECHNIQUE_DURATION_PROGRESS.indexOf(target);
   const delta = targetIndex - baseIndex;
-  const deltaAsString = String(delta) as DevelopedTechniqueModifierSet["duracaoDelta"];
+  const deltaAsString = String(
+    delta,
+  ) as DevelopedTechniqueModifierSet["duracaoDelta"];
 
   return getDuracaoDeltaSignedCost(deltaAsString);
 };
@@ -9629,46 +9654,25 @@ function App() {
     0,
   );
 
-  const tecnicaAumentoDano = clamp(
-    parseNatural(tecnicaMods.aumentoDano),
-    0,
-    5,
-  );
-  const tecnicaPrecisao = Math.max(
-    0,
-    parseNatural(tecnicaMods.precisao),
-  );
-  const tecnicaPenetrante = Math.max(
-    0,
-    parseNatural(tecnicaMods.penetrante),
-  );
+  const tecnicaAumentoDano = clamp(parseNatural(tecnicaMods.aumentoDano), 0, 5);
+  const tecnicaPrecisao = Math.max(0, parseNatural(tecnicaMods.precisao));
+  const tecnicaPenetrante = Math.max(0, parseNatural(tecnicaMods.penetrante));
   const tecnicaDanoAmpliado = Math.max(
     0,
     parseNatural(tecnicaMods.danoAmpliado),
   );
-  const tecnicaBonusDefesa = clamp(
-    parseNatural(tecnicaMods.bonusDefesa),
-    0,
-    5,
-  );
+  const tecnicaBonusDefesa = clamp(parseNatural(tecnicaMods.bonusDefesa), 0, 5);
   const tecnicaReducaoDano = clamp(
     parseNatural(tecnicaMods.reducaoDanoRecebido),
     0,
     5,
   );
-  const tecnicaAbsorcao = clamp(
-    parseNatural(tecnicaMods.absorcao),
-    0,
-    5,
-  );
+  const tecnicaAbsorcao = clamp(parseNatural(tecnicaMods.absorcao), 0, 5);
   const tecnicaDeslocamentoMetros = Math.max(
     0,
     parseNatural(tecnicaMods.deslocamentoMetros),
   );
-  const tecnicaRicochete = Math.max(
-    0,
-    parseNatural(tecnicaMods.ricochete),
-  );
+  const tecnicaRicochete = Math.max(0, parseNatural(tecnicaMods.ricochete));
 
   const tecnicaCustomCusto = Number.parseInt(
     tecnicaMods.modificadorPersonalizadoCusto,
@@ -9692,7 +9696,10 @@ function App() {
     : null;
 
   const alcanceSigned = tecnicaBaseNucleo
-    ? getRangeSignedCostFromBase(tecnicaBaseNucleo.alcance, tecnicaDraft.alcance)
+    ? getRangeSignedCostFromBase(
+        tecnicaBaseNucleo.alcance,
+        tecnicaDraft.alcance,
+      )
     : 0;
   const duracaoSigned = tecnicaBaseNucleo
     ? getDurationSignedCostFromBase(
@@ -9809,28 +9816,46 @@ function App() {
     rangeOptionsWithCost.find((option) => option.value === tecnicaDraft.alcance)
       ?.cost ?? 0;
   const currentDurationCost =
-    durationOptionsWithCost.find((option) => option.value === tecnicaDraft.duracao)
-      ?.cost ?? 0;
+    durationOptionsWithCost.find(
+      (option) => option.value === tecnicaDraft.duracao,
+    )?.cost ?? 0;
   const currentTargetCost = getTechniqueTargetCost(tecnicaDraft.alvo);
-  const currentAttackMultipleCost = ATTACK_MULTIPLE_COST[tecnicaMods.ataqueMultiplo];
+  const currentAttackMultipleCost =
+    ATTACK_MULTIPLE_COST[tecnicaMods.ataqueMultiplo];
   const currentAreaCost = AREA_COST[tecnicaMods.area];
   const currentControlCost = CONTROLE_COST[tecnicaMods.controleNivel];
   const currentIndiretoCost = INDIRETO_COST[tecnicaMods.indireto];
   const currentDivididoCost = DIVIDIDO_COST[tecnicaMods.dividido];
   const currentSutilCost = SUTIL_COST[tecnicaMods.sutil];
   const currentDeslocamentoCost = Math.ceil(tecnicaDeslocamentoMetros / 2);
-  const maxAumentoDano = Math.min(5, tecnicaAumentoDano + tecnicaMargemAdicionalDisponivel);
+  const maxAumentoDano = Math.min(
+    5,
+    tecnicaAumentoDano + tecnicaMargemAdicionalDisponivel,
+  );
   const maxPrecisao = tecnicaPrecisao + tecnicaMargemAdicionalDisponivel;
-  const maxPenetrante = tecnicaPenetrante + Math.floor(tecnicaMargemAdicionalDisponivel / 2);
-  const maxDanoAmpliado = tecnicaDanoAmpliado + tecnicaMargemAdicionalDisponivel;
-  const maxBonusDefesa = Math.min(5, tecnicaBonusDefesa + tecnicaMargemAdicionalDisponivel);
-  const maxReducaoDano = Math.min(5, tecnicaReducaoDano + tecnicaMargemAdicionalDisponivel);
-  const maxAbsorcao = Math.min(5, tecnicaAbsorcao + Math.floor(tecnicaMargemAdicionalDisponivel / 2));
+  const maxPenetrante =
+    tecnicaPenetrante + Math.floor(tecnicaMargemAdicionalDisponivel / 2);
+  const maxDanoAmpliado =
+    tecnicaDanoAmpliado + tecnicaMargemAdicionalDisponivel;
+  const maxBonusDefesa = Math.min(
+    5,
+    tecnicaBonusDefesa + tecnicaMargemAdicionalDisponivel,
+  );
+  const maxReducaoDano = Math.min(
+    5,
+    tecnicaReducaoDano + tecnicaMargemAdicionalDisponivel,
+  );
+  const maxAbsorcao = Math.min(
+    5,
+    tecnicaAbsorcao + Math.floor(tecnicaMargemAdicionalDisponivel / 2),
+  );
   const maxRicochete = tecnicaRicochete + tecnicaMargemAdicionalDisponivel;
-  const maxDeslocamentoMetros = (currentDeslocamentoCost + tecnicaMargemAdicionalDisponivel) * 2;
+  const maxDeslocamentoMetros =
+    (currentDeslocamentoCost + tecnicaMargemAdicionalDisponivel) * 2;
   const maxCustomPositive = Math.max(
     0,
-    Math.max(0, tecnicaCustomCustoNormalizado) + tecnicaMargemAdicionalDisponivel,
+    Math.max(0, tecnicaCustomCustoNormalizado) +
+      tecnicaMargemAdicionalDisponivel,
   );
 
   const tecnicaMaiorGraduacaoBase = tecnicaBaseResolvida.reduce(
@@ -9857,7 +9882,10 @@ function App() {
   const tecnicaGradParaDano = tecnicaMetadeGradNoDano
     ? Math.ceil(tecnicaGraduacaoPrincipal / 2)
     : tecnicaGraduacaoPrincipal;
-  const tecnicaDanoSemBase = Math.max(0, tecnicaGradParaDano + tecnicaAumentoDano);
+  const tecnicaDanoSemBase = Math.max(
+    0,
+    tecnicaGradParaDano + tecnicaAumentoDano,
+  );
   const tecnicaDanoTotal = tecnicaSomaDanoBase
     ? tecnicaDanoSemBase + danoBaseTecnica
     : tecnicaDanoSemBase;
@@ -9867,7 +9895,8 @@ function App() {
     ? selectedCharacter.combate.disparo
     : selectedCharacter.combate.ataqueCac;
   const penalidadeImpreciso = tecnicaMods.impreciso ? 2 : 0;
-  const dadoAcertoTexto = dadoAcertoTecnica === "-" ? "Sem dado" : dadoAcertoTecnica;
+  const dadoAcertoTexto =
+    dadoAcertoTecnica === "-" ? "Sem dado" : dadoAcertoTecnica;
   const tecnicaAcertoResumo = tecnicaEhAtaque
     ? `1d20 + ${dadoAcertoTexto} (${tecnicaUsaDisparo ? "Disparo" : "CaC"}${tecnicaPrecisao > 0 ? ` | Precisao +${tecnicaPrecisao}` : ""}${penalidadeImpreciso > 0 ? " | Impreciso -2" : ""})`
     : "Sem rolagem de ataque (tecnica nao ofensiva).";
@@ -9934,7 +9963,8 @@ function App() {
     ]);
 
     const custoPPAdicionalNovaTecnica =
-      tecnicaAcquisitionComNova.ppPagoTotal - tecnicaAcquisitionAtual.ppPagoTotal;
+      tecnicaAcquisitionComNova.ppPagoTotal -
+      tecnicaAcquisitionAtual.ppPagoTotal;
 
     if (nivelAtual < 5 && custoPPAdicionalNovaTecnica > 0) {
       toast.error(
@@ -9943,7 +9973,10 @@ function App() {
       return;
     }
 
-    if (custoPPAdicionalNovaTecnica > 0 && ppRestante < custoPPAdicionalNovaTecnica) {
+    if (
+      custoPPAdicionalNovaTecnica > 0 &&
+      ppRestante < custoPPAdicionalNovaTecnica
+    ) {
       toast.error(
         `PP insuficiente para adquirir a tecnica agora (custo adicional: ${custoPPAdicionalNovaTecnica} PP).`,
       );
@@ -10960,12 +10993,15 @@ function App() {
                                 name="identity-naipe"
                                 value={option.value}
                                 checked={checked}
-                                onChange={() =>
+                                onChange={() => {
                                   updateCharacter((current) => ({
                                     ...current,
                                     naipe: option.value,
-                                  }))
-                                }
+                                  }));
+                                  if (option.value) {
+                                    setNaipePoderSelecionado(option.value);
+                                  }
+                                }}
                               />
                               <span className="naipe-icon" aria-hidden="true">
                                 {option.icon}
@@ -11783,56 +11819,26 @@ function App() {
             {activeEditorTab === "pericias" ? (
               <section className="block pericias-block">
                 <h3>Pericias</h3>
-                <div className="pericias-intro-card">
+                <div className="pericias-intro-compact">
                   <p>
                     Pericias representam conhecimentos, treinamento e
                     experiencia acumulada. Enquanto atributos mostram talento
                     natural, pericias mostram pratica e especializacao em
                     atividades especificas.
                   </p>
-                  <div className="pericias-intro-columns">
-                    <div className="pericias-intro-column">
-                      <p>
-                        <strong>Teste de Pericia:</strong>
-                      </p>
-                      <p className="pericias-intro-formula">
-                        1d20 + Atributo + Bonus da Pericia + Modificadores
-                      </p>
-                      <ul className="pericias-intro-list">
-                        <li>1d20: imprevisibilidade da situacao.</li>
-                        <li>Atributo: capacidade natural do personagem.</li>
-                        <li>Pericia: treinamento e experiencia.</li>
-                        <li>Modificadores: circunstancias da cena.</li>
-                        <li>
-                          Sucesso quando o resultado final e igual ou maior que
-                          a CD definida pelo mestre.
-                        </li>
-                      </ul>
-                      <p>
-                        <strong>Custo:</strong> cada graduacao custa 0,5 PP.
-                        Limite por pericia: Nivel + 5.
-                      </p>
-                    </div>
-                    <div className="pericias-intro-column">
-                      <p>
-                        <strong>Funcionamento:</strong> testes de pericia
-                        representam o esforco do personagem para resolver
-                        desafios com conhecimento tecnico e pratica.
-                      </p>
-                      <p>
-                        <strong>Treinamento:</strong> personagens treinados
-                        aplicam o bonus de graduacao normalmente. Sem
-                        treinamento, usam apenas o atributo e podem ser
-                        impedidos em tarefas que exigem especializacao.
-                      </p>
-                      <p>
-                        <strong>Especializacao:</strong> algumas pericias
-                        possuem areas especificas (ex.: Conhecimento em
-                        historia, ciencia, politica, cultura popular), refinando
-                        o perfil mecanico e narrativo do personagem.
-                      </p>
-                    </div>
-                  </div>
+                  <p className="pericias-intro-formula">
+                    <strong>Teste:</strong> 1d20 + Atributo + Bonus da Pericia +
+                    Modificadores.
+                  </p>
+                  <p>
+                    <strong>Custo:</strong> cada graduacao custa 0,5 PP. Limite
+                    por pericia: Nivel + 5.
+                  </p>
+                  <p>
+                    <strong>Treinamento:</strong> sem treinamento, usa apenas o
+                    atributo e pode ser impedido em tarefas que exigem
+                    especializacao.
+                  </p>
                   <p className="pericias-intro-status">
                     Limite atual por pericia/conhecimento: {limitePericia}
                     (Nivel + 5). Total investido: {periciasPontosTotal}
@@ -12041,26 +12047,20 @@ function App() {
                           Fluxos Naturais
                         </p>
                         <p>
-                          Fluxos Naturais sao usos diretos do Eter para reacao,
-                          leitura, defesa e reforco em combate.
+                          Usos diretos do Eter para reacao, leitura, defesa e
+                          reforco em combate.
                         </p>
                         <p>
-                          Cada tecnica tem Graduacao, Valor Efetivo e consumo de
-                          PE. O Valor Efetivo segue uma progressao comum, mas o
-                          efeito e o custo real dependem de cada tecnica.
+                          Todos os personagens possuem esses fluxos,
+                          independentemente do naipe.
                         </p>
 
                         <p className="tecnicas-intro-chapter-title">
                           Progressao
                         </p>
                         <ul className="tecnicas-intro-list">
-                          <li>
-                            Graduacao 1-4: Valor Efetivo igual a graduacao.
-                          </li>
-                          <li>
-                            A partir da graduacao 5: cada 2 graduacoes concedem
-                            +1 Valor Efetivo.
-                          </li>
+                          <li>Grad. 1-4: Valor Efetivo igual a graduacao.</li>
+                          <li>Grad. 5+: cada 2 graduacoes concedem +1 VE.</li>
                           <li>1=1, 2=2, 3=3, 4=4, 5-6=5, 7-8=6, 9-10=7.</li>
                           <li>
                             Limite de Graduacao: nivel + 5 ({limiteTecnica} no
@@ -12072,9 +12072,8 @@ function App() {
                           Consumo de Eter
                         </p>
                         <p>
-                          O consumo de PE e individual por tecnica. Tecnicas
-                          instantaneas gastam por uso; tecnicas sustentadas, por
-                          turno.
+                          Cada tecnica tem consumo proprio de PE: instantaneas
+                          por uso, sustentadas por turno.
                         </p>
                       </div>
 
@@ -12083,16 +12082,7 @@ function App() {
                           Regras Gerais
                         </p>
                         <ul className="tecnicas-intro-list">
-                          <li>
-                            Valor Efetivo segue a progressao geral mostrada ao
-                            lado.
-                          </li>
-                          <li>Tecnicas sustentadas consomem PE por turno.</li>
-                          <li>Tecnicas instantaneas consomem PE por uso.</li>
-                          <li>
-                            Apenas 1 tecnica sustentada pode ficar ativa por
-                            vez.
-                          </li>
+                          <li>Apenas 1 tecnica sustentada pode ficar ativa.</li>
                           <li>Cada reacao adicional no turno custa +1 PE.</li>
                           <li>
                             Apos reagir: -2 em testes de Tecnica ate o proximo
@@ -12204,16 +12194,15 @@ function App() {
                       </p>
                       <ol className="tecnicas-dev-guide-list">
                         <li>
-                          Escolha primeiro ao menos 1 Poder Base do seu
-                          arsenal.
+                          Escolha primeiro ao menos 1 Poder Base do seu arsenal.
                         </li>
                         <li>
                           Defina nome, tipo e efeito da tecnica com base nesse
                           poder.
                         </li>
                         <li>
-                          Aplique modificadores, limitacoes e falhas do
-                          Capitulo 12.
+                          Aplique modificadores, limitacoes e falhas do Capitulo
+                          12.
                         </li>
                         <li>
                           Resolva tudo como uma unica acao durante o jogo.
@@ -12379,14 +12368,15 @@ function App() {
                                 onChange={(event) =>
                                   setTecnicaDraft((current) => ({
                                     ...current,
-                                    poderesBase: current.poderesBase.map((item) =>
-                                      item.id === base.id
-                                        ? {
-                                            ...item,
-                                            danoSomaBase:
-                                              event.target.checked,
-                                          }
-                                        : item,
+                                    poderesBase: current.poderesBase.map(
+                                      (item) =>
+                                        item.id === base.id
+                                          ? {
+                                              ...item,
+                                              danoSomaBase:
+                                                event.target.checked,
+                                            }
+                                          : item,
                                     ),
                                   }))
                                 }
@@ -12400,14 +12390,15 @@ function App() {
                                 onChange={(event) =>
                                   setTecnicaDraft((current) => ({
                                     ...current,
-                                    poderesBase: current.poderesBase.map((item) =>
-                                      item.id === base.id
-                                        ? {
-                                            ...item,
-                                            danoMetadeGrad:
-                                              event.target.checked,
-                                          }
-                                        : item,
+                                    poderesBase: current.poderesBase.map(
+                                      (item) =>
+                                        item.id === base.id
+                                          ? {
+                                              ...item,
+                                              danoMetadeGrad:
+                                                event.target.checked,
+                                            }
+                                          : item,
                                     ),
                                   }))
                                 }
@@ -12475,7 +12466,10 @@ function App() {
                           key={option.value}
                           value={option.value}
                           disabled={
-                            !canIncreaseTechniqueCost(currentActionCost, option.cost)
+                            !canIncreaseTechniqueCost(
+                              currentActionCost,
+                              option.cost,
+                            )
                           }
                         >
                           {option.value} ({formatSignedPe(option.cost)})
@@ -12501,7 +12495,10 @@ function App() {
                           key={option.value}
                           value={option.value}
                           disabled={
-                            !canIncreaseTechniqueCost(currentRangeCost, option.cost)
+                            !canIncreaseTechniqueCost(
+                              currentRangeCost,
+                              option.cost,
+                            )
                           }
                         >
                           {option.value} ({formatSignedPe(option.cost)})
@@ -12513,7 +12510,9 @@ function App() {
                   <label>
                     Alvo
                     <select
-                      disabled={!tecnicaTemPoderBaseSelecionado || tecnicaAreaAtiva}
+                      disabled={
+                        !tecnicaTemPoderBaseSelecionado || tecnicaAreaAtiva
+                      }
                       value={tecnicaDraft.alvo}
                       onChange={(event) =>
                         setTecnicaDraft((current) => {
@@ -12541,7 +12540,10 @@ function App() {
                           value={option.value}
                           disabled={
                             option.disabled ||
-                            !canIncreaseTechniqueCost(currentTargetCost, option.cost)
+                            !canIncreaseTechniqueCost(
+                              currentTargetCost,
+                              option.cost,
+                            )
                           }
                         >
                           {option.cost === 0
@@ -12662,7 +12664,9 @@ function App() {
                         max={maxAumentoDano}
                         value={tecnicaMods.aumentoDano}
                         ariaLabel="Aumento de dano"
-                        onChange={(value) => atualizarModTecnica("aumentoDano", value)}
+                        onChange={(value) =>
+                          atualizarModTecnica("aumentoDano", value)
+                        }
                       />
                     </label>
                     <label>
@@ -12672,7 +12676,9 @@ function App() {
                         max={maxPrecisao}
                         value={tecnicaMods.precisao}
                         ariaLabel="Precisao"
-                        onChange={(value) => atualizarModTecnica("precisao", value)}
+                        onChange={(value) =>
+                          atualizarModTecnica("precisao", value)
+                        }
                       />
                     </label>
                     <label>
@@ -12682,7 +12688,9 @@ function App() {
                         max={maxPenetrante}
                         value={tecnicaMods.penetrante}
                         ariaLabel="Penetrante"
-                        onChange={(value) => atualizarModTecnica("penetrante", value)}
+                        onChange={(value) =>
+                          atualizarModTecnica("penetrante", value)
+                        }
                       />
                     </label>
                     <label>
@@ -12727,19 +12735,25 @@ function App() {
                         <option value="">Sem area</option>
                         <option
                           value="3m"
-                          disabled={!canIncreaseTechniqueCost(currentAreaCost, 2)}
+                          disabled={
+                            !canIncreaseTechniqueCost(currentAreaCost, 2)
+                          }
                         >
                           3m (+2 PE)
                         </option>
                         <option
                           value="5m"
-                          disabled={!canIncreaseTechniqueCost(currentAreaCost, 3)}
+                          disabled={
+                            !canIncreaseTechniqueCost(currentAreaCost, 3)
+                          }
                         >
                           5m (+3 PE)
                         </option>
                         <option
                           value="10m"
-                          disabled={!canIncreaseTechniqueCost(currentAreaCost, 5)}
+                          disabled={
+                            !canIncreaseTechniqueCost(currentAreaCost, 5)
+                          }
                         >
                           10m (+5 PE)
                         </option>
@@ -12760,19 +12774,25 @@ function App() {
                         <option value="">Sem controle</option>
                         <option
                           value="Leve"
-                          disabled={!canIncreaseTechniqueCost(currentControlCost, 1)}
+                          disabled={
+                            !canIncreaseTechniqueCost(currentControlCost, 1)
+                          }
                         >
                           Leve (+1 PE)
                         </option>
                         <option
                           value="Moderado"
-                          disabled={!canIncreaseTechniqueCost(currentControlCost, 2)}
+                          disabled={
+                            !canIncreaseTechniqueCost(currentControlCost, 2)
+                          }
                         >
                           Moderado (+2 PE)
                         </option>
                         <option
                           value="Forte"
-                          disabled={!canIncreaseTechniqueCost(currentControlCost, 3)}
+                          disabled={
+                            !canIncreaseTechniqueCost(currentControlCost, 3)
+                          }
                         >
                           Forte (+3 PE)
                         </option>
@@ -12805,7 +12825,10 @@ function App() {
                           <option
                             value="2"
                             disabled={
-                              !canIncreaseTechniqueCost(currentAttackMultipleCost, 1)
+                              !canIncreaseTechniqueCost(
+                                currentAttackMultipleCost,
+                                1,
+                              )
                             }
                           >
                             2 ataques (+1 PE)
@@ -12813,7 +12836,10 @@ function App() {
                           <option
                             value="3"
                             disabled={
-                              !canIncreaseTechniqueCost(currentAttackMultipleCost, 2)
+                              !canIncreaseTechniqueCost(
+                                currentAttackMultipleCost,
+                                2,
+                              )
                             }
                           >
                             3 ataques (+2 PE)
@@ -12822,7 +12848,8 @@ function App() {
                       </label>
                     ) : null}
                     <label>
-                      Deslocamento em metros ({formatSignedPe(currentDeslocamentoCost)} atual)
+                      Deslocamento em metros (
+                      {formatSignedPe(currentDeslocamentoCost)} atual)
                       <NumericStepperInput
                         min={0}
                         max={maxDeslocamentoMetros}
@@ -12849,7 +12876,9 @@ function App() {
                         <option value="Empurrar">Empurrar</option>
                         <option value="Puxar">Puxar</option>
                         <option value="Reposicionar">Reposicionar</option>
-                        <option value="Movimento proprio">Movimento proprio</option>
+                        <option value="Movimento proprio">
+                          Movimento proprio
+                        </option>
                       </select>
                     </label>
                     <label>
@@ -12867,13 +12896,17 @@ function App() {
                         <option value="">Nao</option>
                         <option
                           value="Basico"
-                          disabled={!canIncreaseTechniqueCost(currentIndiretoCost, 2)}
+                          disabled={
+                            !canIncreaseTechniqueCost(currentIndiretoCost, 2)
+                          }
                         >
                           Basico (+2 PE)
                         </option>
                         <option
                           value="Avancado"
-                          disabled={!canIncreaseTechniqueCost(currentIndiretoCost, 4)}
+                          disabled={
+                            !canIncreaseTechniqueCost(currentIndiretoCost, 4)
+                          }
                         >
                           Avancado (+4 PE)
                         </option>
@@ -12886,7 +12919,9 @@ function App() {
                         max={maxRicochete}
                         value={tecnicaMods.ricochete}
                         ariaLabel="Quantidade de desvios"
-                        onChange={(value) => atualizarModTecnica("ricochete", value)}
+                        onChange={(value) =>
+                          atualizarModTecnica("ricochete", value)
+                        }
                       />
                     </label>
                     <label>
@@ -12904,13 +12939,17 @@ function App() {
                         <option value="">Nao</option>
                         <option
                           value="2"
-                          disabled={!canIncreaseTechniqueCost(currentDivididoCost, 1)}
+                          disabled={
+                            !canIncreaseTechniqueCost(currentDivididoCost, 1)
+                          }
                         >
                           2 alvos (+1 PE)
                         </option>
                         <option
                           value="3"
-                          disabled={!canIncreaseTechniqueCost(currentDivididoCost, 2)}
+                          disabled={
+                            !canIncreaseTechniqueCost(currentDivididoCost, 2)
+                          }
                         >
                           3 alvos (+2 PE)
                         </option>
@@ -12923,7 +12962,9 @@ function App() {
                         max={maxBonusDefesa}
                         value={tecnicaMods.bonusDefesa}
                         ariaLabel="Bonus em defesa"
-                        onChange={(value) => atualizarModTecnica("bonusDefesa", value)}
+                        onChange={(value) =>
+                          atualizarModTecnica("bonusDefesa", value)
+                        }
                       />
                     </label>
                     <label>
@@ -12945,7 +12986,9 @@ function App() {
                         max={maxAbsorcao}
                         value={tecnicaMods.absorcao}
                         ariaLabel="Absorcao convertida"
-                        onChange={(value) => atualizarModTecnica("absorcao", value)}
+                        onChange={(value) =>
+                          atualizarModTecnica("absorcao", value)
+                        }
                       />
                     </label>
                     <label>
@@ -12955,20 +12998,25 @@ function App() {
                         onChange={(event) =>
                           atualizarModTecnica(
                             "sutil",
-                            event.target.value as DevelopedTechniqueModifierSet["sutil"],
+                            event.target
+                              .value as DevelopedTechniqueModifierSet["sutil"],
                           )
                         }
                       >
                         <option value="">Nao</option>
                         <option
                           value="Dificil"
-                          disabled={!canIncreaseTechniqueCost(currentSutilCost, 1)}
+                          disabled={
+                            !canIncreaseTechniqueCost(currentSutilCost, 1)
+                          }
                         >
                           Dificil de perceber (+1)
                         </option>
                         <option
                           value="Imperceptivel"
-                          disabled={!canIncreaseTechniqueCost(currentSutilCost, 2)}
+                          disabled={
+                            !canIncreaseTechniqueCost(currentSutilCost, 2)
+                          }
                         >
                           Imperceptivel (+2)
                         </option>
@@ -12978,7 +13026,8 @@ function App() {
                       Modificador personalizado (nome)
                       <input
                         value={
-                          tecnicaDraft.modificadores.modificadorPersonalizadoNome
+                          tecnicaDraft.modificadores
+                            .modificadorPersonalizadoNome
                         }
                         onChange={(event) =>
                           atualizarModTecnica(
@@ -13016,7 +13065,10 @@ function App() {
                           !canIncreaseTechniqueCost(0, 2)
                         }
                         onChange={(event) =>
-                          atualizarModTecnica("efeitoSecundario", event.target.checked)
+                          atualizarModTecnica(
+                            "efeitoSecundario",
+                            event.target.checked,
+                          )
                         }
                       />
                       Efeito secundario (+2 PE)
@@ -13026,7 +13078,8 @@ function App() {
                         type="checkbox"
                         checked={tecnicaMods.incuravel}
                         disabled={
-                          !tecnicaMods.incuravel && !canIncreaseTechniqueCost(0, 2)
+                          !tecnicaMods.incuravel &&
+                          !canIncreaseTechniqueCost(0, 2)
                         }
                         onChange={(event) =>
                           atualizarModTecnica("incuravel", event.target.checked)
@@ -13043,7 +13096,10 @@ function App() {
                           !canIncreaseTechniqueCost(0, 4)
                         }
                         onChange={(event) =>
-                          atualizarModTecnica("contagioso", event.target.checked)
+                          atualizarModTecnica(
+                            "contagioso",
+                            event.target.checked,
+                          )
                         }
                       />
                       Contagioso (+4 PE)
@@ -13053,7 +13109,8 @@ function App() {
                         type="checkbox"
                         checked={tecnicaMods.seletivo}
                         disabled={
-                          !tecnicaMods.seletivo && !canIncreaseTechniqueCost(0, 2)
+                          !tecnicaMods.seletivo &&
+                          !canIncreaseTechniqueCost(0, 2)
                         }
                         onChange={(event) =>
                           atualizarModTecnica("seletivo", event.target.checked)
@@ -13070,7 +13127,10 @@ function App() {
                           !canIncreaseTechniqueCost(0, 3)
                         }
                         onChange={(event) =>
-                          atualizarModTecnica("rastreamento", event.target.checked)
+                          atualizarModTecnica(
+                            "rastreamento",
+                            event.target.checked,
+                          )
                         }
                       />
                       Rastreamento (+3 PE)
@@ -13084,7 +13144,10 @@ function App() {
                           !canIncreaseTechniqueCost(0, 1)
                         }
                         onChange={(event) =>
-                          atualizarModTecnica("alternativo", event.target.checked)
+                          atualizarModTecnica(
+                            "alternativo",
+                            event.target.checked,
+                          )
                         }
                       />
                       Alternativo (+1 PE)
@@ -13094,7 +13157,8 @@ function App() {
                         type="checkbox"
                         checked={tecnicaMods.reflexo}
                         disabled={
-                          !tecnicaMods.reflexo && !canIncreaseTechniqueCost(0, 2)
+                          !tecnicaMods.reflexo &&
+                          !canIncreaseTechniqueCost(0, 2)
                         }
                         onChange={(event) =>
                           atualizarModTecnica("reflexo", event.target.checked)
@@ -13111,7 +13175,10 @@ function App() {
                           !canIncreaseTechniqueCost(0, 1)
                         }
                         onChange={(event) =>
-                          atualizarModTecnica("traicoeiro", event.target.checked)
+                          atualizarModTecnica(
+                            "traicoeiro",
+                            event.target.checked,
+                          )
                         }
                       />
                       Traicoeiro (+1 PE)
@@ -13121,7 +13188,8 @@ function App() {
                         type="checkbox"
                         checked={tecnicaMods.preciso}
                         disabled={
-                          !tecnicaMods.preciso && !canIncreaseTechniqueCost(0, 1)
+                          !tecnicaMods.preciso &&
+                          !canIncreaseTechniqueCost(0, 1)
                         }
                         onChange={(event) =>
                           atualizarModTecnica("preciso", event.target.checked)
@@ -13244,7 +13312,10 @@ function App() {
                         type="checkbox"
                         checked={tecnicaDraft.modificadores.exigeTurnoCompleto}
                         onChange={(event) =>
-                          atualizarModTecnica("exigeTurnoCompleto", event.target.checked)
+                          atualizarModTecnica(
+                            "exigeTurnoCompleto",
+                            event.target.checked,
+                          )
                         }
                       />
                       Exige 1 turno completo (-2)
@@ -13254,7 +13325,10 @@ function App() {
                         type="checkbox"
                         checked={tecnicaDraft.modificadores.incontrolavel}
                         onChange={(event) =>
-                          atualizarModTecnica("incontrolavel", event.target.checked)
+                          atualizarModTecnica(
+                            "incontrolavel",
+                            event.target.checked,
+                          )
                         }
                       />
                       Incontrolavel (-2)
@@ -13274,7 +13348,10 @@ function App() {
                         type="checkbox"
                         checked={tecnicaDraft.modificadores.retroalimentacao}
                         onChange={(event) =>
-                          atualizarModTecnica("retroalimentacao", event.target.checked)
+                          atualizarModTecnica(
+                            "retroalimentacao",
+                            event.target.checked,
+                          )
                         }
                       />
                       Retroalimentacao (-3)
@@ -13294,7 +13371,10 @@ function App() {
                         type="checkbox"
                         checked={tecnicaDraft.modificadores.resistivel}
                         onChange={(event) =>
-                          atualizarModTecnica("resistivel", event.target.checked)
+                          atualizarModTecnica(
+                            "resistivel",
+                            event.target.checked,
+                          )
                         }
                       />
                       Resistivel (-1)
@@ -13304,7 +13384,10 @@ function App() {
                         type="checkbox"
                         checked={tecnicaDraft.modificadores.semMovimento}
                         onChange={(event) =>
-                          atualizarModTecnica("semMovimento", event.target.checked)
+                          atualizarModTecnica(
+                            "semMovimento",
+                            event.target.checked,
+                          )
                         }
                       />
                       Sem movimento (-1)
@@ -13314,7 +13397,10 @@ function App() {
                         type="checkbox"
                         checked={tecnicaDraft.modificadores.alvoRestrito}
                         onChange={(event) =>
-                          atualizarModTecnica("alvoRestrito", event.target.checked)
+                          atualizarModTecnica(
+                            "alvoRestrito",
+                            event.target.checked,
+                          )
                         }
                       />
                       Alvo restrito (-1)
@@ -13324,7 +13410,10 @@ function App() {
                         type="checkbox"
                         checked={tecnicaDraft.modificadores.recursoExterno}
                         onChange={(event) =>
-                          atualizarModTecnica("recursoExterno", event.target.checked)
+                          atualizarModTecnica(
+                            "recursoExterno",
+                            event.target.checked,
+                          )
                         }
                       />
                       Recurso externo (-1)
@@ -13372,7 +13461,8 @@ function App() {
                     type="button"
                     onClick={salvarTecnicaDesenvolvida}
                     disabled={
-                      tecnicaExcedeLimite || !Number.isFinite(tecnicaCustoFinalPE)
+                      tecnicaExcedeLimite ||
+                      !Number.isFinite(tecnicaCustoFinalPE)
                     }
                   >
                     Cadastrar tecnica
@@ -13394,10 +13484,13 @@ function App() {
                             <div>
                               {(() => {
                                 const tecnicaEhGratuita =
-                                  tecnicaAcquisitionAtual.freeIds.has(tecnica.id);
+                                  tecnicaAcquisitionAtual.freeIds.has(
+                                    tecnica.id,
+                                  );
                                 return (
                                   <span>
-                                    Aquisicao: {tecnicaEhGratuita
+                                    Aquisicao:{" "}
+                                    {tecnicaEhGratuita
                                       ? "Gratuita"
                                       : `${TECHNIQUE_PP_BY_TYPE[tecnica.tipo]} PP`}
                                   </span>
@@ -13406,9 +13499,7 @@ function App() {
                               <strong>
                                 {tecnica.nome} ({tecnica.tipo})
                               </strong>
-                              <span>
-                                Custo: {tecnica.custoFinalPE} PE
-                              </span>
+                              <span>Custo: {tecnica.custoFinalPE} PE</span>
                               <span>Acerto: {tecnica.acerto ?? "-"}</span>
                               <span>Dano: {tecnica.dano ?? "-"}</span>
                               <span>
@@ -13474,7 +13565,7 @@ function App() {
                   <p>
                     <strong>Tipos de Vantagem:</strong>
                   </p>
-                  <ul className="vantagens-intro-list">
+                  <ul className="vantagens-intro-list vantagens-intro-list-grid">
                     <li>
                       <strong>Combate:</strong> melhora desempenho ofensivo e
                       defensivo.
@@ -14273,9 +14364,51 @@ function App() {
                 </div>
 
                 {!catalogoPoderesLiberado ? (
-                  <p className="rule-note powers-lock-note">
-                    Selecione o Naipe em Identidade para liberar o Catalogo.
-                  </p>
+                  <div className="powers-lock-wrap">
+                    <p className="rule-note powers-lock-note">
+                      Selecione o Naipe em Identidade para liberar o Catalogo.
+                    </p>
+                    <div className="naipe-radio-panel powers-inline-naipe">
+                      <span className="naipe-radio-title">
+                        Selecionar Naipe aqui
+                      </span>
+                      <div className="naipe-radio-grid">
+                        {NAIPE_IDENTITY_OPTIONS.filter(
+                          (option) => option.value !== "",
+                        ).map((option) => {
+                          const naipeValue = option.value as NaipePoder;
+                          const checked =
+                            selectedCharacter.naipe === naipeValue;
+                          const slotClass = `naipe-slot-${naipeValue.toLowerCase()}`;
+
+                          return (
+                            <label
+                              key={`powers-${option.value}`}
+                              className={`naipe-radio-option ${slotClass} ${option.tone} ${checked ? "checked" : ""}`}
+                            >
+                              <input
+                                type="radio"
+                                name="powers-naipe"
+                                value={naipeValue}
+                                checked={checked}
+                                onChange={() => {
+                                  updateCharacter((current) => ({
+                                    ...current,
+                                    naipe: naipeValue,
+                                  }));
+                                  setNaipePoderSelecionado(naipeValue);
+                                }}
+                              />
+                              <span className="naipe-icon" aria-hidden="true">
+                                {option.icon}
+                              </span>
+                              <span>{option.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
                 ) : null}
 
                 {poderesPanelVisivel === "catalogo" ? (
@@ -14505,7 +14638,7 @@ function App() {
                         const graduacao = clamp(
                           parseNatural(powerEntry.graduacao),
                           1,
-                          limiteTecnica,
+                          limitePoder,
                         );
                         const custoPoder = getPowerTotalCost(
                           power,

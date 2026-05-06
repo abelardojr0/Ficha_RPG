@@ -2704,51 +2704,25 @@ textarea:focus {
   flex: 0 0 108px;
 }
 
-.pericias-intro-card {
-  margin: 0.55rem 0.75rem 0.85rem;
-  padding: 0.8rem 0.95rem;
-  border: 1px solid #d6b489;
-  border-radius: 12px;
-  background: linear-gradient(180deg, #fffaf1 0%, #f6ead6 100%);
-  color: #5a3923;
-  display: grid;
-  gap: 0.35rem;
-}
-
-.pericias-intro-card p {
-  margin: 0;
-  line-height: 1.4;
-}
-
-.pericias-intro-card strong {
+.pericias-intro-compact {
+  margin: 0.35rem 0.75rem 0.55rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--ink);
-}
-
-.pericias-intro-columns {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.9rem;
-  margin-top: 0.35rem;
+  gap: 0.2rem;
 }
 
-.pericias-intro-column {
-  min-width: 0;
-  display: grid;
-  gap: 0.45rem;
-  align-content: start;
-}
-
-.pericias-intro-list {
+.pericias-intro-compact p {
   margin: 0;
-  padding-left: 1.05rem;
+  line-height: 1.28;
+  font-size: 0.87rem;
 }
 
-.pericias-intro-list li + li {
-  margin-top: 0.18rem;
-}
-
-.pericias-intro-list li::marker {
-  color: color-mix(in srgb, var(--brand) 58%, var(--ink));
+.pericias-intro-compact strong {
+  color: var(--ink);
 }
 
 .pericias-intro-formula {
@@ -2757,8 +2731,8 @@ textarea:focus {
 }
 
 .pericias-intro-status {
-  margin-top: 0.25rem !important;
-  padding-top: 0.45rem;
+  margin-top: 0.12rem !important;
+  padding-top: 0.25rem;
   border-top: 1px solid color-mix(in srgb, var(--ink-light) 56%, transparent);
 }
 
@@ -3421,10 +3395,10 @@ textarea:focus {
 
 .tecnicas-intro {
   margin: 0;
-  padding: 0.22rem 0.75rem 0.75rem;
-  color: rgba(255, 245, 221, 0.88);
-  font-size: 0.88rem;
-  line-height: 1.55;
+  padding: 0.1rem 0.75rem 0.5rem;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 0.84rem;
+  line-height: 1.34;
 }
 
 .tecnicas-intro p {
@@ -3432,17 +3406,17 @@ textarea:focus {
 }
 
 .tecnicas-intro p + p {
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
 }
 
 .tecnicas-intro strong {
-  color: #fff8ea;
+  color: #ffffff;
 }
 
 .tecnicas-intro-chapter {
   margin-top: 1.1rem;
   padding-top: 0.85rem;
-  border-top: 1px solid rgba(255, 220, 165, 0.18);
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .tecnicas-intro-chapter:first-child {
@@ -3452,19 +3426,19 @@ textarea:focus {
 }
 
 .tecnicas-intro-chapter-title {
-  margin: 0.75rem 0 0.3rem !important;
-  font-size: 0.75rem;
+  margin: 0.48rem 0 0.18rem !important;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: rgba(255, 220, 165, 0.95);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .tecnicas-intro-columns {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.9rem;
-  margin-top: 0.5rem;
+  gap: 0.62rem;
+  margin-top: 0.3rem;
 }
 
 .tecnicas-intro-column {
@@ -3474,25 +3448,25 @@ textarea:focus {
 .tecnicas-intro-formula {
   margin: 0.3rem 0 !important;
   padding: 0.3rem 0.75rem;
-  background: rgba(255, 220, 165, 0.08);
-  border-left: 3px solid rgba(255, 220, 165, 0.5);
+  background: rgba(255, 255, 255, 0.07);
+  border-left: 3px solid rgba(255, 255, 255, 0.45);
   border-radius: 3px;
   font-weight: 600;
-  color: #fff8ea;
+  color: #ffffff;
   font-size: 0.9rem;
 }
 
 .tecnicas-intro-list {
-  margin: 0.35rem 0 0;
-  padding-left: 1.1rem;
+  margin: 0.18rem 0 0;
+  padding-left: 0.95rem;
 }
 
 .tecnicas-intro-list li::marker {
-  color: rgba(255, 220, 165, 0.9);
+  color: rgba(255, 255, 255, 0.88);
 }
 
 .tecnicas-intro-list li + li {
-  margin-top: 0.25rem;
+  margin-top: 0.14rem;
 }
 
 .vantagens-panel {
@@ -3515,7 +3489,7 @@ textarea:focus {
 
 .vantagens-intro p + p,
 .desvantagens-intro p + p {
-  margin-top: 0.5rem;
+  margin-top: 0.35rem;
 }
 
 .vantagens-intro-list,
@@ -3537,6 +3511,17 @@ textarea:focus {
 .vantagens-intro-list li + li,
 .desvantagens-intro-list li + li {
   margin-top: 0.2rem;
+}
+
+.vantagens-intro-list-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem 0.9rem;
+  padding-left: 1rem;
+}
+
+.vantagens-intro-list-grid li + li {
+  margin-top: 0;
 }
 
 .desvantagens-intro-columns {
@@ -3632,14 +3617,13 @@ textarea:focus {
 }
 
 @media (max-width: 720px) {
-  .pericias-intro-columns {
+  .tecnicas-intro-columns {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.55rem;
   }
 
-  .tecnicas-intro-columns {
+  .vantagens-intro-list-grid {
     grid-template-columns: minmax(0, 1fr);
-    gap: 0.55rem;
   }
 
   .desvantagens-intro-columns {
@@ -3773,7 +3757,26 @@ textarea:focus {
 
 .powers-lock-note {
   margin: 0;
-  color: #7f1f16;
+  color: #fff9ee;
+  font-weight: 700;
+}
+
+.powers-lock-wrap {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.powers-inline-naipe {
+  margin: 0;
+  padding: 0.45rem 0.75rem 0.65rem;
+  border: 1px solid color-mix(in srgb, #fff9ee 32%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, #fff9ee 10%, transparent);
+}
+
+.powers-inline-naipe .naipe-radio-title {
+  margin-bottom: 0.4rem;
+  color: #fff9ee;
 }
 
 .powers-suit-tabs {
@@ -4925,7 +4928,6 @@ button.danger:hover,
 }
 
 .pericias-block .skills-grid label,
-.pericias-intro-card,
 .conhecimento-row {
   border-color: color-mix(in srgb, var(--ink-light) 52%, transparent);
   background: linear-gradient(
