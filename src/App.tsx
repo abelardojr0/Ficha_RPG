@@ -9,7 +9,13 @@
 import { ToastContainer, toast } from "react-toastify";
 import { FaWeightHanging } from "react-icons/fa6";
 import { GiRollingEnergy, GiWalkingBoot, GiScrollQuill } from "react-icons/gi";
-import { MdOutlineAddPhotoAlternate } from "react-icons/md";
+import {
+  MdOutlineAddPhotoAlternate,
+  MdCheckBox,
+  MdCheckBoxOutlineBlank,
+  MdBolt,
+  MdCallSplit,
+} from "react-icons/md";
 import { IoMdHeartHalf } from "react-icons/io";
 import "react-toastify/dist/ReactToastify.css";
 import {
@@ -478,6 +484,29 @@ const readDraftFromLocalStorage = (): LocalDraftPayload | null => {
   }
 };
 
+const clearDraftFromLocalStorage = () => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(CHARACTER_DRAFT_STORAGE_KEY);
+};
+
+const writeDraftToLocalStorage = (payload: LocalDraftPayload) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      CHARACTER_DRAFT_STORAGE_KEY,
+      JSON.stringify(payload),
+    );
+  } catch {
+    // Ignore quota/private mode failures and keep app flow alive.
+  }
+};
+
 const removeDraftGroupFromLocalStorage = (principalId: string) => {
   if (typeof window === "undefined") {
     return;
@@ -493,7 +522,7 @@ const removeDraftGroupFromLocalStorage = (principalId: string) => {
   );
 
   if (remainingCharacters.length === 0) {
-    window.localStorage.removeItem(CHARACTER_DRAFT_STORAGE_KEY);
+    clearDraftFromLocalStorage();
     return;
   }
 
@@ -503,18 +532,15 @@ const removeDraftGroupFromLocalStorage = (principalId: string) => {
     ? existingDraft.selectedId
     : remainingCharacters[0].id;
 
-  window.localStorage.setItem(
-    CHARACTER_DRAFT_STORAGE_KEY,
-    JSON.stringify({
-      ...existingDraft,
-      characters: remainingCharacters,
-      selectedId: nextSelectedId,
-      activeSheetId:
-        existingDraft.activeSheetId === principalId
-          ? getCharacterPrincipalId(remainingCharacters[0])
-          : existingDraft.activeSheetId,
-    } satisfies LocalDraftPayload),
-  );
+  writeDraftToLocalStorage({
+    ...existingDraft,
+    characters: remainingCharacters,
+    selectedId: nextSelectedId,
+    activeSheetId:
+      existingDraft.activeSheetId === principalId
+        ? getCharacterPrincipalId(remainingCharacters[0])
+        : existingDraft.activeSheetId,
+  } satisfies LocalDraftPayload);
 };
 
 type AppScreen = "home" | "editor" | "quick-sheet" | "group";
@@ -5657,6 +5683,22 @@ function App() {
   const [fichaGeradaPagina, setFichaGeradaPagina] = useState<1 | 2>(
     () => restoredDraft?.fichaGeradaPagina ?? 1,
   );
+  const [danoPoderesConfig, setDanoPoderesConfig] = useState<
+    Record<string, { incluiDanoBase: boolean; metadeGrad: boolean }>
+  >({});
+
+  const toggleDanoPoderConfig = (
+    entryId: string,
+    field: "incluiDanoBase" | "metadeGrad",
+  ) => {
+    setDanoPoderesConfig((prev) => {
+      const current = prev[entryId] ?? {
+        incluiDanoBase: false,
+        metadeGrad: false,
+      };
+      return { ...prev, [entryId]: { ...current, [field]: !current[field] } };
+    });
+  };
   const [tecnicaDraft, setTecnicaDraft] = useState<DevelopedTechniqueDraft>(
     () => restoredDraft?.tecnicaDraft ?? createDevelopedTechniqueDraft(),
   );
@@ -5928,59 +5970,22 @@ function App() {
       return;
     }
 
-    const currentPrincipalId =
-      characters.find((character) => !character.parentId)?.id ??
-      getCharacterPrincipalId(characters[0]);
+    if (screen !== "editor" && screen !== "quick-sheet") {
+      clearDraftFromLocalStorage();
+      return;
+    }
 
-    const existingDraft = readDraftFromLocalStorage();
-    const existingCharacters = (existingDraft?.characters ?? []).filter(
-      (character): character is CharacterSheet => !!character,
-    );
-    const mergedCharacters = [
-      ...existingCharacters.filter(
-        (character) =>
-          getCharacterPrincipalId(character) !== currentPrincipalId,
-      ),
-      ...characters,
-    ];
-
-    const payload: LocalDraftPayload = {
-      characters: mergedCharacters,
+    const payload = buildLocalDraftPayload(
+      characters,
       selectedId,
       activeSheetId,
-      activeEditorTab,
-      poderesPanelAtivo,
-      naipePoderSelecionado,
-      catalogoSearch,
-      catalogoFiltroAcao,
-      catalogoFiltroDuracao,
-      catalogoFiltroTipo,
-      equipamentosEra,
-      equipamentosTipo,
-      equipamentosSubcategoria,
-      fichaGeradaPagina,
-      tecnicaDraft,
-      vantagemCategoriaSelecionada,
-      vantagemSelecionadaId,
-      vantagemGraduacao,
-      desvantagemCategoriaSelecionada,
-      desvantagemSelecionadaId,
-      desvantagemGraduacao,
-      pretipoSelecionado,
-    };
-
-    try {
-      window.localStorage.setItem(
-        CHARACTER_DRAFT_STORAGE_KEY,
-        JSON.stringify(payload),
-      );
-    } catch {
-      // Ignore quota/private mode failures and keep app flow alive.
-    }
+    );
+    writeDraftToLocalStorage(payload);
   }, [
     characters,
     selectedId,
     activeSheetId,
+    screen,
     activeEditorTab,
     poderesPanelAtivo,
     naipePoderSelecionado,
@@ -6103,6 +6108,35 @@ function App() {
         targetKey,
     );
   };
+
+  const buildLocalDraftPayload = (
+    draftCharacters: CharacterSheet[],
+    draftSelectedId: string,
+    draftActiveSheetId: string | null,
+  ): LocalDraftPayload => ({
+    characters: draftCharacters,
+    selectedId: draftSelectedId,
+    activeSheetId: draftActiveSheetId,
+    activeEditorTab,
+    poderesPanelAtivo,
+    naipePoderSelecionado,
+    catalogoSearch,
+    catalogoFiltroAcao,
+    catalogoFiltroDuracao,
+    catalogoFiltroTipo,
+    equipamentosEra,
+    equipamentosTipo,
+    equipamentosSubcategoria,
+    fichaGeradaPagina,
+    tecnicaDraft,
+    vantagemCategoriaSelecionada,
+    vantagemSelecionadaId,
+    vantagemGraduacao,
+    desvantagemCategoriaSelecionada,
+    desvantagemSelecionadaId,
+    desvantagemGraduacao,
+    pretipoSelecionado,
+  });
 
   const navigateToGroup = (groupKey: string) => {
     const group = getGroupByKey(groupKey);
@@ -6672,6 +6706,8 @@ function App() {
   };
 
   const createNewSheet = (groupKey?: string) => {
+    clearDraftFromLocalStorage();
+
     const next = {
       ...createEmptyCharacter(),
       grupo: groupKey ?? "",
@@ -6810,24 +6846,22 @@ function App() {
       const normalizedCharacter = normalizeCharacterSheet(payload.character);
       const principalId = unlockSheetTarget.id;
 
-      const existingDraft = readDraftFromLocalStorage();
-      const scopedCharacters = (existingDraft?.characters ?? [])
-        .filter((character): character is CharacterSheet => !!character)
-        .map((character) => normalizeCharacterSheet(character))
-        .filter(
-          (character) => getCharacterPrincipalId(character) === principalId,
-        );
+      const loadedCharacters = [normalizedCharacter];
 
-      setCharacters([
-        normalizedCharacter,
-        ...scopedCharacters.filter((character) => character.id !== principalId),
-      ]);
+      clearDraftFromLocalStorage();
+
+      setCharacters(loadedCharacters);
       setSelectedId(principalId);
       setActiveSheetId(principalId);
       setActiveSheetPassword(password);
       setUnlockSheetModalOpen(false);
       setUnlockSheetTarget(null);
       resetUnlockSheetForm();
+
+      writeDraftToLocalStorage(
+        buildLocalDraftPayload(loadedCharacters, principalId, principalId),
+      );
+
       navigateToScreen("editor");
     } catch {
       toast.error("Erro de conexao ao abrir a ficha.");
@@ -6837,9 +6871,25 @@ function App() {
   };
 
   const goBackToHome = async () => {
-    navigateToScreen("home");
+    clearDraftFromLocalStorage();
+    const targetGroupKey = normalizeGroupKey(
+      (selectedCharacter?.grupo ?? "").trim(),
+    );
+
+    if (window.location.pathname !== HOME_ROUTE) {
+      window.history.pushState({}, "", HOME_ROUTE);
+    }
+
+    if (targetGroupKey) {
+      setSelectedGroup(targetGroupKey);
+      setScreen("group");
+    } else {
+      navigateToScreen("home");
+    }
+
     setApiError(null);
     await fetchSheetList();
+    await fetchGroupList();
   };
 
   const deleteSheetFromDatabase = async () => {
@@ -8402,6 +8452,13 @@ function App() {
                     const previewImageUrl =
                       group.imageUrl ||
                       (latestSheet ? getSheetPreviewImageUrl(latestSheet) : "");
+                    const groupImageCandidates = sheetsInGroup
+                      .map(
+                        (sheet) =>
+                          sheet.imagemViewUrl || getSheetPreviewImageUrl(sheet),
+                      )
+                      .filter((url): url is string => Boolean(url))
+                      .slice(0, 12);
 
                     return (
                       <article key={group.key} className="home-card">
@@ -8410,7 +8467,7 @@ function App() {
                           className="home-card-open"
                           onClick={() => navigateToGroup(group.key)}
                         >
-                          {previewImageUrl ? (
+                          {group.imageUrl ? (
                             <img
                               className="home-card-avatar"
                               src={
@@ -8421,6 +8478,20 @@ function App() {
                               alt={`Grupo ${group.name}`}
                               loading="lazy"
                             />
+                          ) : groupImageCandidates.length > 0 ? (
+                            <div
+                              className={`home-card-avatar-collage home-card-avatar-collage--${Math.min(groupImageCandidates.length, 12)}`}
+                              aria-hidden="true"
+                            >
+                              {groupImageCandidates.map((url, index) => (
+                                <img
+                                  key={`${group.key}-avatar-${index}`}
+                                  src={url}
+                                  alt=""
+                                  loading="lazy"
+                                />
+                              ))}
+                            </div>
                           ) : (
                             <div className="home-card-avatar placeholder">
                               {group.name}
@@ -8503,127 +8574,156 @@ function App() {
             </div>
           </header>
 
-          <section className="home-list block home-list-panel">
-            <div className="group-manage-panel">
-              <h3>Arquivos do grupo</h3>
-              <label className="group-attachments-input">
-                <span>Anexar arquivos</span>
-                <input
-                  type="file"
-                  multiple
-                  onChange={(event) => {
-                    void addAttachmentsToGroup(
-                      selectedGroup,
-                      event.target.files,
-                    );
-                    event.target.value = "";
-                  }}
-                />
-              </label>
-              {group?.attachments?.length ? (
-                <ul className="group-attachments-list">
-                  {group.attachments.map((attachment) => (
-                    <li key={attachment.id}>
-                      <a
-                        href={attachment.url}
-                        download={attachment.name}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {attachment.name}
-                      </a>
+          <main className="group-screen-main">
+            <section className="group-info-section">
+              <div className="group-info-image-wrap">
+                {group?.imageUrl ? (
+                  <img
+                    className="group-info-image"
+                    src={group.imageUrl}
+                    alt={`Imagem do grupo ${group.name}`}
+                  />
+                ) : (
+                  <div className="group-info-image group-info-image--placeholder">
+                    {group?.name || selectedGroup}
+                  </div>
+                )}
+              </div>
+
+              <div className="group-info-description">
+                <h2>Descrição</h2>
+                {group?.description ? (
+                  <p>{group.description}</p>
+                ) : (
+                  <p className="group-info-empty">Sem descrição.</p>
+                )}
+              </div>
+
+              <div className="group-info-attachments">
+                <div className="group-info-attachments-header">
+                  <h2>Anexos</h2>
+                  <label className="group-attachments-input-inline">
+                    <span>+ Anexar</span>
+                    <input
+                      type="file"
+                      multiple
+                      onChange={(event) => {
+                        void addAttachmentsToGroup(
+                          selectedGroup,
+                          event.target.files,
+                        );
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
+                {group?.attachments?.length ? (
+                  <ul className="group-attachments-list">
+                    {group.attachments.map((attachment) => (
+                      <li key={attachment.id}>
+                        <a
+                          href={attachment.url}
+                          download={attachment.name}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {attachment.name}
+                        </a>
+                        <button
+                          type="button"
+                          className="danger"
+                          onClick={() =>
+                            removeGroupAttachment(selectedGroup, attachment.id)
+                          }
+                        >
+                          Remover
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="home-empty-state">Sem anexos neste grupo.</p>
+                )}
+              </div>
+            </section>
+
+            <section className="group-sheets-section">
+              <h2>Fichas do grupo ({groupSheets.length})</h2>
+              {groupSheets.length === 0 ? (
+                <p className="home-empty-state">
+                  Nenhuma ficha neste grupo ainda.
+                </p>
+              ) : null}
+
+              <div className="home-card-grid">
+                {groupSheets.map((sheet) => {
+                  const previewImageUrl = getSheetPreviewImageUrl(sheet);
+
+                  return (
+                    <article key={sheet.id} className="home-card">
                       <button
                         type="button"
-                        className="danger"
-                        onClick={() =>
-                          removeGroupAttachment(selectedGroup, attachment.id)
-                        }
+                        className="home-card-open"
+                        onClick={() => openSheetForEditing(sheet)}
                       >
-                        Remover
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="home-empty-state">Sem anexos neste grupo.</p>
-              )}
-            </div>
-
-            <h2>Fichas do grupo ({groupSheets.length})</h2>
-            {groupSheets.length === 0 ? (
-              <p className="home-empty-state">
-                Nenhuma ficha neste grupo ainda.
-              </p>
-            ) : null}
-
-            <div className="home-card-grid">
-              {groupSheets.map((sheet) => {
-                const previewImageUrl = getSheetPreviewImageUrl(sheet);
-
-                return (
-                  <article key={sheet.id} className="home-card">
-                    <button
-                      type="button"
-                      className="home-card-open"
-                      onClick={() => openSheetForEditing(sheet)}
-                    >
-                      {previewImageUrl ? (
-                        <img
-                          className="home-card-avatar"
-                          src={sheet.imagemViewUrl || previewImageUrl}
-                          alt={`Retrato de ${sheet.nome || "personagem"}`}
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="home-card-avatar placeholder">
-                          Sem imagem
+                        {previewImageUrl ? (
+                          <img
+                            className="home-card-avatar"
+                            src={sheet.imagemViewUrl || previewImageUrl}
+                            alt={`Retrato de ${sheet.nome || "personagem"}`}
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="home-card-avatar placeholder">
+                            Sem imagem
+                          </div>
+                        )}
+                        <div className="home-card-meta">
+                          <strong>{sheet.nome || "Sem nome"}</strong>
+                          <span className="home-card-player">
+                            Jogador: {sheet.jogador || "-"}
+                          </span>
                         </div>
-                      )}
-                      <div className="home-card-meta">
-                        <strong>{sheet.nome || "Sem nome"}</strong>
-                        <span className="home-card-player">
-                          Jogador: {sheet.jogador || "-"}
-                        </span>
-                      </div>
-                    </button>
+                      </button>
 
-                    <div className="home-card-footer">
-                      <small className="home-card-updated-at">
-                        Ultima atualizacao:{" "}
-                        {new Date(sheet.updatedAt).toLocaleString("pt-BR")}
-                      </small>
-                      <div className="home-card-actions">
-                        <button
-                          type="button"
-                          className="home-card-move"
-                          aria-label={`Mover ficha ${sheet.nome || "sem nome"}`}
-                          title="Mover ficha"
-                          onClick={() => openMoveSheetModal(sheet)}
-                        >
-                          Mover
-                        </button>
-                        <button
-                          type="button"
-                          className="home-card-delete"
-                          aria-label={`Excluir ficha ${sheet.nome || "sem nome"}`}
-                          title="Excluir ficha"
-                          onClick={() => openDeleteSheetModal(sheet)}
-                        >
-                          <svg
-                            viewBox="0 0 24 24"
-                            aria-hidden="true"
-                            focusable="false"
+                      <div className="home-card-footer">
+                        <small className="home-card-updated-at">
+                          Ultima atualizacao:{" "}
+                          {new Date(sheet.updatedAt).toLocaleString("pt-BR")}
+                        </small>
+                        <div className="home-card-actions">
+                          <button
+                            type="button"
+                            className="home-card-move"
+                            aria-label={`Mover ficha ${sheet.nome || "sem nome"}`}
+                            title="Mover ficha"
+                            onClick={() => openMoveSheetModal(sheet)}
                           >
-                            <path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h2v9H7V9Zm4 0h2v9h-2V9Zm4 0h2v9h-2V9Z" />
-                          </svg>
-                        </button>
+                            Mover
+                          </button>
+                          <button
+                            type="button"
+                            className="home-card-delete"
+                            aria-label={`Excluir ficha ${sheet.nome || "sem nome"}`}
+                            title="Excluir ficha"
+                            onClick={() => openDeleteSheetModal(sheet)}
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              aria-hidden="true"
+                              focusable="false"
+                            >
+                              <path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h2v9H7V9Zm4 0h2v9h-2V9Zm4 0h2v9h-2V9Z" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          </main>
         </div>
         {renderGlobalOverlays()}
       </>
@@ -9482,7 +9582,36 @@ function App() {
   const vidaMaxima =
     VIDA_BASE_POR_CONSTITUICAO[selectedCharacter.atributos.Constituicao];
   const eterMaximo = ETER_BASE_POR_TECNICA[selectedCharacter.atributos.Tecnica];
-  const danoBase = BONUS_BY_DICE[selectedCharacter.atributos.Forca];
+  const hasAcuidade = selectedCharacter.vantagens.some(
+    (vantagem) => vantagem.catalogId === "acuidade",
+  );
+  const danoBaseAtributo = hasAcuidade ? "Agilidade" : "Forca";
+  const danoBase = BONUS_BY_DICE[selectedCharacter.atributos[danoBaseAtributo]];
+
+  const poderesCombateDisponiveis = selectedCharacter.poderes
+    .map((entry) => {
+      const power = POWER_BY_ID.get(entry.powerId);
+      if (!power) return null;
+      if (!power.tipo.includes("Ataque")) {
+        return null;
+      }
+      const graduacao = clamp(parseNatural(entry.graduacao), 1, limitePoder);
+      return { id: entry.id, powerId: entry.powerId, power, graduacao };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+
+  const poderesCombateCalculados = poderesCombateDisponiveis.map((p) => {
+    const config = danoPoderesConfig[p.id] ?? {
+      incluiDanoBase: false,
+      metadeGrad: false,
+    };
+    const danoGrad = config.metadeGrad
+      ? Math.ceil(p.graduacao / 2)
+      : p.graduacao;
+    const total = config.incluiDanoBase ? danoBase + danoGrad : danoGrad;
+    return { ...p, config, danoGrad, total };
+  });
+
   const movimentoBase =
     MOVIMENTO_BASE_POR_AGILIDADE[selectedCharacter.atributos.Agilidade];
   const cargaBase = CARGA_BASE_POR_FORCA[selectedCharacter.atributos.Forca];
@@ -10922,7 +11051,7 @@ function App() {
                         <div className="dano-base-content">
                           <span className="resistance-stat">
                             <span className="metric-label-with-tip">
-                              Dano Físico (Força)
+                              Dano Físico ({danoBaseAtributo})
                               <span
                                 className="info-dot"
                                 data-tooltip={DANO_BASE_TOOLTIP}
@@ -10935,6 +11064,75 @@ function App() {
                             </span>
                           </span>
                         </div>
+                        {poderesCombateCalculados.length > 0 && (
+                          <div className="dano-poder-lista">
+                            <span className="dano-poder-label">
+                              Dano com seus poderes
+                            </span>
+                            {poderesCombateCalculados.map((p) => (
+                              <div key={p.id} className="dano-poder-row">
+                                <div className="dano-poder-row-header">
+                                  <span className="dano-poder-nome">
+                                    {p.power.nome}
+                                    <span className="dano-poder-grad">
+                                      grad. {p.graduacao}
+                                    </span>
+                                  </span>
+                                  <span className="dano-poder-total">
+                                    <AnimatedNumber value={p.total} />
+                                  </span>
+                                </div>
+                                <div className="dano-poder-formula">
+                                  {p.config.incluiDanoBase
+                                    ? `${danoBase} (base) + ${p.danoGrad}`
+                                    : `${p.danoGrad}`}
+                                  {p.config.metadeGrad ? ` (½ grad)` : ""}
+                                </div>
+                                <div className="dano-poder-checkboxes">
+                                  <button
+                                    type="button"
+                                    className={`dano-poder-toggle${p.config.incluiDanoBase ? " active" : ""}`}
+                                    onClick={() =>
+                                      toggleDanoPoderConfig(
+                                        p.id,
+                                        "incluiDanoBase",
+                                      )
+                                    }
+                                    aria-pressed={p.config.incluiDanoBase}
+                                  >
+                                    <span className="dano-toggle-check">
+                                      {p.config.incluiDanoBase ? (
+                                        <MdCheckBox />
+                                      ) : (
+                                        <MdCheckBoxOutlineBlank />
+                                      )}
+                                    </span>
+                                    <MdBolt className="dano-toggle-action-icon" />
+                                    Soma Dano Base
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`dano-poder-toggle${p.config.metadeGrad ? " active" : ""}`}
+                                    onClick={() =>
+                                      toggleDanoPoderConfig(p.id, "metadeGrad")
+                                    }
+                                    aria-pressed={p.config.metadeGrad}
+                                  >
+                                    <span className="dano-toggle-check">
+                                      {p.config.metadeGrad ? (
+                                        <MdCheckBox />
+                                      ) : (
+                                        <MdCheckBoxOutlineBlank />
+                                      )}
+                                    </span>
+                                    <MdCallSplit className="dano-toggle-action-icon" />
+                                    Metade das Grad
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
