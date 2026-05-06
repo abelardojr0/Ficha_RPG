@@ -5806,11 +5806,71 @@ button.danger:hover,
 .tecnicas-dev-intro {
   padding: 0.75rem 0.9rem 0;
   display: grid;
-  gap: 0.25rem;
+  gap: 0.6rem;
 }
 
 .tecnicas-dev-intro p {
   margin: 0;
+}
+
+.tecnicas-dev-guide-duo {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.tecnicas-dev-guide-card {
+  border: 1px solid color-mix(in srgb, var(--ink-light) 42%, transparent);
+  border-radius: 12px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--paper-soft) 92%, #000),
+    color-mix(in srgb, var(--paper) 95%, #000)
+  );
+  padding: 0.62rem 0.72rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.tecnicas-dev-guide-title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: color-mix(in srgb, var(--brand-accent) 74%, var(--ink));
+}
+
+.tecnicas-dev-guide-list {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.18rem;
+  color: var(--ink-muted);
+  font-size: 0.88rem;
+}
+
+.tecnicas-dev-guide-note {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.tecnicas-dev-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.tecnicas-dev-status-chip {
+  padding: 0.24rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ink-light) 38%, transparent);
+  background: color-mix(in srgb, var(--brand-accent) 12%, var(--paper-soft));
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .tecnicas-dev-grid {
@@ -5855,6 +5915,14 @@ button.danger:hover,
   letter-spacing: 0.05em;
 }
 
+.tecnicas-dev-subsection h5 {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--ink-muted) 86%, white);
+}
+
 .tecnica-base-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(140px, 180px) auto;
@@ -5879,6 +5947,43 @@ button.danger:hover,
   gap: 0.45rem;
   align-items: center;
   font-size: 0.88rem;
+}
+
+.tecnica-auto-panel {
+  padding-top: 0.25rem;
+}
+
+.tecnica-auto-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.tecnica-auto-card {
+  border: 1px solid color-mix(in srgb, var(--ink-light) 44%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--paper-soft) 84%, var(--brand-deep));
+  padding: 0.46rem 0.58rem;
+  display: grid;
+  gap: 0.24rem;
+}
+
+.tecnica-auto-card strong {
+  font-size: 0.9rem;
+  color: var(--ink);
+  line-height: 1.3;
+}
+
+.tecnica-auto-label {
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+  font-weight: 700;
+}
+
+.tecnica-dano-checks {
+  padding: 0.2rem 0;
 }
 
 .tecnica-cost-summary p {
@@ -5935,7 +6040,9 @@ button.danger:hover,
 
   .tecnicas-dev-grid,
   .tecnicas-dev-textareas,
-  .tecnicas-dev-checks {
+  .tecnicas-dev-checks,
+  .tecnicas-dev-guide-duo,
+  .tecnica-auto-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 

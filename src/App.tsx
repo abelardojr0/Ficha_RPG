@@ -23,6 +23,7 @@ import {
   PODERES_POR_NAIPE,
   type NaipePoder,
   type PowerDefinition,
+  type PowerRange,
 } from "./data/powers";
 import logoImage from "./assets/logo.png";
 import "./App.css";
@@ -149,32 +150,64 @@ type DevelopedTechniqueBasePower = {
   id: string;
   powerId: string;
   graduacao: string;
+  danoSomaBase: boolean;
+  danoMetadeGrad: boolean;
 };
 
 type DevelopedTechniqueModifierSet = {
-  bonusDano: string;
-  bonusPrecisao: string;
-  penetracao: string;
+  aumentoDano: string;
+  precisao: string;
+  penetrante: string;
   danoAmpliado: string;
   ataqueMultiplo: "1" | "2" | "3";
+  efeitoSecundario: boolean;
+  incuravel: boolean;
+  contagioso: boolean;
   area: "" | "3m" | "5m" | "10m";
   controleNivel: "" | "Leve" | "Moderado" | "Forte";
   controleEstado: string;
   controleAtributoResistencia: "Forca" | "Agilidade" | "Vontade";
-  alcanceEtapas: "0" | "1" | "2" | "3" | "4";
-  duracao: "" | "Sustentada" | "Continua";
-  duracaoEstendida: boolean;
-  ativacaoRapida: "" | "Livre" | "Reacao";
-  preparacao: "" | "preparacao" | "turno-completo";
+  alcanceDelta: "-5" | "-4" | "-3" | "-2" | "-1" | "0" | "1" | "2" | "3" | "4" | "5";
+  duracaoDelta: "-2" | "-1" | "0" | "1" | "2";
+  ativacaoAjuste:
+    | ""
+    | "Rapida1"
+    | "Rapida2"
+    | "Rapida3"
+    | "LivreParaReacao"
+    | "Lenta1"
+    | "Lenta2"
+    | "Lenta3";
+  exigeTurnoCompleto: boolean;
+  deslocamentoMetros: string;
+  deslocamentoTipo: "" | "Empurrar" | "Puxar" | "Reposicionar" | "Movimento proprio";
+  seletivo: boolean;
+  indireto: "" | "Basico" | "Avancado";
+  rastreamento: boolean;
+  ricochete: string;
+  dividido: "" | "2" | "3";
+  alternativo: boolean;
   bonusDefesa: string;
   reducaoDanoRecebido: string;
-  absorcao: boolean;
+  absorcao: string;
   reflexo: boolean;
-  limitacaoPerdeMovimento: boolean;
-  limitacaoCondicaoEspecifica: boolean;
-  limitacaoContatoDireto: boolean;
-  limitacaoAlvoEspecifico: boolean;
-  limitacaoUsoCena: boolean;
+  sutil: "" | "Dificil" | "Imperceptivel";
+  traicoeiro: boolean;
+  preciso: boolean;
+  acaoAumentadaEtapas: "0" | "1" | "2" | "3";
+  preparacaoObrigatoria: "" | "Movimento" | "Padrao";
+  exigeTeste: "" | "Simples" | "Dificil";
+  inconstante: "" | "Parcial" | "Metade";
+  incontrolavel: boolean;
+  efeitoColateral: "" | "Ocasional" | "Sempre";
+  cansativo: boolean;
+  retroalimentacao: boolean;
+  impreciso: boolean;
+  resistivel: boolean;
+  semMovimento: boolean;
+  condicional: "" | "Simples" | "Restrita";
+  alvoRestrito: boolean;
+  recursoExterno: boolean;
   modificadorPersonalizadoNome: string;
   modificadorPersonalizadoCusto: string;
 };
@@ -190,6 +223,8 @@ type DevelopedTechnique = {
   alvo: string;
   duracao: string;
   gatilho: string;
+  acerto: string;
+  dano: string;
   poderesBase: DevelopedTechniqueBasePower[];
   modificadores: DevelopedTechniqueModifierSet;
   custoBasePE: number;
@@ -213,6 +248,8 @@ type DevelopedTechniqueDraft = {
   alvo: string;
   duracao: string;
   gatilho: string;
+  acerto: string;
+  dano: string;
   poderesBase: DevelopedTechniqueBasePower[];
   modificadores: DevelopedTechniqueModifierSet;
 };
@@ -4024,18 +4061,6 @@ const EDITOR_TABS: EditorTabDefinition[] = [
       "Distribua graduacoes tecnicas e de conhecimento respeitando os limites por nivel.",
   },
   {
-    id: "tecnicas",
-    label: "Fluxos",
-    descricao:
-      "Ajuste graduacoes dos Fluxos Naturais e acompanhe Valor Efetivo, custo de Eter e limitacoes.",
-  },
-  {
-    id: "tecnicas-desenvolvimento",
-    label: "Tecnicas",
-    descricao:
-      "Cadastre tecnicas Primarias, Avancadas e Especiais com poderes base, modificadores, reducoes e custo final em PE.",
-  },
-  {
     id: "vantagens",
     label: "Vantagens",
     descricao:
@@ -4048,10 +4073,22 @@ const EDITOR_TABS: EditorTabDefinition[] = [
       "Defina limitacoes narrativas e mecanicas para ganhar PP adicional dentro das regras de limite.",
   },
   {
+    id: "tecnicas",
+    label: "Fluxos",
+    descricao:
+      "Ajuste graduacoes dos Fluxos Naturais e acompanhe Valor Efetivo, custo de Eter e limitacoes.",
+  },
+  {
     id: "poderes",
     label: "Poderes",
     descricao:
       "Monte o arsenal por naipe, ajuste graduacoes, extras e falhas e acompanhe custo final.",
+  },
+  {
+    id: "tecnicas-desenvolvimento",
+    label: "Tecnicas",
+    descricao:
+      "Cadastre tecnicas Primarias, Avancadas e Especiais com poderes base, modificadores, reducoes e custo final em PE.",
   },
   {
     id: "equipamentos",
@@ -4067,6 +4104,79 @@ const TECHNIQUE_PP_BY_TYPE: Record<DevelopedTechniqueType, number> = {
   Primaria: 4,
   Avancada: 8,
   Especial: 12,
+};
+
+const getFreeTechniqueSlotsByLevel = (nivel: number) => ({
+  primariaBase: 2 + (nivel >= 1 ? 1 : 0),
+  avancadaBase: nivel >= 2 ? 1 : 0,
+  especialBase: nivel >= 4 ? 1 : 0,
+  flexPrimariaOuAvancada: nivel >= 3 ? 1 : 0,
+});
+
+const getTechniqueAcquisitionState = <
+  T extends { id: string; tipo: DevelopedTechniqueType },
+>(
+  nivel: number,
+  tecnicas: T[],
+) => {
+  const slots = getFreeTechniqueSlotsByLevel(nivel);
+
+  const primary = tecnicas.filter((item) => item.tipo === "Primaria");
+  const advanced = tecnicas.filter((item) => item.tipo === "Avancada");
+  const special = tecnicas.filter((item) => item.tipo === "Especial");
+
+  const freeIds = new Set<string>();
+
+  const freePrimaryBase = Math.min(primary.length, slots.primariaBase);
+  primary.slice(0, freePrimaryBase).forEach((item) => freeIds.add(item.id));
+
+  const freeAdvancedBase = Math.min(advanced.length, slots.avancadaBase);
+  advanced.slice(0, freeAdvancedBase).forEach((item) => freeIds.add(item.id));
+
+  const freeSpecialBase = Math.min(special.length, slots.especialBase);
+  special.slice(0, freeSpecialBase).forEach((item) => freeIds.add(item.id));
+
+  const remainingPrimary = primary.filter((item) => !freeIds.has(item.id));
+  const remainingAdvanced = advanced.filter((item) => !freeIds.has(item.id));
+
+  if (slots.flexPrimariaOuAvancada > 0) {
+    if (remainingAdvanced.length > 0) {
+      freeIds.add(remainingAdvanced[0].id);
+    } else if (remainingPrimary.length > 0) {
+      freeIds.add(remainingPrimary[0].id);
+    }
+  }
+
+  let ppPagoTotal = 0;
+  const paidCountByType: Record<DevelopedTechniqueType, number> = {
+    Primaria: 0,
+    Avancada: 0,
+    Especial: 0,
+  };
+
+  tecnicas.forEach((tecnica) => {
+    if (!freeIds.has(tecnica.id)) {
+      paidCountByType[tecnica.tipo] += 1;
+      ppPagoTotal += TECHNIQUE_PP_BY_TYPE[tecnica.tipo];
+    }
+  });
+
+  const freeTotalUsado = freeIds.size;
+  const freeTotalDisponivel =
+    slots.primariaBase +
+    slots.avancadaBase +
+    slots.especialBase +
+    slots.flexPrimariaOuAvancada;
+
+  return {
+    slots,
+    freeIds,
+    ppPagoTotal,
+    paidCountByType,
+    freeTotalUsado,
+    freeTotalDisponivel,
+    freeRestante: Math.max(0, freeTotalDisponivel - freeTotalUsado),
+  };
 };
 
 const TECHNIQUE_ADDITIONAL_LIMIT_BY_TYPE: Record<
@@ -4095,70 +4205,139 @@ const CONTROLE_COST: Record<"" | "Leve" | "Moderado" | "Forte", number> = {
   "": 0,
   Leve: 1,
   Moderado: 2,
-  Forte: 4,
+  Forte: 3,
 };
 
-const ALCANCE_ETAPAS_COST: Record<"0" | "1" | "2" | "3" | "4", number> = {
-  "0": 0,
-  "1": 1,
-  "2": 2,
-  "3": 4,
-  "4": 7,
-};
-
-const DURACAO_COST: Record<"" | "Sustentada" | "Continua", number> = {
+const INDIRETO_COST: Record<"" | "Basico" | "Avancado", number> = {
   "": 0,
-  Sustentada: 2,
-  Continua: 4,
+  Basico: 2,
+  Avancado: 4,
 };
 
-const QUICK_ACTIVATION_COST: Record<"" | "Livre" | "Reacao", number> = {
+const DIVIDIDO_COST: Record<"" | "2" | "3", number> = {
   "": 0,
-  Livre: 3,
-  Reacao: 3,
+  "2": 1,
+  "3": 2,
 };
 
-const PREPARATION_REDUCTION: Record<
-  "" | "preparacao" | "turno-completo",
+const SUTIL_COST: Record<"" | "Dificil" | "Imperceptivel", number> = {
+  "": 0,
+  Dificil: 1,
+  Imperceptivel: 2,
+};
+
+const PREPARACAO_OBRIGATORIA_REDUCTION: Record<
+  "" | "Movimento" | "Padrao",
   number
 > = {
   "": 0,
-  preparacao: 1,
-  "turno-completo": 2,
+  Movimento: 1,
+  Padrao: 2,
 };
 
-const getPrecisaoCost = (bonusPrecisao: number): number => {
-  if (bonusPrecisao <= 0) return 0;
-  if (bonusPrecisao === 1) return 1;
-  if (bonusPrecisao === 2) return 3;
-  return 5;
+const EXIGE_TESTE_REDUCTION: Record<"" | "Simples" | "Dificil", number> = {
+  "": 0,
+  Simples: 1,
+  Dificil: 2,
+};
+
+const INCONSTANTE_REDUCTION: Record<"" | "Parcial" | "Metade", number> = {
+  "": 0,
+  Parcial: 1,
+  Metade: 2,
+};
+
+const EFEITO_COLATERAL_REDUCTION: Record<
+  "" | "Ocasional" | "Sempre",
+  number
+> = {
+  "": 0,
+  Ocasional: 1,
+  Sempre: 2,
+};
+
+const CONDICIONAL_REDUCTION: Record<"" | "Simples" | "Restrita", number> = {
+  "": 0,
+  Simples: 1,
+  Restrita: 2,
+};
+
+const getProgressiveStepCost = (steps: number, table: number[]): number => {
+  if (steps <= 0) {
+    return 0;
+  }
+
+  let total = 0;
+  for (let i = 0; i < steps; i += 1) {
+    total += table[Math.min(i, table.length - 1)];
+  }
+
+  return total;
+};
+
+const getAlcanceDeltaSignedCost = (
+  delta: DevelopedTechniqueModifierSet["alcanceDelta"],
+): number => {
+  const valor = Number.parseInt(delta, 10);
+  const bruto = getProgressiveStepCost(Math.abs(valor), [1, 1, 1, 2, 3]);
+  return valor >= 0 ? bruto : -bruto;
+};
+
+const getDuracaoDeltaSignedCost = (
+  delta: DevelopedTechniqueModifierSet["duracaoDelta"],
+): number => {
+  const valor = Number.parseInt(delta, 10);
+  const bruto = getProgressiveStepCost(Math.abs(valor), [1, 2]);
+  return valor >= 0 ? bruto : -bruto;
 };
 
 const createDevelopedTechniqueModifierDefaults =
   (): DevelopedTechniqueModifierSet => ({
-    bonusDano: "0",
-    bonusPrecisao: "0",
-    penetracao: "0",
+    aumentoDano: "0",
+    precisao: "0",
+    penetrante: "0",
     danoAmpliado: "0",
     ataqueMultiplo: "1",
+    efeitoSecundario: false,
+    incuravel: false,
+    contagioso: false,
     area: "",
     controleNivel: "",
     controleEstado: "",
     controleAtributoResistencia: "Vontade",
-    alcanceEtapas: "0",
-    duracao: "",
-    duracaoEstendida: false,
-    ativacaoRapida: "",
-    preparacao: "",
+    alcanceDelta: "0",
+    duracaoDelta: "0",
+    ativacaoAjuste: "",
+    exigeTurnoCompleto: false,
+    deslocamentoMetros: "0",
+    deslocamentoTipo: "",
+    seletivo: false,
+    indireto: "",
+    rastreamento: false,
+    ricochete: "0",
+    dividido: "",
+    alternativo: false,
     bonusDefesa: "0",
     reducaoDanoRecebido: "0",
-    absorcao: false,
+    absorcao: "0",
     reflexo: false,
-    limitacaoPerdeMovimento: false,
-    limitacaoCondicaoEspecifica: false,
-    limitacaoContatoDireto: false,
-    limitacaoAlvoEspecifico: false,
-    limitacaoUsoCena: false,
+    sutil: "",
+    traicoeiro: false,
+    preciso: false,
+    acaoAumentadaEtapas: "0",
+    preparacaoObrigatoria: "",
+    exigeTeste: "",
+    inconstante: "",
+    incontrolavel: false,
+    efeitoColateral: "",
+    cansativo: false,
+    retroalimentacao: false,
+    impreciso: false,
+    resistivel: false,
+    semMovimento: false,
+    condicional: "",
+    alvoRestrito: false,
+    recursoExterno: false,
     modificadorPersonalizadoNome: "",
     modificadorPersonalizadoCusto: "0",
   });
@@ -4168,6 +4347,8 @@ const createEmptyDevelopedTechniqueBasePower =
     id: crypto.randomUUID(),
     powerId: "",
     graduacao: "1",
+    danoSomaBase: false,
+    danoMetadeGrad: false,
   });
 
 const createDevelopedTechniqueDraft = (): DevelopedTechniqueDraft => ({
@@ -4180,8 +4361,251 @@ const createDevelopedTechniqueDraft = (): DevelopedTechniqueDraft => ({
   alvo: "1 criatura",
   duracao: "Instantanea",
   gatilho: "",
+  acerto: "",
+  dano: "",
   poderesBase: [createEmptyDevelopedTechniqueBasePower()],
   modificadores: createDevelopedTechniqueModifierDefaults(),
+});
+
+const TECHNIQUE_ACTION_OPTIONS = [
+  "Completa",
+  "Padrao",
+  "Movimento",
+  "Livre",
+  "Reacao",
+] as const;
+
+const TECHNIQUE_RANGE_OPTIONS = [
+  "Pessoal",
+  "Toque",
+  "3m",
+  "8m",
+  "15m",
+  "Percepcao",
+] as const;
+
+const TECHNIQUE_TARGET_OPTIONS = [
+  "Usuario",
+  "1 alvo",
+  "2 alvos",
+  "3 alvos",
+  "Todos na area",
+] as const;
+
+const TECHNIQUE_DURATION_OPTIONS = [
+  "Instantanea",
+  "Sustentado",
+  "Continuo",
+] as const;
+
+const TECHNIQUE_RANGE_PROGRESS = [
+  "Pessoal",
+  "Toque",
+  "3m",
+  "8m",
+  "15m",
+  "Percepcao",
+] as const;
+
+const TECHNIQUE_DURATION_PROGRESS = [
+  "Instantanea",
+  "Sustentado",
+  "Continuo",
+] as const;
+
+const TECHNIQUE_ACTION_PROGRESS = [
+  "Completa",
+  "Padrao",
+  "Movimento",
+  "Livre",
+  "Reacao",
+] as const;
+
+type TechniqueRangeProgress = (typeof TECHNIQUE_RANGE_PROGRESS)[number];
+type TechniqueDurationProgress = (typeof TECHNIQUE_DURATION_PROGRESS)[number];
+type TechniqueActionProgress = (typeof TECHNIQUE_ACTION_PROGRESS)[number];
+
+const formatSignedPe = (value: number): string =>
+  `${value >= 0 ? "+" : ""}${value} PE`;
+
+const getTechniqueTargetCost = (target: string): number => {
+  if (target === "2 alvos") {
+    return ATTACK_MULTIPLE_COST["2"];
+  }
+
+  if (target === "3 alvos") {
+    return ATTACK_MULTIPLE_COST["3"];
+  }
+
+  return 0;
+};
+
+const getTechniqueTargetFromMultipleAttacks = (
+  attackMultiple: DevelopedTechniqueModifierSet["ataqueMultiplo"],
+): string => {
+  if (attackMultiple === "2") {
+    return "2 alvos";
+  }
+
+  if (attackMultiple === "3") {
+    return "3 alvos";
+  }
+
+  return "1 alvo";
+};
+
+const normalizeRangeToProgress = (value: string): TechniqueRangeProgress | null => {
+  const normalized = value.toLowerCase();
+
+  if (normalized === "pessoal") return "Pessoal";
+  if (normalized === "toque" || normalized === "corpo a corpo") {
+    return "Toque";
+  }
+  if (normalized === "3m" || normalized === "perto") return "3m";
+  if (normalized === "8m") return "8m";
+  if (
+    normalized === "15m" ||
+    normalized === "distancia" ||
+    normalized === "a distancia" ||
+    normalized === "graduacao" ||
+    normalized === "area"
+  ) {
+    return "15m";
+  }
+  if (normalized === "percepcao") return "Percepcao";
+
+  return null;
+};
+
+const normalizeDurationToProgress = (
+  value: string,
+): TechniqueDurationProgress | null => {
+  const normalized = value.toLowerCase();
+
+  if (normalized === "instantanea") return "Instantanea";
+  if (normalized === "sustentado") return "Sustentado";
+  if (
+    normalized === "continuo" ||
+    normalized === "temporaria" ||
+    normalized === "permanente" ||
+    normalized === "variavel"
+  ) {
+    return "Continuo";
+  }
+
+  return null;
+};
+
+const normalizeActionToProgress = (value: string): TechniqueActionProgress | null => {
+  const normalized = value.toLowerCase();
+
+  if (normalized === "completa") return "Completa";
+  if (normalized === "padrao") return "Padrao";
+  if (normalized === "movimento") return "Movimento";
+  if (normalized === "livre") return "Livre";
+  if (normalized === "reacao") return "Reacao";
+  if (normalized === "nenhuma") return "Livre";
+
+  return null;
+};
+
+const getTechniqueSelectableAction = (value: string): string =>
+  normalizeActionToProgress(value) ?? "Padrao";
+
+const getTechniqueSelectableRange = (value: string): string =>
+  normalizeRangeToProgress(value) ?? "Toque";
+
+const getTechniqueSelectableDuration = (value: string): string =>
+  normalizeDurationToProgress(value) ?? "Instantanea";
+
+const getRangeSignedCostFromBase = (baseRange: string, targetRange: string): number => {
+  const base = normalizeRangeToProgress(baseRange);
+  const target = normalizeRangeToProgress(targetRange);
+  if (!base || !target) return 0;
+
+  const baseIndex = TECHNIQUE_RANGE_PROGRESS.indexOf(base);
+  const targetIndex = TECHNIQUE_RANGE_PROGRESS.indexOf(target);
+  const delta = targetIndex - baseIndex;
+  const deltaAsString = String(delta) as DevelopedTechniqueModifierSet["alcanceDelta"];
+
+  return getAlcanceDeltaSignedCost(deltaAsString);
+};
+
+const getDurationSignedCostFromBase = (
+  baseDuration: string,
+  targetDuration: string,
+): number => {
+  const base = normalizeDurationToProgress(baseDuration);
+  const target = normalizeDurationToProgress(targetDuration);
+  if (!base || !target) return 0;
+
+  const baseIndex = TECHNIQUE_DURATION_PROGRESS.indexOf(base);
+  const targetIndex = TECHNIQUE_DURATION_PROGRESS.indexOf(target);
+  const delta = targetIndex - baseIndex;
+  const deltaAsString = String(delta) as DevelopedTechniqueModifierSet["duracaoDelta"];
+
+  return getDuracaoDeltaSignedCost(deltaAsString);
+};
+
+const getActionSignedCostFromBase = (
+  baseAction: string,
+  targetAction: string,
+): number => {
+  const base = normalizeActionToProgress(baseAction);
+  const target = normalizeActionToProgress(targetAction);
+  if (!base || !target) return 0;
+
+  const baseIndex = TECHNIQUE_ACTION_PROGRESS.indexOf(base);
+  const targetIndex = TECHNIQUE_ACTION_PROGRESS.indexOf(target);
+
+  if (targetIndex === baseIndex) {
+    return 0;
+  }
+
+  if (targetIndex > baseIndex) {
+    let total = 0;
+    for (let i = baseIndex; i < targetIndex; i += 1) {
+      const currentStep = TECHNIQUE_ACTION_PROGRESS[i];
+      const nextStep = TECHNIQUE_ACTION_PROGRESS[i + 1];
+      total += currentStep === "Livre" && nextStep === "Reacao" ? 3 : 2;
+    }
+    return total;
+  }
+
+  return -(baseIndex - targetIndex);
+};
+
+const isTechniqueRanged = (alcance: string): boolean => {
+  const normalized = alcance.toLowerCase();
+  return (
+    normalized.includes("dist") ||
+    normalized.includes("percepc") ||
+    normalized.endsWith("m") ||
+    normalized.includes("area")
+  );
+};
+
+const getTechniqueTargetFromRange = (range: PowerRange): string => {
+  switch (range) {
+    case "Pessoal":
+      return "Usuario";
+    case "Toque":
+    case "Corpo a Corpo":
+      return "1 alvo";
+    case "Area":
+      return "Todos na area";
+    default:
+      return "1 alvo";
+  }
+};
+
+const getTechniqueCoreDefaultsFromPower = (
+  power: PowerDefinition,
+): Pick<DevelopedTechniqueDraft, "acao" | "alcance" | "duracao" | "alvo"> => ({
+  acao: getTechniqueSelectableAction(power.acao),
+  alcance: getTechniqueSelectableRange(power.alcance),
+  duracao: getTechniqueSelectableDuration(power.duracao),
+  alvo: getTechniqueTargetFromRange(power.alcance),
 });
 
 const ATTRIBUTE_PP_BY_DICE: Record<Dice, number> = {
@@ -5702,6 +6126,10 @@ function App() {
   const [tecnicaDraft, setTecnicaDraft] = useState<DevelopedTechniqueDraft>(
     () => restoredDraft?.tecnicaDraft ?? createDevelopedTechniqueDraft(),
   );
+  const tecnicaMods = {
+    ...createDevelopedTechniqueModifierDefaults(),
+    ...(tecnicaDraft.modificadores ?? {}),
+  };
 
   const selectedCharacter = useMemo(
     () => characters.find((character) => character.id === selectedId),
@@ -9194,72 +9622,166 @@ function App() {
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);
 
+  const tecnicaTemPoderBaseSelecionado = tecnicaBaseResolvida.length > 0;
+
   const tecnicaCustoBasePE = tecnicaBaseResolvida.reduce(
     (total, base) => total + base.custoBasePE,
     0,
   );
 
-  const tecnicaBonusDano = clamp(
-    parseNatural(tecnicaDraft.modificadores.bonusDano),
+  const tecnicaAumentoDano = clamp(
+    parseNatural(tecnicaMods.aumentoDano),
     0,
     5,
   );
-  const tecnicaBonusPrecisao = clamp(
-    parseNatural(tecnicaDraft.modificadores.bonusPrecisao),
+  const tecnicaPrecisao = Math.max(
     0,
-    3,
+    parseNatural(tecnicaMods.precisao),
   );
-  const tecnicaPenetracao = Math.max(
+  const tecnicaPenetrante = Math.max(
     0,
-    parseNatural(tecnicaDraft.modificadores.penetracao),
+    parseNatural(tecnicaMods.penetrante),
   );
   const tecnicaDanoAmpliado = Math.max(
     0,
-    parseNatural(tecnicaDraft.modificadores.danoAmpliado),
+    parseNatural(tecnicaMods.danoAmpliado),
   );
   const tecnicaBonusDefesa = clamp(
-    parseNatural(tecnicaDraft.modificadores.bonusDefesa),
+    parseNatural(tecnicaMods.bonusDefesa),
     0,
-    2,
+    5,
   );
   const tecnicaReducaoDano = clamp(
-    parseNatural(tecnicaDraft.modificadores.reducaoDanoRecebido),
+    parseNatural(tecnicaMods.reducaoDanoRecebido),
     0,
-    2,
+    5,
   );
+  const tecnicaAbsorcao = clamp(
+    parseNatural(tecnicaMods.absorcao),
+    0,
+    5,
+  );
+  const tecnicaDeslocamentoMetros = Math.max(
+    0,
+    parseNatural(tecnicaMods.deslocamentoMetros),
+  );
+  const tecnicaRicochete = Math.max(
+    0,
+    parseNatural(tecnicaMods.ricochete),
+  );
+
   const tecnicaCustomCusto = Number.parseInt(
-    tecnicaDraft.modificadores.modificadorPersonalizadoCusto,
+    tecnicaMods.modificadorPersonalizadoCusto,
     10,
   );
   const tecnicaCustomCustoNormalizado = Number.isFinite(tecnicaCustomCusto)
     ? tecnicaCustomCusto
     : 0;
 
+  const tecnicaPoderPrincipal = tecnicaBaseResolvida[0]?.power ?? null;
+  const tecnicaGraduacaoPrincipal = tecnicaBaseResolvida[0]?.graduacao ?? 0;
+  const tecnicaSomaDanoBase = tecnicaBaseResolvida[0]?.danoSomaBase ?? false;
+  const tecnicaMetadeGradNoDano =
+    tecnicaBaseResolvida[0]?.danoMetadeGrad ?? false;
+  const tecnicaEhAtaque = Boolean(
+    tecnicaPoderPrincipal?.tipo.includes("Ataque"),
+  );
+
+  const tecnicaBaseNucleo = tecnicaPoderPrincipal
+    ? getTechniqueCoreDefaultsFromPower(tecnicaPoderPrincipal)
+    : null;
+
+  const alcanceSigned = tecnicaBaseNucleo
+    ? getRangeSignedCostFromBase(tecnicaBaseNucleo.alcance, tecnicaDraft.alcance)
+    : 0;
+  const duracaoSigned = tecnicaBaseNucleo
+    ? getDurationSignedCostFromBase(
+        tecnicaBaseNucleo.duracao,
+        tecnicaDraft.duracao,
+      )
+    : 0;
+  const ativacaoSigned = tecnicaBaseNucleo
+    ? getActionSignedCostFromBase(tecnicaBaseNucleo.acao, tecnicaDraft.acao)
+    : 0;
+
+  const actionOptionsWithCost = TECHNIQUE_ACTION_OPTIONS.map((option) => ({
+    value: option,
+    cost: tecnicaBaseNucleo
+      ? getActionSignedCostFromBase(tecnicaBaseNucleo.acao, option)
+      : 0,
+  }));
+
+  const rangeOptionsWithCost = TECHNIQUE_RANGE_OPTIONS.map((option) => ({
+    value: option,
+    cost: tecnicaBaseNucleo
+      ? getRangeSignedCostFromBase(tecnicaBaseNucleo.alcance, option)
+      : 0,
+  }));
+
+  const durationOptionsWithCost = TECHNIQUE_DURATION_OPTIONS.map((option) => ({
+    value: option,
+    cost: tecnicaBaseNucleo
+      ? getDurationSignedCostFromBase(tecnicaBaseNucleo.duracao, option)
+      : 0,
+  }));
+
+  const tecnicaAreaAtiva = tecnicaMods.area !== "";
+  const targetOptionsWithCost = TECHNIQUE_TARGET_OPTIONS.map((option) => ({
+    value: option,
+    cost: getTechniqueTargetCost(option),
+    disabled: option === "Todos na area" && !tecnicaAreaAtiva,
+  }));
+
   const tecnicaCustoModificadoresPE =
-    tecnicaBonusDano * 2 +
-    getPrecisaoCost(tecnicaBonusPrecisao) +
-    tecnicaPenetracao * 2 +
+    tecnicaAumentoDano +
+    tecnicaPrecisao +
+    tecnicaPenetrante * 2 +
     tecnicaDanoAmpliado +
-    ATTACK_MULTIPLE_COST[tecnicaDraft.modificadores.ataqueMultiplo] +
-    AREA_COST[tecnicaDraft.modificadores.area] +
-    CONTROLE_COST[tecnicaDraft.modificadores.controleNivel] +
-    ALCANCE_ETAPAS_COST[tecnicaDraft.modificadores.alcanceEtapas] +
-    DURACAO_COST[tecnicaDraft.modificadores.duracao] +
-    (tecnicaDraft.modificadores.duracaoEstendida ? 2 : 0) +
-    QUICK_ACTIVATION_COST[tecnicaDraft.modificadores.ativacaoRapida] +
-    tecnicaBonusDefesa * 2 +
-    tecnicaReducaoDano * 2 +
-    (tecnicaDraft.modificadores.absorcao ? 3 : 0) +
-    (tecnicaDraft.modificadores.reflexo ? 2 : 0) +
-    tecnicaCustomCustoNormalizado;
+    ATTACK_MULTIPLE_COST[tecnicaMods.ataqueMultiplo] +
+    (tecnicaMods.efeitoSecundario ? 2 : 0) +
+    (tecnicaMods.incuravel ? 2 : 0) +
+    (tecnicaMods.contagioso ? 4 : 0) +
+    AREA_COST[tecnicaMods.area] +
+    CONTROLE_COST[tecnicaMods.controleNivel] +
+    Math.max(0, alcanceSigned) +
+    Math.max(0, duracaoSigned) +
+    Math.max(0, ativacaoSigned) +
+    Math.ceil(tecnicaDeslocamentoMetros / 2) +
+    (tecnicaMods.seletivo ? 2 : 0) +
+    INDIRETO_COST[tecnicaMods.indireto] +
+    (tecnicaMods.rastreamento ? 3 : 0) +
+    tecnicaRicochete +
+    DIVIDIDO_COST[tecnicaMods.dividido] +
+    (tecnicaMods.alternativo ? 1 : 0) +
+    tecnicaBonusDefesa +
+    tecnicaReducaoDano +
+    tecnicaAbsorcao * 2 +
+    (tecnicaMods.reflexo ? 2 : 0) +
+    SUTIL_COST[tecnicaMods.sutil] +
+    (tecnicaMods.traicoeiro ? 1 : 0) +
+    (tecnicaMods.preciso ? 1 : 0) +
+    Math.max(0, tecnicaCustomCustoNormalizado);
 
   const tecnicaReducoesPE =
-    PREPARATION_REDUCTION[tecnicaDraft.modificadores.preparacao] +
-    (tecnicaDraft.modificadores.limitacaoPerdeMovimento ? 1 : 0) +
-    (tecnicaDraft.modificadores.limitacaoCondicaoEspecifica ? 1 : 0) +
-    (tecnicaDraft.modificadores.limitacaoContatoDireto ? 1 : 0) +
-    (tecnicaDraft.modificadores.limitacaoAlvoEspecifico ? 1 : 0) +
-    (tecnicaDraft.modificadores.limitacaoUsoCena ? 1 : 0);
+    Math.abs(Math.min(0, alcanceSigned)) +
+    Math.abs(Math.min(0, duracaoSigned)) +
+    Math.abs(Math.min(0, ativacaoSigned)) +
+    (tecnicaMods.exigeTurnoCompleto ? 2 : 0) +
+    parseNatural(tecnicaMods.acaoAumentadaEtapas) +
+    PREPARACAO_OBRIGATORIA_REDUCTION[tecnicaMods.preparacaoObrigatoria] +
+    EXIGE_TESTE_REDUCTION[tecnicaMods.exigeTeste] +
+    INCONSTANTE_REDUCTION[tecnicaMods.inconstante] +
+    (tecnicaMods.incontrolavel ? 2 : 0) +
+    EFEITO_COLATERAL_REDUCTION[tecnicaMods.efeitoColateral] +
+    (tecnicaMods.cansativo ? 1 : 0) +
+    (tecnicaMods.retroalimentacao ? 3 : 0) +
+    (tecnicaMods.impreciso ? 1 : 0) +
+    (tecnicaMods.resistivel ? 1 : 0) +
+    (tecnicaMods.semMovimento ? 1 : 0) +
+    CONDICIONAL_REDUCTION[tecnicaMods.condicional] +
+    (tecnicaMods.alvoRestrito ? 1 : 0) +
+    (tecnicaMods.recursoExterno ? 1 : 0) +
+    Math.abs(Math.min(0, tecnicaCustomCustoNormalizado));
 
   const tecnicaAdicionalAplicadoPE = Math.max(
     0,
@@ -9269,9 +9791,46 @@ function App() {
     TECHNIQUE_ADDITIONAL_LIMIT_BY_TYPE[tecnicaDraft.tipo];
   const tecnicaExcedeLimite =
     tecnicaAdicionalAplicadoPE > tecnicaLimiteAdicional;
+  const tecnicaMargemAdicionalDisponivel = Math.max(
+    0,
+    tecnicaLimiteAdicional - tecnicaAdicionalAplicadoPE,
+  );
   const tecnicaCustoFinalPE = Math.max(
     1,
     tecnicaCustoBasePE + tecnicaCustoModificadoresPE - tecnicaReducoesPE,
+  );
+  const canIncreaseTechniqueCost = (currentCost: number, nextCost: number) =>
+    nextCost <= currentCost ||
+    nextCost - currentCost <= tecnicaMargemAdicionalDisponivel;
+  const currentActionCost =
+    actionOptionsWithCost.find((option) => option.value === tecnicaDraft.acao)
+      ?.cost ?? 0;
+  const currentRangeCost =
+    rangeOptionsWithCost.find((option) => option.value === tecnicaDraft.alcance)
+      ?.cost ?? 0;
+  const currentDurationCost =
+    durationOptionsWithCost.find((option) => option.value === tecnicaDraft.duracao)
+      ?.cost ?? 0;
+  const currentTargetCost = getTechniqueTargetCost(tecnicaDraft.alvo);
+  const currentAttackMultipleCost = ATTACK_MULTIPLE_COST[tecnicaMods.ataqueMultiplo];
+  const currentAreaCost = AREA_COST[tecnicaMods.area];
+  const currentControlCost = CONTROLE_COST[tecnicaMods.controleNivel];
+  const currentIndiretoCost = INDIRETO_COST[tecnicaMods.indireto];
+  const currentDivididoCost = DIVIDIDO_COST[tecnicaMods.dividido];
+  const currentSutilCost = SUTIL_COST[tecnicaMods.sutil];
+  const currentDeslocamentoCost = Math.ceil(tecnicaDeslocamentoMetros / 2);
+  const maxAumentoDano = Math.min(5, tecnicaAumentoDano + tecnicaMargemAdicionalDisponivel);
+  const maxPrecisao = tecnicaPrecisao + tecnicaMargemAdicionalDisponivel;
+  const maxPenetrante = tecnicaPenetrante + Math.floor(tecnicaMargemAdicionalDisponivel / 2);
+  const maxDanoAmpliado = tecnicaDanoAmpliado + tecnicaMargemAdicionalDisponivel;
+  const maxBonusDefesa = Math.min(5, tecnicaBonusDefesa + tecnicaMargemAdicionalDisponivel);
+  const maxReducaoDano = Math.min(5, tecnicaReducaoDano + tecnicaMargemAdicionalDisponivel);
+  const maxAbsorcao = Math.min(5, tecnicaAbsorcao + Math.floor(tecnicaMargemAdicionalDisponivel / 2));
+  const maxRicochete = tecnicaRicochete + tecnicaMargemAdicionalDisponivel;
+  const maxDeslocamentoMetros = (currentDeslocamentoCost + tecnicaMargemAdicionalDisponivel) * 2;
+  const maxCustomPositive = Math.max(
+    0,
+    Math.max(0, tecnicaCustomCustoNormalizado) + tecnicaMargemAdicionalDisponivel,
   );
 
   const tecnicaMaiorGraduacaoBase = tecnicaBaseResolvida.reduce(
@@ -9279,11 +9838,60 @@ function App() {
     0,
   );
   const tecnicaBonusDiretoBruto =
-    tecnicaBonusDano + tecnicaDanoAmpliado + tecnicaPenetracao;
+    tecnicaAumentoDano +
+    tecnicaPrecisao +
+    tecnicaPenetrante +
+    tecnicaDanoAmpliado;
   const tecnicaBonusDiretoAplicado = Math.min(
     tecnicaBonusDiretoBruto,
     tecnicaMaiorGraduacaoBase,
   );
+
+  const hasAcuidadeTecnica = selectedCharacter.vantagens.some(
+    (vantagem) => vantagem.catalogId === "acuidade",
+  );
+  const danoBaseAtributoTecnica = hasAcuidadeTecnica ? "Agilidade" : "Forca";
+  const danoBaseTecnica =
+    BONUS_BY_DICE[selectedCharacter.atributos[danoBaseAtributoTecnica]];
+
+  const tecnicaGradParaDano = tecnicaMetadeGradNoDano
+    ? Math.ceil(tecnicaGraduacaoPrincipal / 2)
+    : tecnicaGraduacaoPrincipal;
+  const tecnicaDanoSemBase = Math.max(0, tecnicaGradParaDano + tecnicaAumentoDano);
+  const tecnicaDanoTotal = tecnicaSomaDanoBase
+    ? tecnicaDanoSemBase + danoBaseTecnica
+    : tecnicaDanoSemBase;
+
+  const tecnicaUsaDisparo = isTechniqueRanged(tecnicaDraft.alcance);
+  const dadoAcertoTecnica = tecnicaUsaDisparo
+    ? selectedCharacter.combate.disparo
+    : selectedCharacter.combate.ataqueCac;
+  const penalidadeImpreciso = tecnicaMods.impreciso ? 2 : 0;
+  const dadoAcertoTexto = dadoAcertoTecnica === "-" ? "Sem dado" : dadoAcertoTecnica;
+  const tecnicaAcertoResumo = tecnicaEhAtaque
+    ? `1d20 + ${dadoAcertoTexto} (${tecnicaUsaDisparo ? "Disparo" : "CaC"}${tecnicaPrecisao > 0 ? ` | Precisao +${tecnicaPrecisao}` : ""}${penalidadeImpreciso > 0 ? " | Impreciso -2" : ""})`
+    : "Sem rolagem de ataque (tecnica nao ofensiva).";
+
+  const tecnicaDanoResumo = tecnicaEhAtaque
+    ? `${tecnicaDanoTotal} de dano${tecnicaSomaDanoBase ? ` (inclui dano base de ${danoBaseAtributoTecnica}: +${danoBaseTecnica})` : ""}${tecnicaMetadeGradNoDano ? " (graduacao reduzida a metade)" : ""}${tecnicaDanoAmpliado > 0 ? ` | dano ampliado: +${tecnicaDanoAmpliado}` : ""}${tecnicaMods.ataqueMultiplo !== "1" ? ` | ${tecnicaMods.ataqueMultiplo} ataques (dano dividido)` : ""}${tecnicaMods.area ? ` | area ${tecnicaMods.area} (penalidade por alvo adicional)` : ""}`
+    : "Sem dano de ataque automatico.";
+
+  useEffect(() => {
+    setTecnicaDraft((current) => {
+      if (
+        current.acerto === tecnicaAcertoResumo &&
+        current.dano === tecnicaDanoResumo
+      ) {
+        return current;
+      }
+
+      return {
+        ...current,
+        acerto: tecnicaAcertoResumo,
+        dano: tecnicaDanoResumo,
+      };
+    });
+  }, [tecnicaAcertoResumo, tecnicaDanoResumo]);
 
   const adicionarPoderBaseTecnica = () => {
     setTecnicaDraft((current) => ({
@@ -9302,6 +9910,19 @@ function App() {
         current.poderesBase.length <= 1
           ? current.poderesBase
           : current.poderesBase.filter((base) => base.id !== baseId),
+    }));
+  };
+
+  const atualizarModTecnica = <K extends keyof DevelopedTechniqueModifierSet>(
+    key: K,
+    value: DevelopedTechniqueModifierSet[K],
+  ) => {
+    setTecnicaDraft((current) => ({
+      ...current,
+      modificadores: {
+        ...current.modificadores,
+        [key]: value,
+      },
     }));
   };
 
@@ -9324,6 +9945,28 @@ function App() {
       return;
     }
 
+    const tecnicaAcquisitionComNova = getTechniqueAcquisitionState(nivelAtual, [
+      ...selectedCharacter.tecnicasDesenvolvidas,
+      { id: "__draft__", tipo: tecnicaDraft.tipo },
+    ]);
+
+    const custoPPAdicionalNovaTecnica =
+      tecnicaAcquisitionComNova.ppPagoTotal - tecnicaAcquisitionAtual.ppPagoTotal;
+
+    if (nivelAtual < 5 && custoPPAdicionalNovaTecnica > 0) {
+      toast.error(
+        "Ate o nivel 4, voce so pode cadastrar tecnicas dentro da progressao gratuita. No nivel 5+, novas tecnicas alem da progressao custam PP.",
+      );
+      return;
+    }
+
+    if (custoPPAdicionalNovaTecnica > 0 && ppRestante < custoPPAdicionalNovaTecnica) {
+      toast.error(
+        `PP insuficiente para adquirir a tecnica agora (custo adicional: ${custoPPAdicionalNovaTecnica} PP).`,
+      );
+      return;
+    }
+
     const tecnica: DevelopedTechnique = {
       id: crypto.randomUUID(),
       nome: nomeNormalizado,
@@ -9335,19 +9978,26 @@ function App() {
       alvo: tecnicaDraft.alvo.trim(),
       duracao: tecnicaDraft.duracao.trim(),
       gatilho: tecnicaDraft.gatilho.trim(),
+      acerto: tecnicaDraft.acerto.trim(),
+      dano: tecnicaDraft.dano.trim(),
       poderesBase: tecnicaBaseResolvida.map((base) => ({
         id: base.id,
         powerId: base.powerId,
         graduacao: String(base.graduacao),
+        danoSomaBase: base.danoSomaBase,
+        danoMetadeGrad: base.danoMetadeGrad,
       })),
       modificadores: {
         ...tecnicaDraft.modificadores,
-        bonusDano: String(tecnicaBonusDano),
-        bonusPrecisao: String(tecnicaBonusPrecisao),
-        penetracao: String(tecnicaPenetracao),
+        aumentoDano: String(tecnicaAumentoDano),
+        precisao: String(tecnicaPrecisao),
+        penetrante: String(tecnicaPenetrante),
         danoAmpliado: String(tecnicaDanoAmpliado),
         bonusDefesa: String(tecnicaBonusDefesa),
         reducaoDanoRecebido: String(tecnicaReducaoDano),
+        absorcao: String(tecnicaAbsorcao),
+        deslocamentoMetros: String(tecnicaDeslocamentoMetros),
+        ricochete: String(tecnicaRicochete),
         modificadorPersonalizadoCusto: String(tecnicaCustomCustoNormalizado),
       },
       custoBasePE: tecnicaCustoBasePE,
@@ -9562,6 +10212,12 @@ function App() {
     return total + custoBasePoder * multiplicadorNaipe;
   }, 0);
 
+  const tecnicaAcquisitionAtual = getTechniqueAcquisitionState(
+    nivel,
+    selectedCharacter.tecnicasDesenvolvidas,
+  );
+  const tecnicasDesenvolvidasSpent = tecnicaAcquisitionAtual.ppPagoTotal;
+
   const totalSpent =
     atributosSpent +
     combateSpent +
@@ -9569,9 +10225,10 @@ function App() {
     vantagensSpent +
     defesaSpent +
     tecnicasBasicasSpent +
-    poderesSpent;
+    poderesSpent +
+    tecnicasDesenvolvidasSpent;
 
-  const nivelAtual = parseNatural(selectedCharacter.nivel);
+  const nivelAtual = nivel;
   const totalPPDisponivel = TOTAL_PP + nivelAtual * 10;
   const ppRestante = totalPPDisponivel + desvantagensBonus - totalSpent;
   const catalogoPoderesLiberado = selectedCharacter.naipe !== "";
@@ -11557,153 +12214,87 @@ function App() {
               <section className="block tecnicas-dev-panel">
                 <h3>Desenvolvimento de Tecnicas</h3>
                 <div className="tecnicas-dev-intro">
-                  <p>
-                    Construa tecnicas a partir de poderes base e aplique
-                    modificadores/reducoes conforme o Capitulo 11. A tecnica e
-                    resolvida como uma unica acao.
-                  </p>
-                  <p>
-                    Custo de aquisicao por tipo: Primaria
-                    {` (${TECHNIQUE_PP_BY_TYPE.Primaria} PP)`}, Avancada
-                    {` (${TECHNIQUE_PP_BY_TYPE.Avancada} PP)`} e Especial
-                    {` (${TECHNIQUE_PP_BY_TYPE.Especial} PP)`}.
-                  </p>
-                </div>
+                  <div className="tecnicas-dev-guide-duo">
+                    <div className="tecnicas-dev-guide-card">
+                      <p className="tecnicas-dev-guide-title">
+                        Fluxo de criacao de tecnica
+                      </p>
+                      <ol className="tecnicas-dev-guide-list">
+                        <li>
+                          Escolha primeiro ao menos 1 Poder Base do seu
+                          arsenal.
+                        </li>
+                        <li>
+                          Defina nome, tipo e efeito da tecnica com base nesse
+                          poder.
+                        </li>
+                        <li>
+                          Aplique modificadores, limitacoes e falhas do
+                          Capitulo 12.
+                        </li>
+                        <li>
+                          Resolva tudo como uma unica acao durante o jogo.
+                        </li>
+                      </ol>
+                    </div>
 
-                <div className="tecnicas-dev-grid">
-                  <label>
-                    Nome da tecnica
-                    <input
-                      value={tecnicaDraft.nome}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          nome: event.target.value,
-                        }))
-                      }
-                      placeholder="Ex: Lamina Perfurante"
-                    />
-                  </label>
+                    <div className="tecnicas-dev-guide-card">
+                      <p className="tecnicas-dev-guide-title">
+                        Progressao gratuita obrigatoria (nivel 0 a 4)
+                      </p>
+                      <ul className="tecnicas-dev-guide-list">
+                        <li>Nivel 0: 2 Tecnicas Primarias gratis.</li>
+                        <li>Nivel 1: +1 Tecnica Primaria gratis.</li>
+                        <li>Nivel 2: +1 Tecnica Avancada gratis.</li>
+                        <li>
+                          Nivel 3: +1 Tecnica Primaria ou Avancada gratis.
+                        </li>
+                        <li>Nivel 4: +1 Tecnica Especial gratis.</li>
+                      </ul>
+                    </div>
+                  </div>
 
-                  <label>
-                    Tipo
-                    <select
-                      value={tecnicaDraft.tipo}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          tipo: event.target.value as DevelopedTechniqueType,
-                        }))
-                      }
-                    >
-                      <option value="Primaria">Primaria</option>
-                      <option value="Avancada">Avancada</option>
-                      <option value="Especial">Especial</option>
-                    </select>
-                  </label>
+                  <div className="tecnicas-dev-guide-card">
+                    <p className="tecnicas-dev-guide-title">
+                      Aquisicao a partir do nivel 5
+                    </p>
+                    <p className="tecnicas-dev-guide-note">
+                      Novas tecnicas alem das vagas gratuitas custam PP:
+                      Primaria {`(${TECHNIQUE_PP_BY_TYPE.Primaria} PP)`},
+                      Avancada {`(${TECHNIQUE_PP_BY_TYPE.Avancada} PP)`} e
+                      Especial {`(${TECHNIQUE_PP_BY_TYPE.Especial} PP)`}.
+                    </p>
+                    <p className="tecnicas-dev-guide-note">
+                      O sistema valida automaticamente se ainda existem vagas
+                      gratuitas antes de cobrar PP.
+                    </p>
+                  </div>
 
-                  <label>
-                    Acao
-                    <input
-                      value={tecnicaDraft.acao}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          acao: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-
-                  <label>
-                    Alcance
-                    <input
-                      value={tecnicaDraft.alcance}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          alcance: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-
-                  <label>
-                    Alvo
-                    <input
-                      value={tecnicaDraft.alvo}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          alvo: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-
-                  <label>
-                    Duracao
-                    <input
-                      value={tecnicaDraft.duracao}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          duracao: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                </div>
-
-                <div className="tecnicas-dev-textareas">
-                  <label>
-                    Conceito
-                    <textarea
-                      value={tecnicaDraft.conceito}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          conceito: event.target.value,
-                        }))
-                      }
-                      placeholder="Defina a intencao e identidade da tecnica."
-                    />
-                  </label>
-                  <label>
-                    Efeito completo
-                    <textarea
-                      value={tecnicaDraft.efeito}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          efeito: event.target.value,
-                        }))
-                      }
-                      placeholder="Descreva resolucao mecanica objetiva."
-                    />
-                  </label>
-                  <label>
-                    Gatilho / condicao
-                    <textarea
-                      value={tecnicaDraft.gatilho}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          gatilho: event.target.value,
-                        }))
-                      }
-                      placeholder="Opcional. Ex: exige preparacao."
-                    />
-                  </label>
+                  <div className="tecnicas-dev-status-row">
+                    <span className="tecnicas-dev-status-chip">
+                      Vagas usadas: {tecnicaAcquisitionAtual.freeTotalUsado}/
+                      {tecnicaAcquisitionAtual.freeTotalDisponivel}
+                    </span>
+                    <span className="tecnicas-dev-status-chip">
+                      Vagas restantes: {tecnicaAcquisitionAtual.freeRestante}
+                    </span>
+                  </div>
                 </div>
 
                 <section className="tecnicas-dev-subsection">
-                  <h4>Poderes Base</h4>
+                  <h4>Passo 1 - Poderes Base</h4>
+                  <p className="rule-note">
+                    O Poder #1 e a referencia principal da tecnica. A acao,
+                    duracao, alcance e alvo sao herdados dele automaticamente.
+                  </p>
                   {tecnicaDraft.poderesBase.map((base, index) => {
                     const selectedPowerData =
                       poderesDisponiveisParaTecnica.find(
                         (item) => item.power.id === base.powerId,
                       );
+                    const baseEhAtaque =
+                      index === 0 &&
+                      Boolean(selectedPowerData?.power.tipo.includes("Ataque"));
                     const displayGraduacao =
                       selectedPowerData?.graduacaoAtual ?? base.graduacao;
 
@@ -11719,20 +12310,50 @@ function App() {
                                 poderesDisponiveisParaTecnica.find(
                                   (item) => item.power.id === newPowerId,
                                 );
-                              setTecnicaDraft((current) => ({
-                                ...current,
-                                poderesBase: current.poderesBase.map((item) =>
-                                  item.id === base.id
-                                    ? {
-                                        ...item,
-                                        powerId: newPowerId,
-                                        graduacao: newPowerData
-                                          ? String(newPowerData.graduacaoAtual)
-                                          : item.graduacao,
-                                      }
-                                    : item,
-                                ),
-                              }));
+
+                              setTecnicaDraft((current) => {
+                                const poderesBaseAtualizados =
+                                  current.poderesBase.map((item) =>
+                                    item.id === base.id
+                                      ? {
+                                          ...item,
+                                          powerId: newPowerId,
+                                          graduacao: newPowerData
+                                            ? String(
+                                                newPowerData.graduacaoAtual,
+                                              )
+                                            : item.graduacao,
+                                          danoSomaBase: newPowerData
+                                            ? item.danoSomaBase
+                                            : false,
+                                          danoMetadeGrad: newPowerData
+                                            ? item.danoMetadeGrad
+                                            : false,
+                                        }
+                                      : item,
+                                  );
+
+                                const principalId =
+                                  current.poderesBase[0]?.id ?? "";
+
+                                if (!newPowerData || base.id !== principalId) {
+                                  return {
+                                    ...current,
+                                    poderesBase: poderesBaseAtualizados,
+                                  };
+                                }
+
+                                const defaults =
+                                  getTechniqueCoreDefaultsFromPower(
+                                    newPowerData.power,
+                                  );
+
+                                return {
+                                  ...current,
+                                  ...defaults,
+                                  poderesBase: poderesBaseAtualizados,
+                                };
+                              });
                             }}
                           >
                             <option value="">
@@ -11765,6 +12386,53 @@ function App() {
                         >
                           Remover
                         </button>
+
+                        {baseEhAtaque ? (
+                          <div className="tecnicas-dev-checks tecnica-dano-checks">
+                            <label>
+                              <input
+                                type="checkbox"
+                                checked={base.danoSomaBase}
+                                onChange={(event) =>
+                                  setTecnicaDraft((current) => ({
+                                    ...current,
+                                    poderesBase: current.poderesBase.map((item) =>
+                                      item.id === base.id
+                                        ? {
+                                            ...item,
+                                            danoSomaBase:
+                                              event.target.checked,
+                                          }
+                                        : item,
+                                    ),
+                                  }))
+                                }
+                              />
+                              Somar dano base ({danoBaseAtributoTecnica})
+                            </label>
+                            <label>
+                              <input
+                                type="checkbox"
+                                checked={base.danoMetadeGrad}
+                                onChange={(event) =>
+                                  setTecnicaDraft((current) => ({
+                                    ...current,
+                                    poderesBase: current.poderesBase.map((item) =>
+                                      item.id === base.id
+                                        ? {
+                                            ...item,
+                                            danoMetadeGrad:
+                                              event.target.checked,
+                                          }
+                                        : item,
+                                    ),
+                                  }))
+                                }
+                              />
+                              Metade da graduacao no dano
+                            </label>
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -11773,264 +12441,495 @@ function App() {
                   </button>
                 </section>
 
+                <div className="tecnicas-dev-grid">
+                  <label>
+                    Nome da tecnica
+                    <input
+                      disabled={!tecnicaTemPoderBaseSelecionado}
+                      value={tecnicaDraft.nome}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          nome: event.target.value,
+                        }))
+                      }
+                      placeholder="Ex: Lamina Perfurante"
+                    />
+                  </label>
+
+                  <label>
+                    Tipo
+                    <select
+                      disabled={!tecnicaTemPoderBaseSelecionado}
+                      value={tecnicaDraft.tipo}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          tipo: event.target.value as DevelopedTechniqueType,
+                        }))
+                      }
+                    >
+                      <option value="Primaria">Primaria</option>
+                      <option value="Avancada">Avancada</option>
+                      <option value="Especial">Especial</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    Acao
+                    <select
+                      disabled={!tecnicaTemPoderBaseSelecionado}
+                      value={tecnicaDraft.acao}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          acao: event.target.value,
+                        }))
+                      }
+                    >
+                      {actionOptionsWithCost.map((option) => (
+                        <option
+                          key={option.value}
+                          value={option.value}
+                          disabled={
+                            !canIncreaseTechniqueCost(currentActionCost, option.cost)
+                          }
+                        >
+                          {option.value} ({formatSignedPe(option.cost)})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    Alcance
+                    <select
+                      disabled={!tecnicaTemPoderBaseSelecionado}
+                      value={tecnicaDraft.alcance}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          alcance: event.target.value,
+                        }))
+                      }
+                    >
+                      {rangeOptionsWithCost.map((option) => (
+                        <option
+                          key={option.value}
+                          value={option.value}
+                          disabled={
+                            !canIncreaseTechniqueCost(currentRangeCost, option.cost)
+                          }
+                        >
+                          {option.value} ({formatSignedPe(option.cost)})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    Alvo
+                    <select
+                      disabled={!tecnicaTemPoderBaseSelecionado || tecnicaAreaAtiva}
+                      value={tecnicaDraft.alvo}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => {
+                          const nextTarget = event.target.value;
+
+                          return {
+                            ...current,
+                            alvo: nextTarget,
+                            modificadores: {
+                              ...current.modificadores,
+                              ataqueMultiplo:
+                                nextTarget === "2 alvos"
+                                  ? "2"
+                                  : nextTarget === "3 alvos"
+                                    ? "3"
+                                    : "1",
+                            },
+                          };
+                        })
+                      }
+                    >
+                      {targetOptionsWithCost.map((option) => (
+                        <option
+                          key={option.value}
+                          value={option.value}
+                          disabled={
+                            option.disabled ||
+                            !canIncreaseTechniqueCost(currentTargetCost, option.cost)
+                          }
+                        >
+                          {option.cost === 0
+                            ? option.value
+                            : `${option.value} (${formatSignedPe(option.cost)})`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    Duracao
+                    <select
+                      disabled={!tecnicaTemPoderBaseSelecionado}
+                      value={tecnicaDraft.duracao}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          duracao: event.target.value,
+                        }))
+                      }
+                    >
+                      {durationOptionsWithCost.map((option) => (
+                        <option
+                          key={option.value}
+                          value={option.value}
+                          disabled={
+                            !canIncreaseTechniqueCost(
+                              currentDurationCost,
+                              option.cost,
+                            )
+                          }
+                        >
+                          {option.value} ({formatSignedPe(option.cost)})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    Acerto da tecnica
+                    <input
+                      disabled={!tecnicaTemPoderBaseSelecionado}
+                      readOnly
+                      value={tecnicaDraft.acerto ?? ""}
+                    />
+                  </label>
+
+                  <label>
+                    Dano da tecnica
+                    <input
+                      disabled={!tecnicaTemPoderBaseSelecionado}
+                      readOnly
+                      value={tecnicaDraft.dano ?? ""}
+                    />
+                  </label>
+                </div>
+
+                <div className="tecnicas-dev-textareas">
+                  <label>
+                    Conceito
+                    <textarea
+                      disabled={!tecnicaTemPoderBaseSelecionado}
+                      value={tecnicaDraft.conceito}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          conceito: event.target.value,
+                        }))
+                      }
+                      placeholder="Defina a intencao e identidade da tecnica."
+                    />
+                  </label>
+                  <label>
+                    Efeito completo
+                    <textarea
+                      disabled={!tecnicaTemPoderBaseSelecionado}
+                      value={tecnicaDraft.efeito}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          efeito: event.target.value,
+                        }))
+                      }
+                      placeholder="Descreva resolucao mecanica objetiva."
+                    />
+                  </label>
+                  <label>
+                    Gatilho / condicao
+                    <textarea
+                      disabled={!tecnicaTemPoderBaseSelecionado}
+                      value={tecnicaDraft.gatilho}
+                      onChange={(event) =>
+                        setTecnicaDraft((current) => ({
+                          ...current,
+                          gatilho: event.target.value,
+                        }))
+                      }
+                      placeholder="Opcional. Ex: exige preparacao."
+                    />
+                  </label>
+                </div>
+
                 <section className="tecnicas-dev-subsection">
                   <h4>Modificadores e Reducoes</h4>
+                  <p className="rule-note">
+                    Capitulo 12: Custo Final = Custo Base + Modificadores -
+                    Limitacoes/Falhas. O limite de modificacao por tipo e
+                    aplicado antes das reducoes.
+                  </p>
+
+                  <h5>Ofensivos e Controle</h5>
                   <div className="tecnicas-dev-grid">
                     <label>
-                      +Dano (max 5)
+                      Aumento de dano (+1 PE por +1)
                       <NumericStepperInput
                         min={0}
-                        max={5}
-                        value={tecnicaDraft.modificadores.bonusDano}
-                        ariaLabel="Bonus de dano"
-                        onChange={(value) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              bonusDano: value,
-                            },
-                          }))
-                        }
+                        max={maxAumentoDano}
+                        value={tecnicaMods.aumentoDano}
+                        ariaLabel="Aumento de dano"
+                        onChange={(value) => atualizarModTecnica("aumentoDano", value)}
                       />
                     </label>
                     <label>
-                      Precisao (0 a 3)
+                      Precisao (+1 PE por +1)
                       <NumericStepperInput
                         min={0}
-                        max={3}
-                        value={tecnicaDraft.modificadores.bonusPrecisao}
-                        ariaLabel="Bonus de precisao"
-                        onChange={(value) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              bonusPrecisao: value,
-                            },
-                          }))
-                        }
+                        max={maxPrecisao}
+                        value={tecnicaMods.precisao}
+                        ariaLabel="Precisao"
+                        onChange={(value) => atualizarModTecnica("precisao", value)}
                       />
                     </label>
                     <label>
-                      Penetracao
+                      Penetrante (+2 PE por nivel)
                       <NumericStepperInput
                         min={0}
-                        value={tecnicaDraft.modificadores.penetracao}
-                        ariaLabel="Penetracao"
-                        onChange={(value) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              penetracao: value,
-                            },
-                          }))
-                        }
+                        max={maxPenetrante}
+                        value={tecnicaMods.penetrante}
+                        ariaLabel="Penetrante"
+                        onChange={(value) => atualizarModTecnica("penetrante", value)}
                       />
                     </label>
                     <label>
-                      Dano ampliado
+                      Dano ampliado (+1 PE por +1)
                       <NumericStepperInput
                         min={0}
-                        value={tecnicaDraft.modificadores.danoAmpliado}
+                        max={maxDanoAmpliado}
+                        value={tecnicaMods.danoAmpliado}
                         ariaLabel="Dano ampliado"
                         onChange={(value) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              danoAmpliado: value,
-                            },
-                          }))
+                          atualizarModTecnica("danoAmpliado", value)
                         }
                       />
-                    </label>
-                    <label>
-                      Ataque multiplo
-                      <select
-                        value={tecnicaDraft.modificadores.ataqueMultiplo}
-                        onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              ataqueMultiplo: event.target
-                                .value as DevelopedTechniqueModifierSet["ataqueMultiplo"],
-                            },
-                          }))
-                        }
-                      >
-                        <option value="1">1 ataque</option>
-                        <option value="2">2 ataques</option>
-                        <option value="3">3 ataques</option>
-                      </select>
                     </label>
                     <label>
                       Area
                       <select
-                        value={tecnicaDraft.modificadores.area}
+                        value={tecnicaMods.area}
                         onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              area: event.target
-                                .value as DevelopedTechniqueModifierSet["area"],
-                            },
-                          }))
+                          setTecnicaDraft((current) => {
+                            const nextArea = event.target
+                              .value as DevelopedTechniqueModifierSet["area"];
+
+                            return {
+                              ...current,
+                              alvo: nextArea
+                                ? "Todos na area"
+                                : getTechniqueTargetFromMultipleAttacks(
+                                    current.modificadores.ataqueMultiplo,
+                                  ),
+                              modificadores: {
+                                ...current.modificadores,
+                                ataqueMultiplo: nextArea
+                                  ? "1"
+                                  : current.modificadores.ataqueMultiplo,
+                                area: nextArea,
+                              },
+                            };
+                          })
                         }
                       >
                         <option value="">Sem area</option>
-                        <option value="3m">3m</option>
-                        <option value="5m">5m</option>
-                        <option value="10m">10m</option>
+                        <option
+                          value="3m"
+                          disabled={!canIncreaseTechniqueCost(currentAreaCost, 2)}
+                        >
+                          3m (+2 PE)
+                        </option>
+                        <option
+                          value="5m"
+                          disabled={!canIncreaseTechniqueCost(currentAreaCost, 3)}
+                        >
+                          5m (+3 PE)
+                        </option>
+                        <option
+                          value="10m"
+                          disabled={!canIncreaseTechniqueCost(currentAreaCost, 5)}
+                        >
+                          10m (+5 PE)
+                        </option>
                       </select>
                     </label>
                     <label>
                       Controle
                       <select
-                        value={tecnicaDraft.modificadores.controleNivel}
+                        value={tecnicaMods.controleNivel}
                         onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              controleNivel: event.target
-                                .value as DevelopedTechniqueModifierSet["controleNivel"],
-                            },
-                          }))
+                          atualizarModTecnica(
+                            "controleNivel",
+                            event.target
+                              .value as DevelopedTechniqueModifierSet["controleNivel"],
+                          )
                         }
                       >
                         <option value="">Sem controle</option>
-                        <option value="Leve">Leve</option>
-                        <option value="Moderado">Moderado</option>
-                        <option value="Forte">Forte</option>
+                        <option
+                          value="Leve"
+                          disabled={!canIncreaseTechniqueCost(currentControlCost, 1)}
+                        >
+                          Leve (+1 PE)
+                        </option>
+                        <option
+                          value="Moderado"
+                          disabled={!canIncreaseTechniqueCost(currentControlCost, 2)}
+                        >
+                          Moderado (+2 PE)
+                        </option>
+                        <option
+                          value="Forte"
+                          disabled={!canIncreaseTechniqueCost(currentControlCost, 3)}
+                        >
+                          Forte (+3 PE)
+                        </option>
                       </select>
                     </label>
+                    {!tecnicaAreaAtiva ? (
+                      <label>
+                        Ataque multiplo
+                        <select
+                          value={tecnicaMods.ataqueMultiplo}
+                          onChange={(event) =>
+                            setTecnicaDraft((current) => {
+                              const nextAttackMultiple = event.target
+                                .value as DevelopedTechniqueModifierSet["ataqueMultiplo"];
+
+                              return {
+                                ...current,
+                                alvo: getTechniqueTargetFromMultipleAttacks(
+                                  nextAttackMultiple,
+                                ),
+                                modificadores: {
+                                  ...current.modificadores,
+                                  ataqueMultiplo: nextAttackMultiple,
+                                },
+                              };
+                            })
+                          }
+                        >
+                          <option value="1">1 ataque (+0 PE)</option>
+                          <option
+                            value="2"
+                            disabled={
+                              !canIncreaseTechniqueCost(currentAttackMultipleCost, 1)
+                            }
+                          >
+                            2 ataques (+1 PE)
+                          </option>
+                          <option
+                            value="3"
+                            disabled={
+                              !canIncreaseTechniqueCost(currentAttackMultipleCost, 2)
+                            }
+                          >
+                            3 ataques (+2 PE)
+                          </option>
+                        </select>
+                      </label>
+                    ) : null}
                     <label>
-                      Estado de controle
-                      <input
-                        value={tecnicaDraft.modificadores.controleEstado}
-                        onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              controleEstado: event.target.value,
-                            },
-                          }))
+                      Deslocamento em metros ({formatSignedPe(currentDeslocamentoCost)} atual)
+                      <NumericStepperInput
+                        min={0}
+                        max={maxDeslocamentoMetros}
+                        value={tecnicaMods.deslocamentoMetros}
+                        ariaLabel="Deslocamento em metros"
+                        onChange={(value) =>
+                          atualizarModTecnica("deslocamentoMetros", value)
                         }
-                        placeholder="Ex: Imobilizado"
                       />
                     </label>
                     <label>
-                      Atributo de resistencia
+                      Tipo de deslocamento (custo definido pelos metros)
                       <select
-                        value={
-                          tecnicaDraft.modificadores.controleAtributoResistencia
-                        }
+                        value={tecnicaMods.deslocamentoTipo}
                         onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              controleAtributoResistencia: event.target
-                                .value as DevelopedTechniqueModifierSet["controleAtributoResistencia"],
-                            },
-                          }))
+                          atualizarModTecnica(
+                            "deslocamentoTipo",
+                            event.target
+                              .value as DevelopedTechniqueModifierSet["deslocamentoTipo"],
+                          )
                         }
                       >
-                        <option value="Forca">Forca</option>
-                        <option value="Agilidade">Agilidade</option>
-                        <option value="Vontade">Vontade</option>
+                        <option value="">Sem deslocamento</option>
+                        <option value="Empurrar">Empurrar</option>
+                        <option value="Puxar">Puxar</option>
+                        <option value="Reposicionar">Reposicionar</option>
+                        <option value="Movimento proprio">Movimento proprio</option>
                       </select>
                     </label>
                     <label>
-                      Etapas de alcance
+                      Indireto
                       <select
-                        value={tecnicaDraft.modificadores.alcanceEtapas}
+                        value={tecnicaMods.indireto}
                         onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              alcanceEtapas: event.target
-                                .value as DevelopedTechniqueModifierSet["alcanceEtapas"],
-                            },
-                          }))
+                          atualizarModTecnica(
+                            "indireto",
+                            event.target
+                              .value as DevelopedTechniqueModifierSet["indireto"],
+                          )
                         }
                       >
-                        <option value="0">Sem aumento</option>
-                        <option value="1">1 etapa</option>
-                        <option value="2">2 etapas</option>
-                        <option value="3">3 etapas</option>
-                        <option value="4">4 etapas</option>
-                      </select>
-                    </label>
-                    <label>
-                      Duracao
-                      <select
-                        value={tecnicaDraft.modificadores.duracao}
-                        onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              duracao: event.target
-                                .value as DevelopedTechniqueModifierSet["duracao"],
-                            },
-                          }))
-                        }
-                      >
-                        <option value="">Sem alteracao</option>
-                        <option value="Sustentada">
-                          Instantanea para Sustentada
+                        <option value="">Nao</option>
+                        <option
+                          value="Basico"
+                          disabled={!canIncreaseTechniqueCost(currentIndiretoCost, 2)}
+                        >
+                          Basico (+2 PE)
                         </option>
-                        <option value="Continua">
-                          Sustentada para Continua
+                        <option
+                          value="Avancado"
+                          disabled={!canIncreaseTechniqueCost(currentIndiretoCost, 4)}
+                        >
+                          Avancado (+4 PE)
                         </option>
                       </select>
                     </label>
                     <label>
-                      Ativacao rapida
-                      <select
-                        value={tecnicaDraft.modificadores.ativacaoRapida}
-                        onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              ativacaoRapida: event.target
-                                .value as DevelopedTechniqueModifierSet["ativacaoRapida"],
-                            },
-                          }))
-                        }
-                      >
-                        <option value="">Sem alteracao</option>
-                        <option value="Livre">Acao Livre</option>
-                        <option value="Reacao">Reacao</option>
-                      </select>
+                      Ricochete (desvios)
+                      <NumericStepperInput
+                        min={0}
+                        max={maxRicochete}
+                        value={tecnicaMods.ricochete}
+                        ariaLabel="Quantidade de desvios"
+                        onChange={(value) => atualizarModTecnica("ricochete", value)}
+                      />
                     </label>
                     <label>
-                      Preparacao
+                      Dividido
                       <select
-                        value={tecnicaDraft.modificadores.preparacao}
+                        value={tecnicaMods.dividido}
                         onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              preparacao: event.target
-                                .value as DevelopedTechniqueModifierSet["preparacao"],
-                            },
-                          }))
+                          atualizarModTecnica(
+                            "dividido",
+                            event.target
+                              .value as DevelopedTechniqueModifierSet["dividido"],
+                          )
                         }
                       >
-                        <option value="">Sem preparacao</option>
-                        <option value="preparacao">Exige preparacao</option>
-                        <option value="turno-completo">
-                          Exige 1 turno completo
+                        <option value="">Nao</option>
+                        <option
+                          value="2"
+                          disabled={!canIncreaseTechniqueCost(currentDivididoCost, 1)}
+                        >
+                          2 alvos (+1 PE)
+                        </option>
+                        <option
+                          value="3"
+                          disabled={!canIncreaseTechniqueCost(currentDivididoCost, 2)}
+                        >
+                          3 alvos (+2 PE)
                         </option>
                       </select>
                     </label>
@@ -12038,74 +12937,88 @@ function App() {
                       Defesa bonus
                       <NumericStepperInput
                         min={0}
-                        max={2}
-                        value={tecnicaDraft.modificadores.bonusDefesa}
-                        ariaLabel="Bonus de defesa"
+                        max={maxBonusDefesa}
+                        value={tecnicaMods.bonusDefesa}
+                        ariaLabel="Bonus em defesa"
+                        onChange={(value) => atualizarModTecnica("bonusDefesa", value)}
+                      />
+                    </label>
+                    <label>
+                      Reducao de dano
+                      <NumericStepperInput
+                        min={0}
+                        max={maxReducaoDano}
+                        value={tecnicaMods.reducaoDanoRecebido}
+                        ariaLabel="Reducao de dano"
                         onChange={(value) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              bonusDefesa: value,
-                            },
-                          }))
+                          atualizarModTecnica("reducaoDanoRecebido", value)
                         }
                       />
                     </label>
                     <label>
-                      Reducao dano recebido
+                      Absorcao convertida
                       <NumericStepperInput
                         min={0}
-                        max={2}
-                        value={tecnicaDraft.modificadores.reducaoDanoRecebido}
-                        ariaLabel="Reducao de dano recebido"
-                        onChange={(value) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              reducaoDanoRecebido: value,
-                            },
-                          }))
-                        }
+                        max={maxAbsorcao}
+                        value={tecnicaMods.absorcao}
+                        ariaLabel="Absorcao convertida"
+                        onChange={(value) => atualizarModTecnica("absorcao", value)}
                       />
+                    </label>
+                    <label>
+                      Sutil
+                      <select
+                        value={tecnicaMods.sutil}
+                        onChange={(event) =>
+                          atualizarModTecnica(
+                            "sutil",
+                            event.target.value as DevelopedTechniqueModifierSet["sutil"],
+                          )
+                        }
+                      >
+                        <option value="">Nao</option>
+                        <option
+                          value="Dificil"
+                          disabled={!canIncreaseTechniqueCost(currentSutilCost, 1)}
+                        >
+                          Dificil de perceber (+1)
+                        </option>
+                        <option
+                          value="Imperceptivel"
+                          disabled={!canIncreaseTechniqueCost(currentSutilCost, 2)}
+                        >
+                          Imperceptivel (+2)
+                        </option>
+                      </select>
                     </label>
                     <label>
                       Modificador personalizado (nome)
                       <input
                         value={
-                          tecnicaDraft.modificadores
-                            .modificadorPersonalizadoNome
+                          tecnicaDraft.modificadores.modificadorPersonalizadoNome
                         }
                         onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              modificadorPersonalizadoNome: event.target.value,
-                            },
-                          }))
+                          atualizarModTecnica(
+                            "modificadorPersonalizadoNome",
+                            event.target.value,
+                          )
                         }
-                        placeholder="Ex: Ruido ritual"
+                        placeholder="Ex: Ajuste narrativo"
                       />
                     </label>
                     <label>
                       Modificador personalizado (PE)
                       <input
                         type="number"
-                        value={
-                          tecnicaDraft.modificadores
-                            .modificadorPersonalizadoCusto
-                        }
+                        max={maxCustomPositive}
+                        value={tecnicaMods.modificadorPersonalizadoCusto}
                         onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              modificadorPersonalizadoCusto: event.target.value,
-                            },
-                          }))
+                          atualizarModTecnica(
+                            "modificadorPersonalizadoCusto",
+                            event.target.value,
+                          )
                         }
+                        placeholder="Pode ser negativo"
                       />
                     </label>
                   </div>
@@ -12114,31 +13027,94 @@ function App() {
                     <label>
                       <input
                         type="checkbox"
-                        checked={tecnicaDraft.modificadores.absorcao}
+                        checked={tecnicaMods.efeitoSecundario}
+                        disabled={
+                          !tecnicaMods.efeitoSecundario &&
+                          !canIncreaseTechniqueCost(0, 2)
+                        }
                         onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              absorcao: event.target.checked,
-                            },
-                          }))
+                          atualizarModTecnica("efeitoSecundario", event.target.checked)
                         }
                       />
-                      Absorcao (+3 PE)
+                      Efeito secundario (+2 PE)
                     </label>
                     <label>
                       <input
                         type="checkbox"
-                        checked={tecnicaDraft.modificadores.reflexo}
+                        checked={tecnicaMods.incuravel}
+                        disabled={
+                          !tecnicaMods.incuravel && !canIncreaseTechniqueCost(0, 2)
+                        }
                         onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              reflexo: event.target.checked,
-                            },
-                          }))
+                          atualizarModTecnica("incuravel", event.target.checked)
+                        }
+                      />
+                      Incuravel (+2 PE)
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={tecnicaMods.contagioso}
+                        disabled={
+                          !tecnicaMods.contagioso &&
+                          !canIncreaseTechniqueCost(0, 4)
+                        }
+                        onChange={(event) =>
+                          atualizarModTecnica("contagioso", event.target.checked)
+                        }
+                      />
+                      Contagioso (+4 PE)
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={tecnicaMods.seletivo}
+                        disabled={
+                          !tecnicaMods.seletivo && !canIncreaseTechniqueCost(0, 2)
+                        }
+                        onChange={(event) =>
+                          atualizarModTecnica("seletivo", event.target.checked)
+                        }
+                      />
+                      Seletivo (+2 PE)
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={tecnicaMods.rastreamento}
+                        disabled={
+                          !tecnicaMods.rastreamento &&
+                          !canIncreaseTechniqueCost(0, 3)
+                        }
+                        onChange={(event) =>
+                          atualizarModTecnica("rastreamento", event.target.checked)
+                        }
+                      />
+                      Rastreamento (+3 PE)
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={tecnicaMods.alternativo}
+                        disabled={
+                          !tecnicaMods.alternativo &&
+                          !canIncreaseTechniqueCost(0, 1)
+                        }
+                        onChange={(event) =>
+                          atualizarModTecnica("alternativo", event.target.checked)
+                        }
+                      />
+                      Alternativo (+1 PE)
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={tecnicaMods.reflexo}
+                        disabled={
+                          !tecnicaMods.reflexo && !canIncreaseTechniqueCost(0, 2)
+                        }
+                        onChange={(event) =>
+                          atualizarModTecnica("reflexo", event.target.checked)
                         }
                       />
                       Reflexo (+2 PE)
@@ -12146,106 +13122,229 @@ function App() {
                     <label>
                       <input
                         type="checkbox"
-                        checked={tecnicaDraft.modificadores.duracaoEstendida}
+                        checked={tecnicaMods.traicoeiro}
+                        disabled={
+                          !tecnicaMods.traicoeiro &&
+                          !canIncreaseTechniqueCost(0, 1)
+                        }
                         onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              duracaoEstendida: event.target.checked,
-                            },
-                          }))
+                          atualizarModTecnica("traicoeiro", event.target.checked)
                         }
                       />
-                      Duracao estendida (+2 PE)
+                      Traicoeiro (+1 PE)
                     </label>
                     <label>
                       <input
                         type="checkbox"
-                        checked={
-                          tecnicaDraft.modificadores.limitacaoPerdeMovimento
+                        checked={tecnicaMods.preciso}
+                        disabled={
+                          !tecnicaMods.preciso && !canIncreaseTechniqueCost(0, 1)
                         }
                         onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              limitacaoPerdeMovimento: event.target.checked,
-                            },
-                          }))
+                          atualizarModTecnica("preciso", event.target.checked)
                         }
                       />
-                      Perde acao de movimento (-1 PE)
+                      Preciso (+1 PE)
+                    </label>
+                  </div>
+
+                  <h5>Falhas e Limitacoes</h5>
+                  <div className="tecnicas-dev-grid">
+                    <label>
+                      Acao aumentada (etapas)
+                      <select
+                        value={tecnicaDraft.modificadores.acaoAumentadaEtapas}
+                        onChange={(event) =>
+                          atualizarModTecnica(
+                            "acaoAumentadaEtapas",
+                            event.target
+                              .value as DevelopedTechniqueModifierSet["acaoAumentadaEtapas"],
+                          )
+                        }
+                      >
+                        <option value="0">Sem falha</option>
+                        <option value="1">+1 etapa lenta (-1)</option>
+                        <option value="2">+2 etapas lentas (-2)</option>
+                        <option value="3">+3 etapas lentas (-3)</option>
+                      </select>
+                    </label>
+                    <label>
+                      Preparacao obrigatoria
+                      <select
+                        value={tecnicaDraft.modificadores.preparacaoObrigatoria}
+                        onChange={(event) =>
+                          atualizarModTecnica(
+                            "preparacaoObrigatoria",
+                            event.target
+                              .value as DevelopedTechniqueModifierSet["preparacaoObrigatoria"],
+                          )
+                        }
+                      >
+                        <option value="">Nao</option>
+                        <option value="Movimento">Movimento (-1)</option>
+                        <option value="Padrao">Padrao (-2)</option>
+                      </select>
+                    </label>
+                    <label>
+                      Exige teste
+                      <select
+                        value={tecnicaDraft.modificadores.exigeTeste}
+                        onChange={(event) =>
+                          atualizarModTecnica(
+                            "exigeTeste",
+                            event.target
+                              .value as DevelopedTechniqueModifierSet["exigeTeste"],
+                          )
+                        }
+                      >
+                        <option value="">Nao</option>
+                        <option value="Simples">Simples (-1)</option>
+                        <option value="Dificil">Dificil (-2)</option>
+                      </select>
+                    </label>
+                    <label>
+                      Inconstante
+                      <select
+                        value={tecnicaDraft.modificadores.inconstante}
+                        onChange={(event) =>
+                          atualizarModTecnica(
+                            "inconstante",
+                            event.target
+                              .value as DevelopedTechniqueModifierSet["inconstante"],
+                          )
+                        }
+                      >
+                        <option value="">Nao</option>
+                        <option value="Parcial">Parcial (-1)</option>
+                        <option value="Metade">Metade do tempo (-2)</option>
+                      </select>
+                    </label>
+                    <label>
+                      Efeito colateral
+                      <select
+                        value={tecnicaDraft.modificadores.efeitoColateral}
+                        onChange={(event) =>
+                          atualizarModTecnica(
+                            "efeitoColateral",
+                            event.target
+                              .value as DevelopedTechniqueModifierSet["efeitoColateral"],
+                          )
+                        }
+                      >
+                        <option value="">Nao</option>
+                        <option value="Ocasional">Ocasional (-1)</option>
+                        <option value="Sempre">Sempre (-2)</option>
+                      </select>
+                    </label>
+                    <label>
+                      Condicional
+                      <select
+                        value={tecnicaDraft.modificadores.condicional}
+                        onChange={(event) =>
+                          atualizarModTecnica(
+                            "condicional",
+                            event.target
+                              .value as DevelopedTechniqueModifierSet["condicional"],
+                          )
+                        }
+                      >
+                        <option value="">Nao</option>
+                        <option value="Simples">Simples (-1)</option>
+                        <option value="Restrita">Restrita (-2)</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="tecnicas-dev-checks">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={tecnicaDraft.modificadores.exigeTurnoCompleto}
+                        onChange={(event) =>
+                          atualizarModTecnica("exigeTurnoCompleto", event.target.checked)
+                        }
+                      />
+                      Exige 1 turno completo (-2)
                     </label>
                     <label>
                       <input
                         type="checkbox"
-                        checked={
-                          tecnicaDraft.modificadores.limitacaoCondicaoEspecifica
-                        }
+                        checked={tecnicaDraft.modificadores.incontrolavel}
                         onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              limitacaoCondicaoEspecifica: event.target.checked,
-                            },
-                          }))
+                          atualizarModTecnica("incontrolavel", event.target.checked)
                         }
                       />
-                      Exige condicao especifica (-1 PE)
+                      Incontrolavel (-2)
                     </label>
                     <label>
                       <input
                         type="checkbox"
-                        checked={
-                          tecnicaDraft.modificadores.limitacaoContatoDireto
-                        }
+                        checked={tecnicaDraft.modificadores.cansativo}
                         onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              limitacaoContatoDireto: event.target.checked,
-                            },
-                          }))
+                          atualizarModTecnica("cansativo", event.target.checked)
                         }
                       />
-                      Exige contato direto (-1 PE)
+                      Cansativo (-1)
                     </label>
                     <label>
                       <input
                         type="checkbox"
-                        checked={
-                          tecnicaDraft.modificadores.limitacaoAlvoEspecifico
-                        }
+                        checked={tecnicaDraft.modificadores.retroalimentacao}
                         onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              limitacaoAlvoEspecifico: event.target.checked,
-                            },
-                          }))
+                          atualizarModTecnica("retroalimentacao", event.target.checked)
                         }
                       />
-                      So funciona contra alvo especifico (-1 PE)
+                      Retroalimentacao (-3)
                     </label>
                     <label>
                       <input
                         type="checkbox"
-                        checked={tecnicaDraft.modificadores.limitacaoUsoCena}
+                        checked={tecnicaDraft.modificadores.impreciso}
                         onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            modificadores: {
-                              ...current.modificadores,
-                              limitacaoUsoCena: event.target.checked,
-                            },
-                          }))
+                          atualizarModTecnica("impreciso", event.target.checked)
                         }
                       />
-                      Uso limitado por cena (-1 PE)
+                      Impreciso (-1)
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={tecnicaDraft.modificadores.resistivel}
+                        onChange={(event) =>
+                          atualizarModTecnica("resistivel", event.target.checked)
+                        }
+                      />
+                      Resistivel (-1)
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={tecnicaDraft.modificadores.semMovimento}
+                        onChange={(event) =>
+                          atualizarModTecnica("semMovimento", event.target.checked)
+                        }
+                      />
+                      Sem movimento (-1)
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={tecnicaDraft.modificadores.alvoRestrito}
+                        onChange={(event) =>
+                          atualizarModTecnica("alvoRestrito", event.target.checked)
+                        }
+                      />
+                      Alvo restrito (-1)
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={tecnicaDraft.modificadores.recursoExterno}
+                        onChange={(event) =>
+                          atualizarModTecnica("recursoExterno", event.target.checked)
+                        }
+                      />
+                      Recurso externo (-1)
                     </label>
                   </div>
                 </section>
@@ -12268,6 +13367,10 @@ function App() {
                     {` (limite ${tecnicaDraft.tipo}: +${tecnicaLimiteAdicional})`}
                   </p>
                   <p>
+                    <strong>Margem restante:</strong> +
+                    {tecnicaMargemAdicionalDisponivel} PE
+                  </p>
+                  <p>
                     <strong>Custo Final:</strong> {tecnicaCustoFinalPE} PE
                   </p>
                   <p>
@@ -12282,7 +13385,13 @@ function App() {
                       {tecnicaDraft.tipo}.
                     </p>
                   ) : null}
-                  <button type="button" onClick={salvarTecnicaDesenvolvida}>
+                  <button
+                    type="button"
+                    onClick={salvarTecnicaDesenvolvida}
+                    disabled={
+                      tecnicaExcedeLimite || !Number.isFinite(tecnicaCustoFinalPE)
+                    }
+                  >
                     Cadastrar tecnica
                   </button>
                 </section>
@@ -12300,13 +13409,25 @@ function App() {
                             className="tecnica-dev-item"
                           >
                             <div>
+                              {(() => {
+                                const tecnicaEhGratuita =
+                                  tecnicaAcquisitionAtual.freeIds.has(tecnica.id);
+                                return (
+                                  <span>
+                                    Aquisicao: {tecnicaEhGratuita
+                                      ? "Gratuita"
+                                      : `${TECHNIQUE_PP_BY_TYPE[tecnica.tipo]} PP`}
+                                  </span>
+                                );
+                              })()}
                               <strong>
                                 {tecnica.nome} ({tecnica.tipo})
                               </strong>
                               <span>
-                                Custo: {tecnica.custoFinalPE} PE | Aquisicao:{" "}
-                                {TECHNIQUE_PP_BY_TYPE[tecnica.tipo]} PP
+                                Custo: {tecnica.custoFinalPE} PE
                               </span>
+                              <span>Acerto: {tecnica.acerto ?? "-"}</span>
+                              <span>Dano: {tecnica.dano ?? "-"}</span>
                               <span>
                                 Base: {tecnica.custoBasePE} | Mods: +
                                 {tecnica.custoModificadoresPE} | Reducoes: -
