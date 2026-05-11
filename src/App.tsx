@@ -9081,6 +9081,14 @@ function App() {
     });
   }, [tecnicaAutoEfeitoLinhas]);
 
+  useEffect(
+    () => () => {
+      clearQuickSheetRollInterval();
+      clearQuickSheetRevealTimeouts();
+    },
+    [],
+  );
+
   if (!selectedCharacter) {
     return (
       <>
@@ -11161,14 +11169,6 @@ function App() {
     setQuickSheetRollModalOpen(false);
     setQuickSheetRollContext(null);
   };
-
-  useEffect(
-    () => () => {
-      clearQuickSheetRollInterval();
-      clearQuickSheetRevealTimeouts();
-    },
-    [],
-  );
 
   const getQuickSheetDiePoints = (die: Dice | "D20"): string | null => {
     if (die === "D20") {
