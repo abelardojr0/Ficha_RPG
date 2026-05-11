@@ -7,14 +7,15 @@
   type FormEvent,
 } from "react";
 import { ToastContainer, toast } from "react-toastify";
-import { FaWeightHanging } from "react-icons/fa6";
-import { GiRollingEnergy, GiWalkingBoot, GiScrollQuill } from "react-icons/gi";
+import { FaShieldHalved, FaWeightHanging } from "react-icons/fa6";
+import { GiRollingEnergy, GiScrollQuill, GiWalkingBoot } from "react-icons/gi";
 import {
   MdOutlineAddPhotoAlternate,
   MdCheckBox,
   MdCheckBoxOutlineBlank,
   MdBolt,
   MdCallSplit,
+  MdOutlineShield,
 } from "react-icons/md";
 import { IoMdHeartHalf } from "react-icons/io";
 import "react-toastify/dist/ReactToastify.css";
@@ -159,6 +160,8 @@ type DevelopedTechniqueModifierSet = {
   precisao: string;
   penetrante: string;
   danoAmpliado: string;
+  criticoAprimorado: string;
+  danoContinuo: string;
   ataqueMultiplo: "1" | "2" | "3";
   efeitoSecundario: boolean;
   incuravel: boolean;
@@ -201,8 +204,6 @@ type DevelopedTechniqueModifierSet = {
   indireto: "" | "Basico" | "Avancado";
   rastreamento: boolean;
   ricochete: string;
-  dividido: "" | "2" | "3";
-  alternativo: boolean;
   bonusDefesa: string;
   reducaoDanoRecebido: string;
   absorcao: string;
@@ -219,7 +220,6 @@ type DevelopedTechniqueModifierSet = {
   cansativo: boolean;
   retroalimentacao: boolean;
   impreciso: boolean;
-  resistivel: boolean;
   semMovimento: boolean;
   condicional: "" | "Simples" | "Restrita";
   alvoRestrito: boolean;
@@ -715,14 +715,24 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     efeito: "Sofre -3 em Defesa para receber +3 no ataque.",
   },
   {
+    id: "ofensiva-total",
+    nome: "Ofensiva Total",
+    categoria: "Combate",
+    temGraduacao: false,
+    custoPorGraduacao: 3,
+    resumo: "-3 em Defesa para +3 no dano direto (1 vez por turno).",
+    efeito:
+      "Ao realizar ataque que cause dano direto, pode sofrer -3 em Defesa ate o inicio do proximo turno para receber +3 no dano. Declarar antes da rolagem. Nao combina com outras habilidades que alterem dano e Defesa ao mesmo tempo e nao pode ser usada mais de 1 vez por turno.",
+  },
+  {
     id: "critico-aprimorado",
     nome: "Critico Aprimorado",
     categoria: "Combate",
     temGraduacao: true,
     custoPorGraduacao: 4,
-    resumo: "+1 no alcance critico por graduacao (max 3 grads, ate 17-20).",
+    resumo: "+1 no alcance critico por graduacao, ate 17-20.",
     efeito:
-      "Aumenta alcance critico em +1 por graduacao. Limite de 3 graduacoes (alcance 17-20).",
+      "Cada graduacao aumenta em +1 o alcance de critico (20, 19-20, 18-20...). O alcance nao pode ultrapassar 17-20 e nao se acumula com outros efeitos que tentem ampliar esse intervalo acima desse limite. Aplica-se apenas a ataques que possam gerar critico.",
   },
   {
     id: "acuidade",
@@ -4230,12 +4240,6 @@ const INDIRETO_COST: Record<"" | "Basico" | "Avancado", number> = {
   Avancado: 4,
 };
 
-const DIVIDIDO_COST: Record<"" | "2" | "3", number> = {
-  "": 0,
-  "2": 1,
-  "3": 2,
-};
-
 const SUTIL_COST: Record<"" | "Dificil" | "Imperceptivel", number> = {
   "": 0,
   Dificil: 1,
@@ -4253,21 +4257,21 @@ const PREPARACAO_OBRIGATORIA_REDUCTION: Record<
 
 const EXIGE_TESTE_REDUCTION: Record<"" | "Simples" | "Dificil", number> = {
   "": 0,
-  Simples: 1,
-  Dificil: 2,
+  Simples: 2,
+  Dificil: 3,
 };
 
 const INCONSTANTE_REDUCTION: Record<"" | "Parcial" | "Metade", number> = {
   "": 0,
-  Parcial: 1,
-  Metade: 2,
+  Parcial: 2,
+  Metade: 4,
 };
 
 const EFEITO_COLATERAL_REDUCTION: Record<"" | "Ocasional" | "Sempre", number> =
   {
     "": 0,
-    Ocasional: 1,
-    Sempre: 2,
+    Ocasional: 2,
+    Sempre: 3,
   };
 
 const CONDICIONAL_REDUCTION: Record<"" | "Simples" | "Restrita", number> = {
@@ -4311,6 +4315,8 @@ const createDevelopedTechniqueModifierDefaults =
     precisao: "0",
     penetrante: "0",
     danoAmpliado: "0",
+    criticoAprimorado: "0",
+    danoContinuo: "0",
     ataqueMultiplo: "1",
     efeitoSecundario: false,
     incuravel: false,
@@ -4329,8 +4335,6 @@ const createDevelopedTechniqueModifierDefaults =
     indireto: "",
     rastreamento: false,
     ricochete: "0",
-    dividido: "",
-    alternativo: false,
     bonusDefesa: "0",
     reducaoDanoRecebido: "0",
     absorcao: "0",
@@ -4347,7 +4351,6 @@ const createDevelopedTechniqueModifierDefaults =
     cansativo: false,
     retroalimentacao: false,
     impreciso: false,
-    resistivel: false,
     semMovimento: false,
     condicional: "",
     alvoRestrito: false,
@@ -4380,6 +4383,268 @@ const createDevelopedTechniqueDraft = (): DevelopedTechniqueDraft => ({
   poderesBase: [createEmptyDevelopedTechniqueBasePower()],
   modificadores: createDevelopedTechniqueModifierDefaults(),
 });
+
+const AUTO_TECHNIQUE_EFFECT_BLOCK_START = "-----";
+const AUTO_TECHNIQUE_EFFECT_BLOCK_END = "_____";
+const LEGACY_AUTO_TECHNIQUE_EFFECT_BLOCK_START =
+  "[AUTO_EFEITOS_TECNICA_INICIO]";
+const LEGACY_AUTO_TECHNIQUE_EFFECT_BLOCK_END = "[AUTO_EFEITOS_TECNICA_FIM]";
+
+const upsertTechniqueAutoEffectBlock = (
+  currentText: string,
+  autoLines: string[],
+): string => {
+  const removeDelimitedBlock = (
+    text: string,
+    startMarker: string,
+    endMarker: string,
+  ) => {
+    const start = text.indexOf(startMarker);
+    const end = text.indexOf(endMarker);
+    if (start >= 0 && end > start) {
+      return `${text.slice(0, start)}${text.slice(end + endMarker.length)}`;
+    }
+    return text;
+  };
+
+  const startIndex = currentText.indexOf(AUTO_TECHNIQUE_EFFECT_BLOCK_START);
+  const endIndex = currentText.indexOf(AUTO_TECHNIQUE_EFFECT_BLOCK_END);
+
+  let manualText = currentText;
+  if (startIndex >= 0 && endIndex > startIndex) {
+    manualText = `${currentText.slice(0, startIndex)}${currentText.slice(endIndex + AUTO_TECHNIQUE_EFFECT_BLOCK_END.length)}`;
+  }
+
+  manualText = removeDelimitedBlock(
+    manualText,
+    LEGACY_AUTO_TECHNIQUE_EFFECT_BLOCK_START,
+    LEGACY_AUTO_TECHNIQUE_EFFECT_BLOCK_END,
+  );
+
+  manualText = manualText
+    .split("\n")
+    .filter(
+      (line) =>
+        line.trim() !== "----------" &&
+        line.trim() !== "Efeitos automaticos (modificadores/falhas):",
+    )
+    .join("\n");
+
+  const manualNormalized = manualText.trim();
+
+  if (autoLines.length === 0) {
+    return manualNormalized;
+  }
+
+  const autoBlock = [
+    AUTO_TECHNIQUE_EFFECT_BLOCK_START,
+    ...autoLines.map((line) => `- ${line}`),
+    AUTO_TECHNIQUE_EFFECT_BLOCK_END,
+  ].join("\n");
+
+  return manualNormalized ? `${manualNormalized}\n\n${autoBlock}` : autoBlock;
+};
+
+const buildTechniqueAutoEffectLines = (
+  mods: DevelopedTechniqueModifierSet,
+  alcance: string,
+): string[] => {
+  const lines: string[] = [];
+
+  const penetrante = clamp(parseNatural(mods.penetrante), 0, 5);
+  const deslocamentoMetros = clamp(
+    parseNatural(mods.deslocamentoMetros),
+    0,
+    10,
+  );
+  const ricochete = clamp(parseNatural(mods.ricochete), 0, 1);
+  const bonusDefesa = clamp(parseNatural(mods.bonusDefesa), 0, 5);
+  const reducaoDano = clamp(parseNatural(mods.reducaoDanoRecebido), 0, 5);
+  const absorcao = clamp(parseNatural(mods.absorcao), 0, 5);
+  const customCusto = Number.parseInt(mods.modificadorPersonalizadoCusto, 10);
+  const customCustoNormalizado = Number.isFinite(customCusto) ? customCusto : 0;
+
+  if (penetrante > 0) {
+    lines.push(
+      `Penetrante ${penetrante}: reduz a Resistencia do alvo durante a resolucao (minimo 0).`,
+    );
+  }
+  if (mods.ataqueMultiplo !== "1") {
+    lines.push(
+      `Ataque multiplo ${mods.ataqueMultiplo}: o dano total e dividido e resolvido em ataques separados.`,
+    );
+  }
+  if (mods.efeitoSecundario) {
+    lines.push(
+      "Efeito secundario: repete o efeito no turno seguinte uma vez, sem criar nova repeticao.",
+    );
+  }
+  if (mods.incuravel) {
+    lines.push(
+      "Incuravel: limita ou impede recuperacao comum dos efeitos aplicados.",
+    );
+  }
+  if (mods.contagioso) {
+    lines.push(
+      "Contagioso: permite propagacao controlada para alvos proximos (uma vez por alvo).",
+    );
+  }
+  if (mods.area) {
+    lines.push(
+      `Area ${mods.area}: afeta todos os alvos na regiao e resolve individualmente por alvo.`,
+    );
+  }
+  if (mods.controleNivel) {
+    const estadoInfo = mods.controleEstado
+      ? ` Estado sugerido: ${mods.controleEstado}.`
+      : "";
+    lines.push(
+      `Controle ${mods.controleNivel}: aplica estado de controle conforme nivel comprado.${estadoInfo}`,
+    );
+  }
+  if (deslocamentoMetros > 0) {
+    const tipoInfo = mods.deslocamentoTipo
+      ? ` Tipo: ${mods.deslocamentoTipo}.`
+      : "";
+    lines.push(
+      `Deslocamento ${deslocamentoMetros}m: move alvo/usuario imediatamente apos a resolucao.${tipoInfo}`,
+    );
+  }
+  if (mods.seletivo) {
+    lines.push(
+      "Seletivo: permite escolher quais alvos dentro da area serao afetados.",
+    );
+  }
+  if (mods.indireto) {
+    lines.push(
+      `Indireto ${mods.indireto}: permite projetar a origem da tecnica em ponto alternativo dentro do alcance.`,
+    );
+  }
+  if (mods.rastreamento) {
+    lines.push(
+      "Sequencia: apos erro em Toque, permite nova tentativa imediata com os mesmos parametros.",
+    );
+  }
+  if (isTechniqueRanged(alcance) && ricochete > 0) {
+    lines.push(
+      "Ricochete: em erro de ataque a distancia, permite nova rolagem contra outro alvo valido.",
+    );
+  }
+  if (bonusDefesa > 0) {
+    lines.push(
+      `Resultado em Defesa +${bonusDefesa}: aumenta a capacidade defensiva da tecnica.`,
+    );
+  }
+  if (reducaoDano > 0) {
+    lines.push(
+      `Reducao de dano ${reducaoDano}: reduz dano final recebido apos resistencia.`,
+    );
+  }
+  if (absorcao > 0) {
+    lines.push(
+      `Absorcao ${absorcao}: converte parte do dano recebido em beneficio definido na tecnica.`,
+    );
+  }
+  if (mods.reflexo) {
+    lines.push(
+      "Reflexo: resposta defensiva automatica por gatilho, limitada a uma ativacao por turno.",
+    );
+  }
+  if (mods.sutil) {
+    lines.push(
+      `Sutil ${mods.sutil}: reduz sinais perceptiveis da execucao da tecnica.`,
+    );
+  }
+  if (mods.traicoeiro) {
+    lines.push(
+      "Traicoeiro: oculta os efeitos reais da tecnica, sem ocultar a execucao.",
+    );
+  }
+  if (mods.preciso) {
+    lines.push(
+      "Preciso: permite controle refinado para aplicacoes delicadas e em espacos restritos.",
+    );
+  }
+
+  if (mods.exigeTurnoCompleto) {
+    lines.push(
+      "Exige 1 turno completo: execucao ocorre apenas apos preparacao de turno inteiro.",
+    );
+  }
+  if (mods.acaoAumentadaEtapas !== "0") {
+    lines.push(
+      `Acao aumentada ${mods.acaoAumentadaEtapas}: exige etapas adicionais e torna a execucao mais lenta.`,
+    );
+  }
+  if (mods.preparacaoObrigatoria) {
+    lines.push(
+      `Preparacao obrigatoria (${mods.preparacaoObrigatoria}): requer preparo previo antes de executar.`,
+    );
+  }
+  if (mods.exigeTeste) {
+    lines.push(
+      `Exige teste (${mods.exigeTeste}): requer teste adicional de tecnica antes da aplicacao dos efeitos.`,
+    );
+  }
+  if (mods.inconstante) {
+    lines.push(
+      `Inconstante (${mods.inconstante}): pode falhar parcialmente conforme condicao definida.`,
+    );
+  }
+  if (mods.incontrolavel) {
+    lines.push(
+      "Incontrolavel: pode desviar alvo, direcao ou area em resultados criticos de instabilidade.",
+    );
+  }
+  if (mods.efeitoColateral) {
+    lines.push(
+      `Efeito colateral (${mods.efeitoColateral}): aplica consequencia negativa ao usuario durante/apos uso.`,
+    );
+  }
+  if (mods.cansativo) {
+    lines.push(
+      "Cansativo: aplica desgaste temporario apos utilizar a tecnica.",
+    );
+  }
+  if (mods.retroalimentacao) {
+    lines.push(
+      "Retroalimentacao: se interrompida/negada, a tecnica causa dano de retorno ao usuario.",
+    );
+  }
+  if (mods.semMovimento) {
+    lines.push(
+      "Sem movimento: impede deslocamento voluntario do usuario ate o fim do turno.",
+    );
+  }
+  if (mods.condicional) {
+    lines.push(
+      `Condicional (${mods.condicional}): so pode ser usada quando a condicao definida for atendida.`,
+    );
+  }
+  if (mods.alvoRestrito) {
+    lines.push(
+      "Alvo restrito: funciona apenas contra categorias de alvo previamente definidas.",
+    );
+  }
+  if (mods.recursoExterno) {
+    lines.push(
+      "Recurso externo: exige item/componente/condicao adicional alem do Eter.",
+    );
+  }
+
+  if (
+    customCustoNormalizado !== 0 ||
+    mods.modificadorPersonalizadoNome.trim()
+  ) {
+    const nome =
+      mods.modificadorPersonalizadoNome.trim() || "Modificador personalizado";
+    lines.push(
+      `${nome}: ajuste personalizado com custo ${formatSignedPe(customCustoNormalizado)} definido em comum acordo com o mestre.`,
+    );
+  }
+
+  return lines;
+};
 
 const TECHNIQUE_ACTION_OPTIONS = [
   "Completa",
@@ -4715,6 +4980,118 @@ const CARGA_TOOLTIP =
 
 const MOVIMENTO_TOOLTIP =
   "Movimentacao e o deslocamento por turno em condicoes normais e usa acao de movimento. E derivada de Agilidade: D4=6 m, D6=9 m, D8=12 m, D10=15 m, D12=18 m. Terreno dificil, obstaculos e efeitos especiais podem reduzir ou aumentar esse valor temporariamente.";
+
+const TECHNIQUE_DESLOCAMENTO_TOOLTIP =
+  "Ao usar Deslocamento, escolha um tipo na descricao da tecnica: Empurrar, Puxar, Reposicionar ou Movimento proprio.";
+
+const TECHNIQUE_DEFESA_RESULTADO_TOOLTIP =
+  "Custo: +1 PE por +1. Eleva o resultado defensivo da tecnica em +1 por nivel.";
+
+const TECHNIQUE_REDUCAO_DANO_TOOLTIP =
+  "Custo: +1 PE por +1. Reduz o dano recebido em +1 por nivel.";
+
+const TECHNIQUE_ABSORCAO_TOOLTIP =
+  "Custo: +2 PE por +1. Converte impacto em absorcao; cada nivel custa 2 PE.";
+
+const TECHNIQUE_AUMENTO_DANO_TOOLTIP =
+  "Custo: +1 PE por +1 de aumento de dano.";
+
+const TECHNIQUE_PRECISAO_TOOLTIP = "Custo: +1 PE por +1 de precisao.";
+
+const TECHNIQUE_PENETRANTE_TOOLTIP = "Custo: +2 PE por nivel.";
+
+const TECHNIQUE_DANO_AMPLIADO_TOOLTIP = "Custo: +1 PE por +2 de dano ampliado.";
+
+const TECHNIQUE_CRITICO_APRIMORADO_TOOLTIP = "Custo: +1 PE por +2 (maximo +3).";
+
+const TECHNIQUE_DANO_CONTINUO_TOOLTIP = "Custo: +1 PE por +1 de dano continuo.";
+
+const TECHNIQUE_AREA_TOOLTIP =
+  "Area: 3m (+2 PE), 5m (+3 PE), 10m (+5 PE). Afeta cada alvo individualmente e nao acumula com Ataque multiplo.";
+
+const TECHNIQUE_CONTROLE_TOOLTIP =
+  "Controle: Leve (+1 PE), Moderado (+2 PE), Forte (+3 PE). O estado aplicado deve respeitar o nivel escolhido.";
+
+const TECHNIQUE_ATAQUE_MULTIPLO_TOOLTIP =
+  "Ataque multiplo: 2 ataques (+1 PE) ou 3 ataques (+2 PE). O dano total e dividido entre os ataques e resolvido separadamente.";
+
+const TECHNIQUE_INDIRETO_TOOLTIP =
+  "Indireto: Basico (+2 PE) ou Avancado (+4 PE). Permite alterar o ponto de origem da tecnica dentro do alcance.";
+
+const TECHNIQUE_SUTIL_TOOLTIP =
+  "Sutil: Dificil de perceber (+1 PE) ou Imperceptivel (+2 PE). Reduz sinais visiveis/energeticos da execucao.";
+
+const TECHNIQUE_EFEITO_SECUNDARIO_TOOLTIP =
+  "Custo: +2 PE. O efeito se repete no turno seguinte uma vez, sem gerar novas repeticoes.";
+
+const TECHNIQUE_INCURAVEL_TOOLTIP =
+  "Custo: +3 PE. Limita ou impede recuperacao dos efeitos da tecnica por meios comuns.";
+
+const TECHNIQUE_CONTAGIOSO_TOOLTIP =
+  "Custo: +4 PE. Permite propagacao controlada do efeito para alvos proximos, uma vez por alvo.";
+
+const TECHNIQUE_SELETIVO_TOOLTIP =
+  "Custo: +2 PE. Permite escolher quem sera afetado dentro da area da tecnica.";
+
+const TECHNIQUE_SEQUENCIA_TOOLTIP =
+  "Custo: +3 PE por tentativa adicional. Disponivel apenas para tecnicas de Toque apos erro de ataque.";
+
+const TECHNIQUE_RICOCHETE_TOOLTIP =
+  "Custo: +3 PE por ricochete. Em erro de ataque a distancia, permite nova rolagem contra outro alvo valido.";
+
+const TECHNIQUE_REFLEXO_TOOLTIP =
+  "Custo: +2 PE. Resposta automatica defensiva com gatilho definido; so pode ativar 1 vez por turno.";
+
+const TECHNIQUE_TRAICOEIRO_TOOLTIP =
+  "Custo: +1 PE. Oculta os efeitos reais da tecnica, sem ocultar a execucao.";
+
+const TECHNIQUE_PRECISO_TOOLTIP =
+  "Custo: +1 PE. Permite controle refinado para aplicacoes delicadas e uso seletivo.";
+
+const TECHNIQUE_ACAO_AUMENTADA_TOOLTIP =
+  "Cada etapa mais lenta reduz 1 PE: +1 etapa (-1), +2 etapas (-2), +3 etapas (-3).";
+
+const TECHNIQUE_PREPARACAO_OBRIGATORIA_TOOLTIP =
+  "Preparacao obrigatoria reduz custo: Movimento (-1) ou Padrao (-2). Deve ser preparada antes da execucao.";
+
+const TECHNIQUE_EXIGE_TESTE_TOOLTIP =
+  "Exige teste adicional: Simples CD 15 (-2 PE) ou Dificil CD 20 (-3 PE).";
+
+const TECHNIQUE_INCONSTANTE_TOOLTIP =
+  "Inconstante: Parcial (-2 PE) ou Metade do tempo (-4 PE), com falhas de consistencia na execucao.";
+
+const TECHNIQUE_EFEITO_COLATERAL_TOOLTIP =
+  "Efeito colateral: Ocasional (-2 PE) ou Sempre (-3 PE), causando consequencias negativas ao usuario.";
+
+const TECHNIQUE_CONDICIONAL_TOOLTIP =
+  "Condicional: Simples (-1 PE) ou Restrita (-2 PE). A tecnica so funciona sob condicao definida.";
+
+const TECHNIQUE_EXIGE_TURNO_COMPLETO_TOOLTIP =
+  "Reducao: -2 PE. A tecnica exige 1 turno completo para ser executada.";
+
+const TECHNIQUE_INCONTROLAVEL_TOOLTIP =
+  "Reducao: -3 PE. Pode gerar desvio secundario na direcao, alvo ou area durante o uso.";
+
+const TECHNIQUE_CANSATIVO_TOOLTIP =
+  "Reducao: -1 PE. Aplica desgaste curto apos usar a tecnica.";
+
+const TECHNIQUE_RETROALIMENTACAO_TOOLTIP =
+  "Reducao: -3 PE. Se a tecnica for negada/interrompida, o usuario sofre dano de retorno.";
+
+const TECHNIQUE_IMPRECISO_TOOLTIP =
+  "Reducao: -1 PE. Aplica penalidade no acerto final da tecnica.";
+
+const TECHNIQUE_SEM_MOVIMENTO_TOOLTIP =
+  "Reducao: -2 PE. Impede deslocamento voluntario ate o fim do turno.";
+
+const TECHNIQUE_ALVO_RESTRITO_TOOLTIP =
+  "Reducao: -1 PE. Funciona apenas contra categorias de alvo previamente definidas.";
+
+const TECHNIQUE_RECURSO_EXTERNO_TOOLTIP =
+  "Reducao: -1 PE. Exige item, componente ou condicao externa adicional ao Eter.";
+
+const TECHNIQUE_LOCKED_BY_PE_TOOLTIP =
+  "Desabilitado: voce nao possui PE adicional suficiente para comprar este modificador agora.";
 
 const BONUS_BY_DICE: Record<Dice, number> = {
   D4: 0,
@@ -6132,6 +6509,34 @@ function App() {
   const [fichaGeradaPagina, setFichaGeradaPagina] = useState<1 | 2>(
     () => restoredDraft?.fichaGeradaPagina ?? 1,
   );
+  const [quickSheetRollModalOpen, setQuickSheetRollModalOpen] = useState(false);
+  const [quickSheetRollContext, setQuickSheetRollContext] = useState<{
+    origem: "Atributo" | "Combate";
+    nome: string;
+    dado: Dice;
+  } | null>(null);
+  const [quickSheetRollD20Value, setQuickSheetRollD20Value] = useState(1);
+  const [quickSheetRollAttributeValue, setQuickSheetRollAttributeValue] =
+    useState(1);
+  const [
+    quickSheetRollAttributeBreakdown,
+    setQuickSheetRollAttributeBreakdown,
+  ] = useState<number[]>([1]);
+  const [quickSheetRollExplosions, setQuickSheetRollExplosions] = useState(0);
+  const [quickSheetRollTotalValue, setQuickSheetRollTotalValue] = useState(2);
+  const [quickSheetRollIsAnimating, setQuickSheetRollIsAnimating] =
+    useState(false);
+  const [quickSheetRollRevealedDice, setQuickSheetRollRevealedDice] = useState<
+    {
+      value: number | null;
+      exploded: boolean;
+      pending: boolean;
+      rolling: boolean;
+      key: number;
+    }[]
+  >([]);
+  const quickSheetRevealTimeoutsRef = useRef<number[]>([]);
+  const quickSheetRollIntervalRef = useRef<number | null>(null);
   const [danoPoderesConfig, setDanoPoderesConfig] = useState<
     Record<string, { incluiDanoBase: boolean; metadeGrad: boolean }>
   >({});
@@ -8649,6 +9054,33 @@ function App() {
     ],
   );
 
+  const tecnicaAutoEfeitoLinhas = useMemo(
+    () =>
+      buildTechniqueAutoEffectLines(
+        tecnicaDraft.modificadores,
+        tecnicaDraft.alcance,
+      ),
+    [tecnicaDraft.modificadores, tecnicaDraft.alcance],
+  );
+
+  useEffect(() => {
+    setTecnicaDraft((current) => {
+      const nextEfeito = upsertTechniqueAutoEffectBlock(
+        current.efeito,
+        tecnicaAutoEfeitoLinhas,
+      );
+
+      if (nextEfeito === current.efeito) {
+        return current;
+      }
+
+      return {
+        ...current,
+        efeito: nextEfeito,
+      };
+    });
+  }, [tecnicaAutoEfeitoLinhas]);
+
   if (!selectedCharacter) {
     return (
       <>
@@ -9655,11 +10087,22 @@ function App() {
   );
 
   const tecnicaAumentoDano = clamp(parseNatural(tecnicaMods.aumentoDano), 0, 5);
-  const tecnicaPrecisao = Math.max(0, parseNatural(tecnicaMods.precisao));
-  const tecnicaPenetrante = Math.max(0, parseNatural(tecnicaMods.penetrante));
-  const tecnicaDanoAmpliado = Math.max(
-    0,
+  const tecnicaPrecisao = clamp(parseNatural(tecnicaMods.precisao), 0, 5);
+  const tecnicaPenetrante = clamp(parseNatural(tecnicaMods.penetrante), 0, 5);
+  const tecnicaDanoAmpliado = clamp(
     parseNatural(tecnicaMods.danoAmpliado),
+    0,
+    3,
+  );
+  const tecnicaCriticoAprimorado = clamp(
+    parseNatural(tecnicaMods.criticoAprimorado),
+    0,
+    3,
+  );
+  const tecnicaDanoContinuo = clamp(
+    parseNatural(tecnicaMods.danoContinuo),
+    0,
+    3,
   );
   const tecnicaBonusDefesa = clamp(parseNatural(tecnicaMods.bonusDefesa), 0, 5);
   const tecnicaReducaoDano = clamp(
@@ -9668,11 +10111,13 @@ function App() {
     5,
   );
   const tecnicaAbsorcao = clamp(parseNatural(tecnicaMods.absorcao), 0, 5);
-  const tecnicaDeslocamentoMetros = Math.max(
-    0,
+  const tecnicaDeslocamentoMetros = clamp(
     parseNatural(tecnicaMods.deslocamentoMetros),
+    0,
+    10,
   );
-  const tecnicaRicochete = Math.max(0, parseNatural(tecnicaMods.ricochete));
+  const tecnicaDeslocamentoMetrosAplicados = tecnicaDeslocamentoMetros;
+  const tecnicaRicochete = clamp(parseNatural(tecnicaMods.ricochete), 0, 1);
 
   const tecnicaCustomCusto = Number.parseInt(
     tecnicaMods.modificadorPersonalizadoCusto,
@@ -9743,23 +10188,23 @@ function App() {
     tecnicaAumentoDano +
     tecnicaPrecisao +
     tecnicaPenetrante * 2 +
-    tecnicaDanoAmpliado +
+    Math.ceil(tecnicaDanoAmpliado / 2) +
+    Math.ceil(tecnicaCriticoAprimorado / 2) +
+    tecnicaDanoContinuo +
     ATTACK_MULTIPLE_COST[tecnicaMods.ataqueMultiplo] +
     (tecnicaMods.efeitoSecundario ? 2 : 0) +
-    (tecnicaMods.incuravel ? 2 : 0) +
+    (tecnicaMods.incuravel ? 3 : 0) +
     (tecnicaMods.contagioso ? 4 : 0) +
     AREA_COST[tecnicaMods.area] +
     CONTROLE_COST[tecnicaMods.controleNivel] +
     Math.max(0, alcanceSigned) +
     Math.max(0, duracaoSigned) +
     Math.max(0, ativacaoSigned) +
-    Math.ceil(tecnicaDeslocamentoMetros / 2) +
+    Math.ceil(tecnicaDeslocamentoMetrosAplicados / 2) +
     (tecnicaMods.seletivo ? 2 : 0) +
     INDIRETO_COST[tecnicaMods.indireto] +
-    (tecnicaMods.rastreamento ? 3 : 0) +
-    tecnicaRicochete +
-    DIVIDIDO_COST[tecnicaMods.dividido] +
-    (tecnicaMods.alternativo ? 1 : 0) +
+    (tecnicaMods.rastreamento && tecnicaDraft.alcance === "Toque" ? 3 : 0) +
+    (isTechniqueRanged(tecnicaDraft.alcance) ? tecnicaRicochete : 0) * 3 +
     tecnicaBonusDefesa +
     tecnicaReducaoDano +
     tecnicaAbsorcao * 2 +
@@ -9778,13 +10223,12 @@ function App() {
     PREPARACAO_OBRIGATORIA_REDUCTION[tecnicaMods.preparacaoObrigatoria] +
     EXIGE_TESTE_REDUCTION[tecnicaMods.exigeTeste] +
     INCONSTANTE_REDUCTION[tecnicaMods.inconstante] +
-    (tecnicaMods.incontrolavel ? 2 : 0) +
+    (tecnicaMods.incontrolavel ? 3 : 0) +
     EFEITO_COLATERAL_REDUCTION[tecnicaMods.efeitoColateral] +
     (tecnicaMods.cansativo ? 1 : 0) +
     (tecnicaMods.retroalimentacao ? 3 : 0) +
     (tecnicaMods.impreciso ? 1 : 0) +
-    (tecnicaMods.resistivel ? 1 : 0) +
-    (tecnicaMods.semMovimento ? 1 : 0) +
+    (tecnicaMods.semMovimento ? 2 : 0) +
     CONDICIONAL_REDUCTION[tecnicaMods.condicional] +
     (tecnicaMods.alvoRestrito ? 1 : 0) +
     (tecnicaMods.recursoExterno ? 1 : 0) +
@@ -9796,11 +10240,13 @@ function App() {
   );
   const tecnicaLimiteAdicional =
     TECHNIQUE_ADDITIONAL_LIMIT_BY_TYPE[tecnicaDraft.tipo];
+  const tecnicaLimiteAdicionalExpandido =
+    tecnicaLimiteAdicional + tecnicaReducoesPE;
   const tecnicaExcedeLimite =
-    tecnicaAdicionalAplicadoPE > tecnicaLimiteAdicional;
+    tecnicaCustoModificadoresPE > tecnicaLimiteAdicionalExpandido;
   const tecnicaMargemAdicionalDisponivel = Math.max(
     0,
-    tecnicaLimiteAdicional - tecnicaAdicionalAplicadoPE,
+    tecnicaLimiteAdicionalExpandido - tecnicaCustoModificadoresPE,
   );
   const tecnicaCustoFinalPE = Math.max(
     1,
@@ -9825,18 +10271,34 @@ function App() {
   const currentAreaCost = AREA_COST[tecnicaMods.area];
   const currentControlCost = CONTROLE_COST[tecnicaMods.controleNivel];
   const currentIndiretoCost = INDIRETO_COST[tecnicaMods.indireto];
-  const currentDivididoCost = DIVIDIDO_COST[tecnicaMods.dividido];
   const currentSutilCost = SUTIL_COST[tecnicaMods.sutil];
-  const currentDeslocamentoCost = Math.ceil(tecnicaDeslocamentoMetros / 2);
+  const currentDeslocamentoCost = Math.ceil(
+    tecnicaDeslocamentoMetrosAplicados / 2,
+  );
   const maxAumentoDano = Math.min(
     5,
     tecnicaAumentoDano + tecnicaMargemAdicionalDisponivel,
   );
-  const maxPrecisao = tecnicaPrecisao + tecnicaMargemAdicionalDisponivel;
-  const maxPenetrante =
-    tecnicaPenetrante + Math.floor(tecnicaMargemAdicionalDisponivel / 2);
-  const maxDanoAmpliado =
-    tecnicaDanoAmpliado + tecnicaMargemAdicionalDisponivel;
+  const maxPrecisao = Math.min(
+    5,
+    tecnicaPrecisao + tecnicaMargemAdicionalDisponivel,
+  );
+  const maxPenetrante = Math.min(
+    5,
+    tecnicaPenetrante + Math.floor(tecnicaMargemAdicionalDisponivel / 2),
+  );
+  const maxDanoAmpliado = Math.min(
+    3,
+    tecnicaDanoAmpliado + tecnicaMargemAdicionalDisponivel * 2,
+  );
+  const maxCriticoAprimorado = Math.min(
+    3,
+    tecnicaCriticoAprimorado + tecnicaMargemAdicionalDisponivel * 2,
+  );
+  const maxDanoContinuo = Math.min(
+    3,
+    tecnicaDanoContinuo + tecnicaMargemAdicionalDisponivel,
+  );
   const maxBonusDefesa = Math.min(
     5,
     tecnicaBonusDefesa + tecnicaMargemAdicionalDisponivel,
@@ -9849,14 +10311,46 @@ function App() {
     5,
     tecnicaAbsorcao + Math.floor(tecnicaMargemAdicionalDisponivel / 2),
   );
-  const maxRicochete = tecnicaRicochete + tecnicaMargemAdicionalDisponivel;
-  const maxDeslocamentoMetros =
-    (currentDeslocamentoCost + tecnicaMargemAdicionalDisponivel) * 2;
+  const maxDeslocamentoMetros = Math.min(
+    10,
+    (currentDeslocamentoCost + tecnicaMargemAdicionalDisponivel) * 2,
+  );
+  const deslocamentoOpcoesMetros = [0, 2, 4, 6, 8, 10] as const;
+  const deslocamentoSelectValue = deslocamentoOpcoesMetros.includes(
+    tecnicaDeslocamentoMetrosAplicados as (typeof deslocamentoOpcoesMetros)[number],
+  )
+    ? String(tecnicaDeslocamentoMetrosAplicados)
+    : "0";
   const maxCustomPositive = Math.max(
     0,
     Math.max(0, tecnicaCustomCustoNormalizado) +
       tecnicaMargemAdicionalDisponivel,
   );
+
+  const lockEfeitoSecundarioByPe =
+    !tecnicaMods.efeitoSecundario && !canIncreaseTechniqueCost(0, 2);
+  const lockIncuravelByPe =
+    !tecnicaMods.incuravel && !canIncreaseTechniqueCost(0, 3);
+  const lockContagiosoByPe =
+    !tecnicaMods.contagioso && !canIncreaseTechniqueCost(0, 4);
+  const lockSeletivoByPe =
+    !tecnicaMods.seletivo && !canIncreaseTechniqueCost(0, 2);
+  const lockSequenciaByTipo = tecnicaDraft.alcance !== "Toque";
+  const lockSequenciaByPe =
+    !lockSequenciaByTipo &&
+    !tecnicaMods.rastreamento &&
+    !canIncreaseTechniqueCost(0, 3);
+  const lockRicocheteByTipo = !isTechniqueRanged(tecnicaDraft.alcance);
+  const lockRicocheteByPe =
+    !lockRicocheteByTipo &&
+    tecnicaRicochete === 0 &&
+    !canIncreaseTechniqueCost(0, 3);
+  const lockReflexoByPe =
+    !tecnicaMods.reflexo && !canIncreaseTechniqueCost(0, 2);
+  const lockTraicoeiroByPe =
+    !tecnicaMods.traicoeiro && !canIncreaseTechniqueCost(0, 1);
+  const lockPrecisoByPe =
+    !tecnicaMods.preciso && !canIncreaseTechniqueCost(0, 1);
 
   const tecnicaMaiorGraduacaoBase = tecnicaBaseResolvida.reduce(
     (max, base) => Math.max(max, base.graduacao),
@@ -9866,7 +10360,9 @@ function App() {
     tecnicaAumentoDano +
     tecnicaPrecisao +
     tecnicaPenetrante +
-    tecnicaDanoAmpliado;
+    tecnicaDanoAmpliado +
+    tecnicaCriticoAprimorado +
+    tecnicaDanoContinuo;
   const tecnicaBonusDiretoAplicado = Math.min(
     tecnicaBonusDiretoBruto,
     tecnicaMaiorGraduacaoBase,
@@ -9894,15 +10390,27 @@ function App() {
   const dadoAcertoTecnica = tecnicaUsaDisparo
     ? selectedCharacter.combate.disparo
     : selectedCharacter.combate.ataqueCac;
-  const penalidadeImpreciso = tecnicaMods.impreciso ? 2 : 0;
+  const penalidadeImpreciso = tecnicaMods.impreciso ? 1 : 0;
   const dadoAcertoTexto =
     dadoAcertoTecnica === "-" ? "Sem dado" : dadoAcertoTecnica;
+  const tecnicaAcertoFoiModificado =
+    tecnicaPrecisao > 0 || penalidadeImpreciso > 0;
+  const tecnicaAcertoPartes: string[] = [];
+  if (tecnicaPrecisao > 0) {
+    tecnicaAcertoPartes.push(`+${tecnicaPrecisao} Precisao`);
+  }
+  if (penalidadeImpreciso > 0) {
+    tecnicaAcertoPartes.push(`-${penalidadeImpreciso} Impreciso`);
+  }
   const tecnicaAcertoResumo = tecnicaEhAtaque
-    ? `1d20 + ${dadoAcertoTexto} (${tecnicaUsaDisparo ? "Disparo" : "CaC"}${tecnicaPrecisao > 0 ? ` | Precisao +${tecnicaPrecisao}` : ""}${penalidadeImpreciso > 0 ? " | Impreciso -2" : ""})`
+    ? `1d20 + ${dadoAcertoTexto}${tecnicaAcertoFoiModificado ? ` (${tecnicaAcertoPartes.join(" | ")})` : ""} (${tecnicaUsaDisparo ? "Disparo" : "CaC"})`
     : "Sem rolagem de ataque (tecnica nao ofensiva).";
 
+  const tecnicaDanoBaseCalculado = tecnicaSomaDanoBase
+    ? tecnicaGradParaDano + danoBaseTecnica
+    : tecnicaGradParaDano;
   const tecnicaDanoResumo = tecnicaEhAtaque
-    ? `${tecnicaDanoTotal} de dano${tecnicaSomaDanoBase ? ` (inclui dano base de ${danoBaseAtributoTecnica}: +${danoBaseTecnica})` : ""}${tecnicaMetadeGradNoDano ? " (graduacao reduzida a metade)" : ""}${tecnicaDanoAmpliado > 0 ? ` | dano ampliado: +${tecnicaDanoAmpliado}` : ""}${tecnicaMods.ataqueMultiplo !== "1" ? ` | ${tecnicaMods.ataqueMultiplo} ataques (dano dividido)` : ""}${tecnicaMods.area ? ` | area ${tecnicaMods.area} (penalidade por alvo adicional)` : ""}`
+    ? `${tecnicaDanoTotal} de dano${tecnicaAumentoDano > 0 ? ` (base ${tecnicaDanoBaseCalculado} + mod. dano +${tecnicaAumentoDano})` : ""}${tecnicaSomaDanoBase ? ` (inclui dano base de ${danoBaseAtributoTecnica}: +${danoBaseTecnica})` : ""}${tecnicaMetadeGradNoDano ? " (graduacao reduzida a metade)" : ""}${tecnicaDanoAmpliado > 0 ? ` | dano ampliado: +${tecnicaDanoAmpliado}` : ""}${tecnicaCriticoAprimorado > 0 ? ` | critico aprimorado: +${tecnicaCriticoAprimorado}` : ""}${tecnicaDanoContinuo > 0 ? ` | dano continuo: +${tecnicaDanoContinuo} por 3 turnos` : ""}${tecnicaMods.ataqueMultiplo !== "1" ? ` | ${tecnicaMods.ataqueMultiplo} ataques (dano dividido)` : ""}${tecnicaMods.area ? ` | area ${tecnicaMods.area} (penalidade por alvo adicional)` : ""}`
     : "Sem dano de ataque automatico.";
 
   const adicionarPoderBaseTecnica = () => {
@@ -9952,7 +10460,7 @@ function App() {
 
     if (tecnicaExcedeLimite) {
       toast.error(
-        `A tecnica excede o limite de +${tecnicaLimiteAdicional} PE adicional para tipo ${tecnicaDraft.tipo}.`,
+        `A tecnica excede o limite de modificadores (+${tecnicaLimiteAdicional} base + ${tecnicaReducoesPE} em reducoes = +${tecnicaLimiteAdicionalExpandido}) para tipo ${tecnicaDraft.tipo}.`,
       );
       return;
     }
@@ -10009,10 +10517,12 @@ function App() {
         precisao: String(tecnicaPrecisao),
         penetrante: String(tecnicaPenetrante),
         danoAmpliado: String(tecnicaDanoAmpliado),
+        criticoAprimorado: String(tecnicaCriticoAprimorado),
+        danoContinuo: String(tecnicaDanoContinuo),
         bonusDefesa: String(tecnicaBonusDefesa),
         reducaoDanoRecebido: String(tecnicaReducaoDano),
         absorcao: String(tecnicaAbsorcao),
-        deslocamentoMetros: String(tecnicaDeslocamentoMetros),
+        deslocamentoMetros: String(tecnicaDeslocamentoMetrosAplicados),
         ricochete: String(tecnicaRicochete),
         modificadorPersonalizadoCusto: String(tecnicaCustomCustoNormalizado),
       },
@@ -10291,12 +10801,23 @@ function App() {
   const movimentoAtual = String(movimentoBase);
   const cargaAtual = String(cargaBase);
 
-  const periciasSelecionadas = PERICIAS.filter(
-    (pericia) => parseNatural(selectedCharacter.pericias[pericia]) > 0,
-  ).map((pericia) => ({
-    nome: pericia,
-    graduacao: parseNatural(selectedCharacter.pericias[pericia]),
-  }));
+  const periciasSelecionadas = PERICIAS.map((pericia) => {
+    const graduacao = parseNatural(
+      getPericiaSheetValue(selectedCharacter.pericias, pericia),
+    );
+    if (graduacao <= 0) {
+      return null;
+    }
+
+    const atributo = PERICIA_INFO[pericia]?.atributo ?? "Tecnica";
+
+    return {
+      nome: pericia,
+      graduacao,
+      atributo,
+      dadoAtributo: selectedCharacter.atributos[atributo],
+    };
+  }).filter((item): item is NonNullable<typeof item> => item !== null);
 
   const conhecimentosSelecionados = selectedCharacter.conhecimentos.filter(
     (conhecimento) =>
@@ -10394,18 +10915,331 @@ function App() {
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);
 
+  const quickSheetImageUrl = getCharacterImageForDisplay(selectedCharacter);
+
+  const getSecureRandomInt = (min: number, max: number): number => {
+    const safeMin = Math.ceil(min);
+    const safeMax = Math.floor(max);
+    const span = safeMax - safeMin + 1;
+
+    if (span <= 0) {
+      return safeMin;
+    }
+
+    if (typeof window !== "undefined" && window.crypto?.getRandomValues) {
+      const randomBuffer = new Uint32Array(1);
+      const maxUint = 0xffffffff;
+      const cutoff = maxUint - (maxUint % span);
+      let randomValue = 0;
+
+      do {
+        window.crypto.getRandomValues(randomBuffer);
+        randomValue = randomBuffer[0];
+      } while (randomValue >= cutoff);
+
+      return safeMin + (randomValue % span);
+    }
+
+    return safeMin + Math.floor(Math.random() * span);
+  };
+
+  const clearQuickSheetRollInterval = () => {
+    if (quickSheetRollIntervalRef.current !== null) {
+      window.clearInterval(quickSheetRollIntervalRef.current);
+      quickSheetRollIntervalRef.current = null;
+    }
+  };
+
+  const clearQuickSheetRevealTimeouts = () => {
+    for (const t of quickSheetRevealTimeoutsRef.current) {
+      window.clearTimeout(t);
+    }
+
+    quickSheetRevealTimeoutsRef.current = [];
+  };
+
+  const updateQuickSheetRollSummary = (
+    trail: {
+      value: number | null;
+      exploded: boolean;
+      pending: boolean;
+      rolling: boolean;
+      key: number;
+    }[],
+    d20Value: number,
+  ) => {
+    const committedValues = trail
+      .filter((step) => step.value !== null)
+      .map((step) => step.value as number);
+    const subtotal = committedValues.reduce((sum, value) => sum + value, 0);
+    const explosions = trail.filter(
+      (step) => step.exploded && step.value !== null,
+    ).length;
+
+    setQuickSheetRollAttributeBreakdown(
+      committedValues.length > 0 ? committedValues : [1],
+    );
+    setQuickSheetRollAttributeValue(committedValues.length > 0 ? subtotal : 1);
+    setQuickSheetRollExplosions(explosions);
+    setQuickSheetRollTotalValue(d20Value + subtotal);
+  };
+
+  const finalizeQuickSheetInitialRoll = (
+    d20Value: number,
+    atributoValue: number,
+    maxLados: number,
+  ) => {
+    const initialTrail = [
+      {
+        key: 0,
+        value: atributoValue,
+        exploded: atributoValue === maxLados,
+        pending: false,
+        rolling: false,
+      },
+      ...(atributoValue === maxLados
+        ? [
+            {
+              key: 1,
+              value: null,
+              exploded: false,
+              pending: true,
+              rolling: false,
+            },
+          ]
+        : []),
+    ];
+
+    setQuickSheetRollD20Value(d20Value);
+    setQuickSheetRollRevealedDice(initialTrail);
+    updateQuickSheetRollSummary(initialTrail, d20Value);
+    setQuickSheetRollIsAnimating(false);
+  };
+
+  const commitQuickSheetExplosionRoll = (
+    stepKey: number,
+    result: number,
+    maxLados: number,
+  ) => {
+    setQuickSheetRollRevealedDice((prev) => {
+      const updatedTrail = prev.map((step) =>
+        step.key === stepKey
+          ? {
+              ...step,
+              value: result,
+              exploded: result === maxLados,
+              pending: false,
+              rolling: false,
+            }
+          : step,
+      );
+
+      if (result === maxLados) {
+        updatedTrail.push({
+          key: updatedTrail.length,
+          value: null,
+          exploded: false,
+          pending: true,
+          rolling: false,
+        });
+      }
+
+      updateQuickSheetRollSummary(updatedTrail, quickSheetRollD20Value);
+      return updatedTrail;
+    });
+    setQuickSheetRollIsAnimating(false);
+  };
+
+  const rollQuickSheetExplosionStep = (stepKey: number) => {
+    if (quickSheetRollIsAnimating || !quickSheetRollContext) {
+      return;
+    }
+
+    const lados = Number.parseInt(
+      quickSheetRollContext.dado.replace("D", ""),
+      10,
+    );
+    const maxLados = Number.isFinite(lados) && lados > 0 ? lados : 4;
+
+    clearQuickSheetRollInterval();
+    clearQuickSheetRevealTimeouts();
+    setQuickSheetRollIsAnimating(true);
+
+    setQuickSheetRollRevealedDice((prev) =>
+      prev.map((step) =>
+        step.key === stepKey
+          ? {
+              ...step,
+              rolling: true,
+              pending: false,
+              value: step.value ?? getSecureRandomInt(1, maxLados),
+            }
+          : step,
+      ),
+    );
+
+    const previewInterval = window.setInterval(() => {
+      setQuickSheetRollRevealedDice((prev) =>
+        prev.map((step) =>
+          step.key === stepKey && step.rolling
+            ? {
+                ...step,
+                value: getSecureRandomInt(1, maxLados),
+              }
+            : step,
+        ),
+      );
+    }, 70);
+
+    quickSheetRevealTimeoutsRef.current.push(previewInterval);
+
+    const rollTimeout = window.setTimeout(() => {
+      window.clearInterval(previewInterval);
+      const result = getSecureRandomInt(1, maxLados);
+      commitQuickSheetExplosionRoll(stepKey, result, maxLados);
+      clearQuickSheetRevealTimeouts();
+    }, 620);
+
+    quickSheetRevealTimeoutsRef.current.push(rollTimeout);
+  };
+
+  const triggerQuickSheetRoll = (dado: Dice) => {
+    const lados = Number.parseInt(dado.replace("D", ""), 10);
+    const maxLados = Number.isFinite(lados) && lados > 0 ? lados : 4;
+    const animationDurationMs = 1250;
+    const tickMs = 55;
+    const startedAt = Date.now();
+
+    clearQuickSheetRollInterval();
+    clearQuickSheetRevealTimeouts();
+    setQuickSheetRollRevealedDice([]);
+    setQuickSheetRollIsAnimating(true);
+
+    quickSheetRollIntervalRef.current = window.setInterval(() => {
+      const previewD20 = getSecureRandomInt(1, 20);
+      const previewAtributo = getSecureRandomInt(1, maxLados);
+      setQuickSheetRollD20Value(previewD20);
+      setQuickSheetRollAttributeValue(previewAtributo);
+      setQuickSheetRollAttributeBreakdown([previewAtributo]);
+      setQuickSheetRollExplosions(0);
+      setQuickSheetRollTotalValue(previewD20 + previewAtributo);
+
+      if (Date.now() - startedAt >= animationDurationMs) {
+        clearQuickSheetRollInterval();
+        const finalD20 = getSecureRandomInt(1, 20);
+        const finalAtributo = getSecureRandomInt(1, maxLados);
+        finalizeQuickSheetInitialRoll(finalD20, finalAtributo, maxLados);
+      }
+    }, tickMs);
+  };
+
+  const openQuickSheetRoller = (atributo: Atributo) => {
+    const dado = selectedCharacter.atributos[atributo];
+    setQuickSheetRollContext({ origem: "Atributo", nome: atributo, dado });
+    setQuickSheetRollModalOpen(true);
+    triggerQuickSheetRoll(dado);
+  };
+
+  const openQuickSheetCombatRoller = (
+    nome: "Ataque CaC" | "Disparo",
+    combatDie: CombatDice,
+  ) => {
+    if (combatDie === "-") {
+      return;
+    }
+
+    setQuickSheetRollContext({ origem: "Combate", nome, dado: combatDie });
+    setQuickSheetRollModalOpen(true);
+    triggerQuickSheetRoll(combatDie);
+  };
+
+  const closeQuickSheetRoller = () => {
+    if (quickSheetRollIsAnimating) {
+      return;
+    }
+
+    setQuickSheetRollModalOpen(false);
+    setQuickSheetRollContext(null);
+  };
+
+  useEffect(
+    () => () => {
+      clearQuickSheetRollInterval();
+      clearQuickSheetRevealTimeouts();
+    },
+    [],
+  );
+
+  const getQuickSheetDiePoints = (die: Dice | "D20"): string | null => {
+    if (die === "D20") {
+      return "12,2 18.5,4.5 22,10.5 21,17.5 16,22 8,22 3,17.5 2,10.5 5.5,4.5";
+    }
+
+    return DICE_POLYGON_POINTS[die];
+  };
+
+  const renderQuickSheetDieChip = (die: Dice | "D20") => {
+    const points = getQuickSheetDiePoints(die);
+
+    return (
+      <span className="quick-sheet-die-chip" aria-label={die}>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          {points === null ? (
+            <rect x="3" y="3" width="18" height="18" rx="2.5" />
+          ) : (
+            <polygon points={points} />
+          )}
+        </svg>
+        <span>{die}</span>
+      </span>
+    );
+  };
+
+  const quickSheetDanoBaseTexto =
+    danoBase >= 0 ? `+${danoBase}` : `${danoBase}`;
+  const quickSheetDanoPoderesTexto =
+    poderesCombateCalculados.length === 0
+      ? "Sem poder ofensivo"
+      : poderesCombateCalculados
+          .map((item) =>
+            item.total >= 0
+              ? `${item.power.nome} +${item.total}`
+              : `${item.power.nome} ${item.total}`,
+          )
+          .join(" | ");
+  const quickSheetRollHasPendingDice = quickSheetRollRevealedDice.some(
+    (step) => step.pending,
+  );
+
   if (screen === "quick-sheet") {
     return (
       <>
         <div className="quick-sheet-screen">
           <header className="quick-sheet-header">
-            <div>
-              <p className="quick-sheet-kicker">Ficha gerada</p>
-              <h1>{selectedCharacter.nome || "Personagem sem nome"}</h1>
-              <p>
-                Jogador: {selectedCharacter.jogador || "Nao informado"} | Nivel{" "}
-                {selectedCharacter.nivel || "0"}
-              </p>
+            <div className="quick-sheet-header-main">
+              <div className="quick-sheet-portrait-wrap">
+                {quickSheetImageUrl ? (
+                  <img
+                    className="quick-sheet-portrait"
+                    src={quickSheetImageUrl}
+                    alt={`Retrato de ${selectedCharacter.nome || "personagem"}`}
+                  />
+                ) : (
+                  <div className="quick-sheet-portrait quick-sheet-portrait-empty">
+                    Sem imagem
+                  </div>
+                )}
+              </div>
+              <div className="quick-sheet-header-copy">
+                <p className="quick-sheet-kicker">Ficha gerada</p>
+                <h1>{selectedCharacter.nome || "Personagem sem nome"}</h1>
+                <p>
+                  Jogador: {selectedCharacter.jogador || "Nao informado"} |
+                  Nivel {selectedCharacter.nivel || "0"} | Naipe{" "}
+                  {selectedCharacter.naipe || "Nao definido"} | XP{" "}
+                  {selectedCharacter.xp || "0"}
+                </p>
+              </div>
             </div>
             <div className="quick-sheet-header-actions">
               <button
@@ -10444,96 +11278,301 @@ function App() {
 
           {fichaGeradaPagina === 1 ? (
             <div className="quick-sheet-grid">
-              <section className="quick-sheet-card">
-                <h2>Identidade</h2>
-                <p>
-                  <strong>Conceito:</strong> {selectedCharacter.conceito || "-"}
-                </p>
-                <p>
-                  <strong>Naipe:</strong>{" "}
-                  {selectedCharacter.naipe || "Nao definido"}
-                </p>
-                <p>
-                  <strong>XP:</strong> {selectedCharacter.xp || "0"}
-                </p>
+              <section className="quick-sheet-card quick-sheet-summary-card">
+                <h2>
+                  <span className="quick-sheet-title">Resumo rapido</span>
+                </h2>
+                <div className="quick-sheet-priority-bar quick-sheet-priority-bar-inline">
+                  <article className="quick-sheet-priority-item">
+                    <span className="quick-sheet-priority-label">
+                      <IoMdHeartHalf aria-hidden="true" />
+                      Vida
+                    </span>
+                    <strong>{vidaMaxima}</strong>
+                  </article>
+                  <article className="quick-sheet-priority-item">
+                    <span className="quick-sheet-priority-label">
+                      <GiRollingEnergy aria-hidden="true" />
+                      Eter
+                    </span>
+                    <strong>{eterMaximo}</strong>
+                  </article>
+                  <article className="quick-sheet-priority-item">
+                    <span className="quick-sheet-priority-label">
+                      <MdOutlineShield aria-hidden="true" />
+                      Defesa
+                    </span>
+                    <strong>{defesaAtual}</strong>
+                  </article>
+                  <article className="quick-sheet-priority-item">
+                    <span className="quick-sheet-priority-label">
+                      <FaShieldHalved aria-hidden="true" />
+                      Resistencia
+                    </span>
+                    <strong>{resistenciaTotalEfetiva}</strong>
+                  </article>
+                  <article className="quick-sheet-priority-item">
+                    <span className="quick-sheet-priority-label">
+                      <GiWalkingBoot aria-hidden="true" />
+                      Movimento
+                    </span>
+                    <strong>{movimentoAtual}m</strong>
+                  </article>
+                  <article className="quick-sheet-priority-item">
+                    <span className="quick-sheet-priority-label">
+                      <MdBolt aria-hidden="true" />
+                      Dano
+                    </span>
+                    <strong className="quick-sheet-priority-damage">
+                      <span>{quickSheetDanoPoderesTexto}</span>
+                      <span className="quick-sheet-priority-damage-base">
+                        Base {quickSheetDanoBaseTexto}
+                      </span>
+                    </strong>
+                  </article>
+                  <article className="quick-sheet-priority-item">
+                    <span className="quick-sheet-priority-label">
+                      <FaWeightHanging aria-hidden="true" />
+                      Carga
+                    </span>
+                    <strong>{cargaAtual}kg</strong>
+                  </article>
+                </div>
               </section>
 
               <section className="quick-sheet-card">
-                <h2>Status</h2>
-                <p>
-                  <strong>Vida:</strong> {vidaMaxima}
-                </p>
-                <p>
-                  <strong>Eter:</strong> {eterMaximo}
-                </p>
-                <p>
-                  <strong>Defesa:</strong> {defesaAtual} | <strong>Res:</strong>{" "}
-                  {resistenciaTotalEfetiva}
-                </p>
-                <p>
-                  <strong>CaC:</strong> {selectedCharacter.combate.ataqueCac} |{" "}
-                  <strong>Disparo:</strong> {selectedCharacter.combate.disparo}
-                </p>
-                <p>
-                  <strong>Mov:</strong> {movimentoAtual}m |{" "}
-                  <strong>Carga:</strong> {cargaAtual}kg
-                </p>
-              </section>
+                <h2>
+                  <span className="quick-sheet-title">Atributos e combate</span>
+                </h2>
+                <ul className="quick-sheet-list quick-sheet-attributes-grid">
+                  {ATRIBUTOS.map((atributo) => {
+                    const grade = selectedCharacter.atributos[atributo];
+                    const points = DICE_POLYGON_POINTS[grade];
 
-              <section className="quick-sheet-card">
-                <h2>Atributos</h2>
-                <ul className="quick-sheet-list">
-                  {ATRIBUTOS.map((atributo) => (
-                    <li key={atributo}>
-                      {atributo}: {selectedCharacter.atributos[atributo]}
-                    </li>
-                  ))}
+                    return (
+                      <li key={atributo} className="quick-sheet-attribute-item">
+                        <span className="quick-sheet-attribute-line">
+                          <span className="quick-sheet-attribute-name">
+                            {atributo}
+                          </span>
+                          <span className="quick-sheet-attribute-actions">
+                            <span
+                              className="quick-sheet-attribute-die active"
+                              aria-label={`${atributo} ${grade}`}
+                            >
+                              <svg
+                                viewBox="0 0 24 24"
+                                aria-hidden="true"
+                                focusable="false"
+                              >
+                                {points === null ? (
+                                  <rect
+                                    x="3"
+                                    y="3"
+                                    width="18"
+                                    height="18"
+                                    rx="2.5"
+                                  />
+                                ) : (
+                                  <polygon points={points} />
+                                )}
+                              </svg>
+                              <span className="quick-sheet-attribute-die-label">
+                                {grade}
+                              </span>
+                            </span>
+                            <button
+                              type="button"
+                              className="quick-sheet-roll-trigger"
+                              onClick={() => openQuickSheetRoller(atributo)}
+                            >
+                              Rolar
+                            </button>
+                          </span>
+                        </span>
+                      </li>
+                    );
+                  })}
+
+                  {[
+                    {
+                      key: "ataque-cac",
+                      nome: "Ataque CaC" as const,
+                      dado: selectedCharacter.combate.ataqueCac,
+                    },
+                    {
+                      key: "disparo",
+                      nome: "Disparo" as const,
+                      dado: selectedCharacter.combate.disparo,
+                    },
+                  ].map((combate) => {
+                    const points =
+                      combate.dado === "-"
+                        ? null
+                        : DICE_POLYGON_POINTS[combate.dado];
+
+                    return (
+                      <li
+                        key={combate.key}
+                        className="quick-sheet-attribute-item"
+                      >
+                        <span className="quick-sheet-attribute-line">
+                          <span className="quick-sheet-attribute-name">
+                            {combate.nome}
+                          </span>
+                          <span className="quick-sheet-attribute-actions">
+                            {combate.dado === "-" ? (
+                              <span className="quick-sheet-roll-value">
+                                Sem dado
+                              </span>
+                            ) : (
+                              <span
+                                className="quick-sheet-attribute-die active"
+                                aria-label={`${combate.nome} ${combate.dado}`}
+                              >
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  aria-hidden="true"
+                                  focusable="false"
+                                >
+                                  {points === null ? (
+                                    <rect
+                                      x="3"
+                                      y="3"
+                                      width="18"
+                                      height="18"
+                                      rx="2.5"
+                                    />
+                                  ) : (
+                                    <polygon points={points} />
+                                  )}
+                                </svg>
+                                <span className="quick-sheet-attribute-die-label">
+                                  {combate.dado}
+                                </span>
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              className="quick-sheet-roll-trigger"
+                              onClick={() =>
+                                openQuickSheetCombatRoller(
+                                  combate.nome,
+                                  combate.dado,
+                                )
+                              }
+                              disabled={combate.dado === "-"}
+                            >
+                              Rolar
+                            </button>
+                          </span>
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
               </section>
 
-              <section className="quick-sheet-card">
-                <h2>Pericias</h2>
-                {periciasSelecionadas.length === 0 ? (
-                  <p>Sem pericias com graduacao.</p>
-                ) : (
-                  <ul className="quick-sheet-list">
-                    {periciasSelecionadas.map((pericia) => (
-                      <li key={pericia.nome}>
-                        {pericia.nome}: {pericia.graduacao}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
               <section className="quick-sheet-card quick-sheet-card-wide">
-                <h2>Conhecimentos</h2>
-                {conhecimentosSelecionados.length === 0 ? (
-                  <p>Sem conhecimentos cadastrados.</p>
-                ) : (
-                  <ul className="quick-sheet-list">
-                    {conhecimentosSelecionados.map((conhecimento, index) => (
-                      <li key={`quick-conhecimento-${index}`}>
-                        {conhecimento.area || "Area nao definida"}:{" "}
-                        {parseNatural(conhecimento.graduacoes)}
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <h2>
+                  <span className="quick-sheet-title">
+                    Pericias e conhecimentos
+                  </span>
+                </h2>
+                <div className="quick-sheet-pericias-grid">
+                  <div className="quick-sheet-pericias-column">
+                    <h3 className="quick-sheet-subtitle">Pericias</h3>
+                    {periciasSelecionadas.length === 0 ? (
+                      <p>Sem pericias com graduacao.</p>
+                    ) : (
+                      <ul className="quick-sheet-list">
+                        {periciasSelecionadas.map((pericia) => (
+                          <li
+                            key={pericia.nome}
+                            className="quick-sheet-item-rich"
+                          >
+                            <div className="quick-sheet-item-head">
+                              <strong>
+                                {pericia.nome} ({pericia.atributo})
+                              </strong>
+                            </div>
+                            <div className="quick-sheet-roll-line">
+                              {renderQuickSheetDieChip("D20")}
+                              <span className="quick-sheet-roll-plus">+</span>
+                              {renderQuickSheetDieChip(pericia.dadoAtributo)}
+                              <span className="quick-sheet-roll-plus">+</span>
+                              <span className="quick-sheet-roll-value">
+                                {pericia.graduacao}
+                              </span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div className="quick-sheet-pericias-column">
+                    <h3 className="quick-sheet-subtitle">Conhecimentos</h3>
+                    {conhecimentosSelecionados.length === 0 ? (
+                      <p>Sem conhecimentos cadastrados.</p>
+                    ) : (
+                      <ul className="quick-sheet-list">
+                        {conhecimentosSelecionados.map(
+                          (conhecimento, index) => (
+                            <li
+                              key={`quick-conhecimento-${index}`}
+                              className="quick-sheet-item-rich"
+                            >
+                              <strong>
+                                {conhecimento.area || "Area nao definida"}
+                              </strong>
+                              <div className="quick-sheet-roll-line">
+                                {renderQuickSheetDieChip("D20")}
+                                <span className="quick-sheet-roll-plus">+</span>
+                                {renderQuickSheetDieChip(
+                                  selectedCharacter.atributos.Intelecto,
+                                )}
+                                <span className="quick-sheet-roll-plus">+</span>
+                                <span className="quick-sheet-roll-value">
+                                  {parseNatural(conhecimento.graduacoes)}
+                                </span>
+                              </div>
+                            </li>
+                          ),
+                        )}
+                      </ul>
+                    )}
+                  </div>
+                </div>
               </section>
 
               <section className="quick-sheet-card">
-                <h2>Vantagens</h2>
+                <h2>
+                  <span className="quick-sheet-title">Vantagens</span>
+                </h2>
                 {selectedCharacter.vantagens.length === 0 ? (
                   <p>Nenhuma vantagem.</p>
                 ) : (
                   <ul className="quick-sheet-list">
                     {selectedCharacter.vantagens.map((vantagem) => (
-                      <li key={vantagem.id}>
-                        {vantagem.nome}
-                        {vantagem.temGraduacao
-                          ? ` (Grad. ${vantagem.graduacao})`
-                          : ""}
+                      <li key={vantagem.id} className="quick-sheet-item-rich">
+                        <div className="quick-sheet-item-head">
+                          <strong>{vantagem.nome}</strong>
+                          <span className="quick-sheet-item-tag">
+                            {vantagem.temGraduacao
+                              ? `Grad. ${vantagem.graduacao}`
+                              : "Fixa"}
+                          </span>
+                        </div>
+                        <span className="quick-sheet-item-meta">
+                          {vantagem.categoria}
+                        </span>
+                        <p className="quick-sheet-item-note">
+                          {toQuickNarrative(
+                            vantagem.efeito || vantagem.resumo,
+                            170,
+                          )}
+                        </p>
                       </li>
                     ))}
                   </ul>
@@ -10541,14 +11580,33 @@ function App() {
               </section>
 
               <section className="quick-sheet-card">
-                <h2>Desvantagens</h2>
+                <h2>
+                  <span className="quick-sheet-title">Desvantagens</span>
+                </h2>
                 {selectedCharacter.desvantagens.length === 0 ? (
                   <p>Nenhuma desvantagem.</p>
                 ) : (
                   <ul className="quick-sheet-list">
                     {selectedCharacter.desvantagens.map((desvantagem) => (
-                      <li key={desvantagem.id}>
-                        {desvantagem.nome} ({desvantagem.nivel})
+                      <li
+                        key={desvantagem.id}
+                        className="quick-sheet-item-rich"
+                      >
+                        <div className="quick-sheet-item-head">
+                          <strong>{desvantagem.nome}</strong>
+                          <span className="quick-sheet-item-tag">
+                            {desvantagem.nivel}
+                          </span>
+                        </div>
+                        <span className="quick-sheet-item-meta">
+                          {desvantagem.categoria}
+                        </span>
+                        <p className="quick-sheet-item-note">
+                          {toQuickNarrative(
+                            desvantagem.efeito || desvantagem.resumo,
+                            170,
+                          )}
+                        </p>
                       </li>
                     ))}
                   </ul>
@@ -10556,7 +11614,11 @@ function App() {
               </section>
 
               <section className="quick-sheet-card quick-sheet-card-wide">
-                <h2>Equipamentos e notas</h2>
+                <h2>
+                  <span className="quick-sheet-title">
+                    Equipamentos e notas
+                  </span>
+                </h2>
                 <p>
                   {selectedCharacter.equipamentos?.trim() ||
                     "Sem anotacoes de equipamentos."}
@@ -10566,7 +11628,12 @@ function App() {
           ) : (
             <div className="quick-sheet-grid">
               <section className="quick-sheet-card quick-sheet-card-wide">
-                <h2>Fluxos naturais</h2>
+                <h2>
+                  <span className="quick-sheet-title">
+                    <GiRollingEnergy aria-hidden="true" />
+                    Fluxos naturais
+                  </span>
+                </h2>
                 <p className="quick-sheet-section-note">
                   Fluxos natural direto para resposta imediata em combate,
                   leitura do campo e sustentacao do personagem.
@@ -10610,7 +11677,12 @@ function App() {
               </section>
 
               <section className="quick-sheet-card quick-sheet-card-wide">
-                <h2>Poderes</h2>
+                <h2>
+                  <span className="quick-sheet-title">
+                    <MdBolt aria-hidden="true" />
+                    Poderes
+                  </span>
+                </h2>
                 <p className="quick-sheet-section-note">
                   Poderes configurados por naipe para formar seu arsenal ativo,
                   com graduacao, custo final e ajustes aplicados.
@@ -10653,7 +11725,12 @@ function App() {
               </section>
 
               <section className="quick-sheet-card quick-sheet-card-wide">
-                <h2>Tecnicas desenvolvidas</h2>
+                <h2>
+                  <span className="quick-sheet-title">
+                    <MdCallSplit aria-hidden="true" />
+                    Tecnicas desenvolvidas
+                  </span>
+                </h2>
                 <p className="quick-sheet-section-note">
                   Tecnicas Primarias, Avancadas e Especiais montadas a partir de
                   poderes base e modificadores customizados.
@@ -10689,6 +11766,213 @@ function App() {
             </div>
           )}
         </div>
+
+        {quickSheetRollModalOpen && quickSheetRollContext ? (
+          <div
+            className="quick-sheet-roll-overlay"
+            onClick={closeQuickSheetRoller}
+          >
+            <section
+              className="quick-sheet-roll-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="quick-sheet-roll-modal-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <header className="quick-sheet-roll-header">
+                <h2 id="quick-sheet-roll-modal-title">
+                  Rolagem de {quickSheetRollContext.origem}
+                </h2>
+                <p>
+                  {quickSheetRollContext.nome}: 1D20 +{" "}
+                  {quickSheetRollContext.dado}
+                </p>
+                <p className="quick-sheet-roll-rule-note">
+                  Dado de atributo ou combate e explosivo: se cair no valor
+                  maximo, aparece um novo dado para rolar. D20 nao explode.
+                </p>
+              </header>
+
+              <div className="quick-sheet-roll-tray">
+                {/* D20 - nunca explode */}
+                <article
+                  className={`quick-sheet-roll-die-card${quickSheetRollIsAnimating ? " rolling" : ""}`}
+                >
+                  <div
+                    className={`quick-sheet-roll-die-surface${quickSheetRollIsAnimating ? " rolling" : ""}`}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                      focusable="false"
+                    >
+                      {getQuickSheetDiePoints("D20") === null ? (
+                        <rect x="3" y="3" width="18" height="18" rx="2.5" />
+                      ) : (
+                        <polygon points={getQuickSheetDiePoints("D20") ?? ""} />
+                      )}
+                    </svg>
+                    <span className="quick-sheet-roll-die-number">
+                      {quickSheetRollD20Value}
+                    </span>
+                  </div>
+                  <span className="quick-sheet-roll-die-name">D20</span>
+                </article>
+
+                {/* Dado de atributo/combate – pode explodir N vezes */}
+                <div className="quick-sheet-roll-attr-tray">
+                  {quickSheetRollIsAnimating ? (
+                    /* durante animação: mostra um dado girando */
+                    <article className="quick-sheet-roll-die-card">
+                      <div className="quick-sheet-roll-die-surface rolling">
+                        <svg
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                          focusable="false"
+                        >
+                          {getQuickSheetDiePoints(
+                            quickSheetRollContext.dado,
+                          ) === null ? (
+                            <rect x="3" y="3" width="18" height="18" rx="2.5" />
+                          ) : (
+                            <polygon
+                              points={
+                                getQuickSheetDiePoints(
+                                  quickSheetRollContext.dado,
+                                ) ?? ""
+                              }
+                            />
+                          )}
+                        </svg>
+                        <span className="quick-sheet-roll-die-number">
+                          {quickSheetRollAttributeValue}
+                        </span>
+                      </div>
+                      <span className="quick-sheet-roll-die-name">
+                        {quickSheetRollContext.dado}
+                      </span>
+                    </article>
+                  ) : (
+                    quickSheetRollRevealedDice.map((item, idx) => {
+                      const isPending = item.pending;
+                      const isRolling = item.rolling;
+                      const isExplodedDie = item.exploded && !item.pending;
+
+                      return (
+                        <article
+                          key={item.key}
+                          className={[
+                            "quick-sheet-roll-die-card",
+                            "die-reveal",
+                            isPending ? "die-pending" : "",
+                            isExplodedDie ? "die-exploded" : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}
+                        >
+                          <div
+                            className={`quick-sheet-roll-die-surface${isRolling ? " rolling" : ""}`}
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              aria-hidden="true"
+                              focusable="false"
+                            >
+                              {getQuickSheetDiePoints(
+                                quickSheetRollContext.dado,
+                              ) === null ? (
+                                <rect
+                                  x="3"
+                                  y="3"
+                                  width="18"
+                                  height="18"
+                                  rx="2.5"
+                                />
+                              ) : (
+                                <polygon
+                                  points={
+                                    getQuickSheetDiePoints(
+                                      quickSheetRollContext.dado,
+                                    ) ?? ""
+                                  }
+                                />
+                              )}
+                            </svg>
+                            <span className="quick-sheet-roll-die-number">
+                              {item.value ?? "?"}
+                            </span>
+                          </div>
+                          <span className="quick-sheet-roll-die-name">
+                            {isPending
+                              ? `Novo ${quickSheetRollContext.dado}`
+                              : isExplodedDie &&
+                                  idx < quickSheetRollRevealedDice.length - 1
+                                ? `💥 ${quickSheetRollContext.dado}`
+                                : quickSheetRollContext.dado}
+                          </span>
+                          {isPending ? (
+                            <button
+                              type="button"
+                              className="quick-sheet-roll-die-button"
+                              onClick={() =>
+                                rollQuickSheetExplosionStep(item.key)
+                              }
+                              disabled={isRolling}
+                            >
+                              Rolar
+                            </button>
+                          ) : null}
+                        </article>
+                      );
+                    })
+                  )}
+                </div>
+
+                <article className="quick-sheet-roll-total-card">
+                  <span>
+                    {quickSheetRollHasPendingDice ? "Parcial" : "Total"}
+                  </span>
+                  <strong>
+                    {quickSheetRollIsAnimating
+                      ? "..."
+                      : quickSheetRollTotalValue}
+                  </strong>
+                </article>
+              </div>
+
+              <p className="quick-sheet-roll-breakdown" aria-live="polite">
+                {quickSheetRollIsAnimating
+                  ? "Calculando explosao do dado de atributo/combate..."
+                  : quickSheetRollHasPendingDice
+                    ? `Explosao pendente: ${quickSheetRollAttributeBreakdown.join(" + ")} | role o dado extra abaixo.`
+                    : quickSheetRollExplosions > 0
+                      ? `Explodiu x${quickSheetRollExplosions}: ${quickSheetRollAttributeBreakdown.join(" + ")} = ${quickSheetRollAttributeValue}`
+                      : `Sem explosao: ${quickSheetRollAttributeBreakdown[0] ?? quickSheetRollAttributeValue}`}
+              </p>
+
+              <footer className="quick-sheet-roll-actions">
+                <button
+                  type="button"
+                  className="quick-sheet-nav-btn"
+                  onClick={() =>
+                    triggerQuickSheetRoll(quickSheetRollContext.dado)
+                  }
+                  disabled={quickSheetRollIsAnimating}
+                >
+                  {quickSheetRollIsAnimating ? "Rolando..." : "Rolar novamente"}
+                </button>
+                <button
+                  type="button"
+                  className="quick-sheet-nav-btn"
+                  onClick={closeQuickSheetRoller}
+                  disabled={quickSheetRollIsAnimating}
+                >
+                  Fechar
+                </button>
+              </footer>
+            </section>
+          </div>
+        ) : null}
 
         {renderGlobalOverlays()}
       </>
@@ -12194,18 +13478,19 @@ function App() {
                       </p>
                       <ol className="tecnicas-dev-guide-list">
                         <li>
-                          Escolha primeiro ao menos 1 Poder Base do seu arsenal.
+                          Conceito e nome da tecnica (identidade de combate).
                         </li>
                         <li>
-                          Defina nome, tipo e efeito da tecnica com base nesse
-                          poder.
+                          Selecione 1+ poderes base coerentes e defina o efeito
+                          unificado da execucao.
                         </li>
                         <li>
-                          Aplique modificadores, limitacoes e falhas do Capitulo
-                          12.
+                          Defina tipo, acao, alcance, alvo, duracao, acerto,
+                          dano e gatilho quando houver.
                         </li>
                         <li>
-                          Resolva tudo como uma unica acao durante o jogo.
+                          Aplique modificadores, limitacoes e falhas; valide
+                          limites e calcule o custo final.
                         </li>
                       </ol>
                     </div>
@@ -12228,17 +13513,25 @@ function App() {
 
                   <div className="tecnicas-dev-guide-card">
                     <p className="tecnicas-dev-guide-title">
-                      Aquisicao a partir do nivel 5
+                      Principio do sistema
                     </p>
                     <p className="tecnicas-dev-guide-note">
-                      Novas tecnicas alem das vagas gratuitas custam PP:
-                      Primaria {`(${TECHNIQUE_PP_BY_TYPE.Primaria} PP)`},
-                      Avancada {`(${TECHNIQUE_PP_BY_TYPE.Avancada} PP)`} e
-                      Especial {`(${TECHNIQUE_PP_BY_TYPE.Especial} PP)`}.
+                      Tecnicas sao construidas como uma unica acao e nao criam
+                      efeito isolado fora dos poderes base.
                     </p>
                     <p className="tecnicas-dev-guide-note">
-                      O sistema valida automaticamente se ainda existem vagas
-                      gratuitas antes de cobrar PP.
+                      Formula oficial: Custo Final = Custo Base + Modificadores
+                      - Limitacoes/Falhas.
+                    </p>
+                    <p className="tecnicas-dev-guide-note">
+                      Limite de adicional antes das reducoes: Primaria +5,
+                      Avancada +10, Especial +16.
+                    </p>
+                    <p className="tecnicas-dev-guide-note">
+                      Aquisicao no nivel 5+: Primaria
+                      {` (${TECHNIQUE_PP_BY_TYPE.Primaria} PP)`}, Avancada
+                      {` (${TECHNIQUE_PP_BY_TYPE.Avancada} PP)`}, Especial
+                      {` (${TECHNIQUE_PP_BY_TYPE.Especial} PP)`}.
                     </p>
                   </div>
 
@@ -12253,11 +13546,12 @@ function App() {
                   </div>
                 </div>
 
-                <section className="tecnicas-dev-subsection">
-                  <h4>Passo 1 - Poderes Base</h4>
+                <section className="tecnicas-dev-subsection tecnica-base-section">
+                  <h4>Poder Base</h4>
                   <p className="rule-note">
-                    O Poder #1 e a referencia principal da tecnica. A acao,
-                    duracao, alcance e alvo sao herdados dele automaticamente.
+                    O Poder é a referência principal. Ação, alcance e duração
+                    usam essa base e os ajustes seguem a progressão do Capítulo
+                    12.
                   </p>
                   {tecnicaDraft.poderesBase.map((base, index) => {
                     const selectedPowerData =
@@ -12415,237 +13709,244 @@ function App() {
                   </button>
                 </section>
 
-                <div className="tecnicas-dev-grid">
-                  <label>
-                    Nome da tecnica
-                    <input
-                      disabled={!tecnicaTemPoderBaseSelecionado}
-                      value={tecnicaDraft.nome}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          nome: event.target.value,
-                        }))
-                      }
-                      placeholder="Ex: Lamina Perfurante"
-                    />
-                  </label>
+                <section className="tecnicas-dev-subsection tecnica-info-section">
+                  <h4>Informacoes da Tecnica</h4>
+                  <p className="rule-note">
+                    Defina os dados centrais da execucao: identidade, tipo,
+                    fluxo de acao, alcance, alvo e resultado base.
+                  </p>
 
-                  <label>
-                    Tipo
-                    <select
-                      disabled={!tecnicaTemPoderBaseSelecionado}
-                      value={tecnicaDraft.tipo}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          tipo: event.target.value as DevelopedTechniqueType,
-                        }))
-                      }
-                    >
-                      <option value="Primaria">Primaria</option>
-                      <option value="Avancada">Avancada</option>
-                      <option value="Especial">Especial</option>
-                    </select>
-                  </label>
-
-                  <label>
-                    Acao
-                    <select
-                      disabled={!tecnicaTemPoderBaseSelecionado}
-                      value={tecnicaDraft.acao}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          acao: event.target.value,
-                        }))
-                      }
-                    >
-                      {actionOptionsWithCost.map((option) => (
-                        <option
-                          key={option.value}
-                          value={option.value}
-                          disabled={
-                            !canIncreaseTechniqueCost(
-                              currentActionCost,
-                              option.cost,
-                            )
-                          }
-                        >
-                          {option.value} ({formatSignedPe(option.cost)})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label>
-                    Alcance
-                    <select
-                      disabled={!tecnicaTemPoderBaseSelecionado}
-                      value={tecnicaDraft.alcance}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          alcance: event.target.value,
-                        }))
-                      }
-                    >
-                      {rangeOptionsWithCost.map((option) => (
-                        <option
-                          key={option.value}
-                          value={option.value}
-                          disabled={
-                            !canIncreaseTechniqueCost(
-                              currentRangeCost,
-                              option.cost,
-                            )
-                          }
-                        >
-                          {option.value} ({formatSignedPe(option.cost)})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label>
-                    Alvo
-                    <select
-                      disabled={
-                        !tecnicaTemPoderBaseSelecionado || tecnicaAreaAtiva
-                      }
-                      value={tecnicaDraft.alvo}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => {
-                          const nextTarget = event.target.value;
-
-                          return {
+                  <div className="tecnica-info-name-block">
+                    <label>
+                      Nome da tecnica
+                      <input
+                        disabled={!tecnicaTemPoderBaseSelecionado}
+                        value={tecnicaDraft.nome}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
                             ...current,
-                            alvo: nextTarget,
-                            modificadores: {
-                              ...current.modificadores,
-                              ataqueMultiplo:
-                                nextTarget === "2 alvos"
-                                  ? "2"
-                                  : nextTarget === "3 alvos"
-                                    ? "3"
-                                    : "1",
-                            },
-                          };
-                        })
-                      }
-                    >
-                      {targetOptionsWithCost.map((option) => (
-                        <option
-                          key={option.value}
-                          value={option.value}
-                          disabled={
-                            option.disabled ||
-                            !canIncreaseTechniqueCost(
-                              currentTargetCost,
-                              option.cost,
-                            )
-                          }
-                        >
-                          {option.cost === 0
-                            ? option.value
-                            : `${option.value} (${formatSignedPe(option.cost)})`}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                            nome: event.target.value,
+                          }))
+                        }
+                        placeholder="Ex: Lamina Perfurante"
+                      />
+                    </label>
+                  </div>
 
-                  <label>
-                    Duracao
-                    <select
-                      disabled={!tecnicaTemPoderBaseSelecionado}
-                      value={tecnicaDraft.duracao}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          duracao: event.target.value,
-                        }))
-                      }
-                    >
-                      {durationOptionsWithCost.map((option) => (
-                        <option
-                          key={option.value}
-                          value={option.value}
-                          disabled={
-                            !canIncreaseTechniqueCost(
-                              currentDurationCost,
-                              option.cost,
-                            )
-                          }
-                        >
-                          {option.value} ({formatSignedPe(option.cost)})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <div className="tecnicas-dev-grid">
+                    <label>
+                      Tipo
+                      <select
+                        disabled={!tecnicaTemPoderBaseSelecionado}
+                        value={tecnicaDraft.tipo}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            tipo: event.target.value as DevelopedTechniqueType,
+                          }))
+                        }
+                      >
+                        <option value="Primaria">Primaria</option>
+                        <option value="Avancada">Avancada</option>
+                        <option value="Especial">Especial</option>
+                      </select>
+                    </label>
 
-                  <label>
-                    Acerto da tecnica
-                    <input
-                      disabled={!tecnicaTemPoderBaseSelecionado}
-                      readOnly
-                      value={tecnicaAcertoResumo}
-                    />
-                  </label>
+                    <label>
+                      Acao
+                      <select
+                        disabled={!tecnicaTemPoderBaseSelecionado}
+                        value={tecnicaDraft.acao}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            acao: event.target.value,
+                          }))
+                        }
+                      >
+                        {actionOptionsWithCost.map((option) => (
+                          <option
+                            key={option.value}
+                            value={option.value}
+                            disabled={
+                              !canIncreaseTechniqueCost(
+                                currentActionCost,
+                                option.cost,
+                              )
+                            }
+                          >
+                            {option.value} ({formatSignedPe(option.cost)})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
 
-                  <label>
-                    Dano da tecnica
-                    <input
-                      disabled={!tecnicaTemPoderBaseSelecionado}
-                      readOnly
-                      value={tecnicaDanoResumo}
-                    />
-                  </label>
-                </div>
+                    <label>
+                      Alcance
+                      <select
+                        disabled={!tecnicaTemPoderBaseSelecionado}
+                        value={tecnicaDraft.alcance}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            alcance: event.target.value,
+                          }))
+                        }
+                      >
+                        {rangeOptionsWithCost.map((option) => (
+                          <option
+                            key={option.value}
+                            value={option.value}
+                            disabled={
+                              !canIncreaseTechniqueCost(
+                                currentRangeCost,
+                                option.cost,
+                              )
+                            }
+                          >
+                            {option.value} ({formatSignedPe(option.cost)})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
 
-                <div className="tecnicas-dev-textareas">
-                  <label>
-                    Conceito
-                    <textarea
-                      disabled={!tecnicaTemPoderBaseSelecionado}
-                      value={tecnicaDraft.conceito}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          conceito: event.target.value,
-                        }))
-                      }
-                      placeholder="Defina a intencao e identidade da tecnica."
-                    />
-                  </label>
-                  <label>
-                    Efeito completo
-                    <textarea
-                      disabled={!tecnicaTemPoderBaseSelecionado}
-                      value={tecnicaDraft.efeito}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          efeito: event.target.value,
-                        }))
-                      }
-                      placeholder="Descreva resolucao mecanica objetiva."
-                    />
-                  </label>
-                  <label>
-                    Gatilho / condicao
-                    <textarea
-                      disabled={!tecnicaTemPoderBaseSelecionado}
-                      value={tecnicaDraft.gatilho}
-                      onChange={(event) =>
-                        setTecnicaDraft((current) => ({
-                          ...current,
-                          gatilho: event.target.value,
-                        }))
-                      }
-                      placeholder="Opcional. Ex: exige preparacao."
-                    />
-                  </label>
-                </div>
+                    <label>
+                      Alvo
+                      <select
+                        disabled={
+                          !tecnicaTemPoderBaseSelecionado || tecnicaAreaAtiva
+                        }
+                        value={tecnicaDraft.alvo}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => {
+                            const nextTarget = event.target.value;
+
+                            return {
+                              ...current,
+                              alvo: nextTarget,
+                              modificadores: {
+                                ...current.modificadores,
+                                ataqueMultiplo:
+                                  nextTarget === "2 alvos"
+                                    ? "2"
+                                    : nextTarget === "3 alvos"
+                                      ? "3"
+                                      : "1",
+                              },
+                            };
+                          })
+                        }
+                      >
+                        {targetOptionsWithCost.map((option) => (
+                          <option
+                            key={option.value}
+                            value={option.value}
+                            disabled={
+                              option.disabled ||
+                              !canIncreaseTechniqueCost(
+                                currentTargetCost,
+                                option.cost,
+                              )
+                            }
+                          >
+                            {option.cost === 0
+                              ? option.value
+                              : `${option.value} (${formatSignedPe(option.cost)})`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label>
+                      Duracao
+                      <select
+                        disabled={!tecnicaTemPoderBaseSelecionado}
+                        value={tecnicaDraft.duracao}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            duracao: event.target.value,
+                          }))
+                        }
+                      >
+                        {durationOptionsWithCost.map((option) => (
+                          <option
+                            key={option.value}
+                            value={option.value}
+                            disabled={
+                              !canIncreaseTechniqueCost(
+                                currentDurationCost,
+                                option.cost,
+                              )
+                            }
+                          >
+                            {option.value} ({formatSignedPe(option.cost)})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="tecnica-info-readouts">
+                    <article className="tecnica-info-readout-card">
+                      <span className="tecnica-info-readout-label">
+                        Acerto da tecnica
+                      </span>
+                      <p>{tecnicaAcertoResumo}</p>
+                    </article>
+                    <article className="tecnica-info-readout-card">
+                      <span className="tecnica-info-readout-label">
+                        Dano da tecnica
+                      </span>
+                      <p>{tecnicaDanoResumo}</p>
+                    </article>
+                  </div>
+
+                  <div className="tecnicas-dev-textareas">
+                    <label>
+                      Conceito
+                      <textarea
+                        disabled={!tecnicaTemPoderBaseSelecionado}
+                        value={tecnicaDraft.conceito}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            conceito: event.target.value,
+                          }))
+                        }
+                        placeholder="Defina a intencao e identidade da tecnica."
+                      />
+                    </label>
+                    <label>
+                      Efeito completo
+                      <textarea
+                        disabled={!tecnicaTemPoderBaseSelecionado}
+                        value={tecnicaDraft.efeito}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            efeito: event.target.value,
+                          }))
+                        }
+                        placeholder="Descreva resolucao mecanica objetiva."
+                      />
+                    </label>
+                    <label>
+                      Gatilho / condicao
+                      <textarea
+                        disabled={!tecnicaTemPoderBaseSelecionado}
+                        value={tecnicaDraft.gatilho}
+                        onChange={(event) =>
+                          setTecnicaDraft((current) => ({
+                            ...current,
+                            gatilho: event.target.value,
+                          }))
+                        }
+                        placeholder="Opcional. Ex: exige preparacao."
+                      />
+                    </label>
+                  </div>
+                </section>
 
                 <section className="tecnicas-dev-subsection">
                   <h4>Modificadores e Reducoes</h4>
@@ -12655,10 +13956,18 @@ function App() {
                     aplicado antes das reducoes.
                   </p>
 
-                  <h5>Ofensivos e Controle</h5>
+                  <h5>Modificadores</h5>
                   <div className="tecnicas-dev-grid">
                     <label>
-                      Aumento de dano (+1 PE por +1)
+                      <span className="tecnica-label-with-help">
+                        <span>Aumento de dano</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_AUMENTO_DANO_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
                       <NumericStepperInput
                         min={0}
                         max={maxAumentoDano}
@@ -12670,7 +13979,15 @@ function App() {
                       />
                     </label>
                     <label>
-                      Precisao (+1 PE por +1)
+                      <span className="tecnica-label-with-help">
+                        <span>Precisao</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_PRECISAO_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
                       <NumericStepperInput
                         min={0}
                         max={maxPrecisao}
@@ -12682,7 +13999,15 @@ function App() {
                       />
                     </label>
                     <label>
-                      Penetrante (+2 PE por nivel)
+                      <span className="tecnica-label-with-help">
+                        <span>Penetrante</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_PENETRANTE_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
                       <NumericStepperInput
                         min={0}
                         max={maxPenetrante}
@@ -12694,7 +14019,15 @@ function App() {
                       />
                     </label>
                     <label>
-                      Dano ampliado (+1 PE por +1)
+                      <span className="tecnica-label-with-help">
+                        <span>Dano ampliado</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_DANO_AMPLIADO_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
                       <NumericStepperInput
                         min={0}
                         max={maxDanoAmpliado}
@@ -12706,7 +14039,115 @@ function App() {
                       />
                     </label>
                     <label>
-                      Area
+                      <span className="tecnica-label-with-help">
+                        <span>Critico aprimorado</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_CRITICO_APRIMORADO_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
+                      <NumericStepperInput
+                        min={0}
+                        max={maxCriticoAprimorado}
+                        value={tecnicaMods.criticoAprimorado}
+                        ariaLabel="Critico aprimorado"
+                        onChange={(value) =>
+                          atualizarModTecnica("criticoAprimorado", value)
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span className="tecnica-label-with-help">
+                        <span>Dano continuo</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_DANO_CONTINUO_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
+                      <NumericStepperInput
+                        min={0}
+                        max={maxDanoContinuo}
+                        value={tecnicaMods.danoContinuo}
+                        ariaLabel="Dano continuo"
+                        onChange={(value) =>
+                          atualizarModTecnica("danoContinuo", value)
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span className="tecnica-label-with-help">
+                        <span>Resultado em Defesa</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_DEFESA_RESULTADO_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
+                      <NumericStepperInput
+                        min={0}
+                        max={maxBonusDefesa}
+                        value={tecnicaMods.bonusDefesa}
+                        ariaLabel="Bonus em defesa"
+                        onChange={(value) =>
+                          atualizarModTecnica("bonusDefesa", value)
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span className="tecnica-label-with-help">
+                        <span>Reducao de dano</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_REDUCAO_DANO_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
+                      <NumericStepperInput
+                        min={0}
+                        max={maxReducaoDano}
+                        value={tecnicaMods.reducaoDanoRecebido}
+                        ariaLabel="Reducao de dano"
+                        onChange={(value) =>
+                          atualizarModTecnica("reducaoDanoRecebido", value)
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span className="tecnica-label-with-help">
+                        <span>Absorcao convertida</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_ABSORCAO_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
+                      <NumericStepperInput
+                        min={0}
+                        max={maxAbsorcao}
+                        value={tecnicaMods.absorcao}
+                        ariaLabel="Absorcao convertida"
+                        onChange={(value) =>
+                          atualizarModTecnica("absorcao", value)
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span className="tecnica-label-with-help">
+                        <span>Area</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_AREA_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
                       <select
                         value={tecnicaMods.area}
                         onChange={(event) =>
@@ -12760,7 +14201,15 @@ function App() {
                       </select>
                     </label>
                     <label>
-                      Controle
+                      <span className="tecnica-label-with-help">
+                        <span>Controle</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_CONTROLE_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
                       <select
                         value={tecnicaMods.controleNivel}
                         onChange={(event) =>
@@ -12800,7 +14249,15 @@ function App() {
                     </label>
                     {!tecnicaAreaAtiva ? (
                       <label>
-                        Ataque multiplo
+                        <span className="tecnica-label-with-help">
+                          <span>Ataque multiplo</span>
+                          <span
+                            className="info-dot"
+                            data-tooltip={TECHNIQUE_ATAQUE_MULTIPLO_TOOLTIP}
+                          >
+                            i
+                          </span>
+                        </span>
                         <select
                           value={tecnicaMods.ataqueMultiplo}
                           onChange={(event) =>
@@ -12848,41 +14305,15 @@ function App() {
                       </label>
                     ) : null}
                     <label>
-                      Deslocamento em metros (
-                      {formatSignedPe(currentDeslocamentoCost)} atual)
-                      <NumericStepperInput
-                        min={0}
-                        max={maxDeslocamentoMetros}
-                        value={tecnicaMods.deslocamentoMetros}
-                        ariaLabel="Deslocamento em metros"
-                        onChange={(value) =>
-                          atualizarModTecnica("deslocamentoMetros", value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      Tipo de deslocamento (custo definido pelos metros)
-                      <select
-                        value={tecnicaMods.deslocamentoTipo}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "deslocamentoTipo",
-                            event.target
-                              .value as DevelopedTechniqueModifierSet["deslocamentoTipo"],
-                          )
-                        }
-                      >
-                        <option value="">Sem deslocamento</option>
-                        <option value="Empurrar">Empurrar</option>
-                        <option value="Puxar">Puxar</option>
-                        <option value="Reposicionar">Reposicionar</option>
-                        <option value="Movimento proprio">
-                          Movimento proprio
-                        </option>
-                      </select>
-                    </label>
-                    <label>
-                      Indireto
+                      <span className="tecnica-label-with-help">
+                        <span>Indireto</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_INDIRETO_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
                       <select
                         value={tecnicaMods.indireto}
                         onChange={(event) =>
@@ -12913,86 +14344,15 @@ function App() {
                       </select>
                     </label>
                     <label>
-                      Ricochete (desvios)
-                      <NumericStepperInput
-                        min={0}
-                        max={maxRicochete}
-                        value={tecnicaMods.ricochete}
-                        ariaLabel="Quantidade de desvios"
-                        onChange={(value) =>
-                          atualizarModTecnica("ricochete", value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      Dividido
-                      <select
-                        value={tecnicaMods.dividido}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "dividido",
-                            event.target
-                              .value as DevelopedTechniqueModifierSet["dividido"],
-                          )
-                        }
-                      >
-                        <option value="">Nao</option>
-                        <option
-                          value="2"
-                          disabled={
-                            !canIncreaseTechniqueCost(currentDivididoCost, 1)
-                          }
+                      <span className="tecnica-label-with-help">
+                        <span>Sutil</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_SUTIL_TOOLTIP}
                         >
-                          2 alvos (+1 PE)
-                        </option>
-                        <option
-                          value="3"
-                          disabled={
-                            !canIncreaseTechniqueCost(currentDivididoCost, 2)
-                          }
-                        >
-                          3 alvos (+2 PE)
-                        </option>
-                      </select>
-                    </label>
-                    <label>
-                      Defesa bonus
-                      <NumericStepperInput
-                        min={0}
-                        max={maxBonusDefesa}
-                        value={tecnicaMods.bonusDefesa}
-                        ariaLabel="Bonus em defesa"
-                        onChange={(value) =>
-                          atualizarModTecnica("bonusDefesa", value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      Reducao de dano
-                      <NumericStepperInput
-                        min={0}
-                        max={maxReducaoDano}
-                        value={tecnicaMods.reducaoDanoRecebido}
-                        ariaLabel="Reducao de dano"
-                        onChange={(value) =>
-                          atualizarModTecnica("reducaoDanoRecebido", value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      Absorcao convertida
-                      <NumericStepperInput
-                        min={0}
-                        max={maxAbsorcao}
-                        value={tecnicaMods.absorcao}
-                        ariaLabel="Absorcao convertida"
-                        onChange={(value) =>
-                          atualizarModTecnica("absorcao", value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      Sutil
+                          i
+                        </span>
+                      </span>
                       <select
                         value={tecnicaMods.sutil}
                         onChange={(event) =>
@@ -13022,48 +14382,102 @@ function App() {
                         </option>
                       </select>
                     </label>
+                    <div className="tecnica-custom-group">
+                      <p className="tecnica-custom-title">
+                        Modificador personalizado (
+                        {formatSignedPe(tecnicaCustomCustoNormalizado)})
+                      </p>
+                      <div className="tecnica-custom-fields">
+                        <label>
+                          Nome
+                          <input
+                            value={
+                              tecnicaDraft.modificadores
+                                .modificadorPersonalizadoNome
+                            }
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "modificadorPersonalizadoNome",
+                                event.target.value,
+                              )
+                            }
+                            placeholder="Ex: Ajuste narrativo"
+                          />
+                        </label>
+                        <label>
+                          PE
+                          <input
+                            type="number"
+                            max={maxCustomPositive}
+                            value={tecnicaMods.modificadorPersonalizadoCusto}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "modificadorPersonalizadoCusto",
+                                event.target.value,
+                              )
+                            }
+                            placeholder="Pode ser negativo"
+                          />
+                        </label>
+                      </div>
+                    </div>
                     <label>
-                      Modificador personalizado (nome)
-                      <input
-                        value={
-                          tecnicaDraft.modificadores
-                            .modificadorPersonalizadoNome
-                        }
+                      <span className="tecnica-label-with-help">
+                        <span>Deslocamento</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_DESLOCAMENTO_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
+                      <select
+                        value={deslocamentoSelectValue}
                         onChange={(event) =>
                           atualizarModTecnica(
-                            "modificadorPersonalizadoNome",
+                            "deslocamentoMetros",
                             event.target.value,
                           )
                         }
-                        placeholder="Ex: Ajuste narrativo"
-                      />
-                    </label>
-                    <label>
-                      Modificador personalizado (PE)
-                      <input
-                        type="number"
-                        max={maxCustomPositive}
-                        value={tecnicaMods.modificadorPersonalizadoCusto}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "modificadorPersonalizadoCusto",
-                            event.target.value,
-                          )
-                        }
-                        placeholder="Pode ser negativo"
-                      />
+                      >
+                        {deslocamentoOpcoesMetros.map((metros) => {
+                          const custo = Math.ceil(metros / 2);
+                          const permitido =
+                            metros <= maxDeslocamentoMetros &&
+                            canIncreaseTechniqueCost(
+                              currentDeslocamentoCost,
+                              custo,
+                            );
+
+                          return (
+                            <option
+                              key={metros}
+                              value={String(metros)}
+                              disabled={!permitido}
+                            >
+                              {metros === 0
+                                ? "Sem deslocamento (+0 PE)"
+                                : `${metros}m (+${custo} PE)`}
+                            </option>
+                          );
+                        })}
+                      </select>
                     </label>
                   </div>
 
                   <div className="tecnicas-dev-checks">
-                    <label>
+                    <label
+                      className={`tecnica-check-card${lockEfeitoSecundarioByPe ? " pe-locked-field" : ""}`}
+                      data-lock-tooltip={
+                        lockEfeitoSecundarioByPe
+                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                          : undefined
+                      }
+                    >
                       <input
                         type="checkbox"
                         checked={tecnicaMods.efeitoSecundario}
-                        disabled={
-                          !tecnicaMods.efeitoSecundario &&
-                          !canIncreaseTechniqueCost(0, 2)
-                        }
+                        disabled={lockEfeitoSecundarioByPe}
                         onChange={(event) =>
                           atualizarModTecnica(
                             "efeitoSecundario",
@@ -13071,30 +14485,66 @@ function App() {
                           )
                         }
                       />
-                      Efeito secundario (+2 PE)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Efeito secundario</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_EFEITO_SECUNDARIO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>
+                          Repete o efeito no turno seguinte uma vez.
+                        </small>
+                      </span>
                     </label>
-                    <label>
+                    <label
+                      className={`tecnica-check-card${lockIncuravelByPe ? " pe-locked-field" : ""}`}
+                      data-lock-tooltip={
+                        lockIncuravelByPe
+                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                          : undefined
+                      }
+                    >
                       <input
                         type="checkbox"
                         checked={tecnicaMods.incuravel}
-                        disabled={
-                          !tecnicaMods.incuravel &&
-                          !canIncreaseTechniqueCost(0, 2)
-                        }
+                        disabled={lockIncuravelByPe}
                         onChange={(event) =>
                           atualizarModTecnica("incuravel", event.target.checked)
                         }
                       />
-                      Incuravel (+2 PE)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Incuravel</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_INCURAVEL_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>Limita ou impede recuperacao dos efeitos.</small>
+                      </span>
                     </label>
-                    <label>
+                    <label
+                      className={`tecnica-check-card${lockContagiosoByPe ? " pe-locked-field" : ""}`}
+                      data-lock-tooltip={
+                        lockContagiosoByPe
+                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                          : undefined
+                      }
+                    >
                       <input
                         type="checkbox"
                         checked={tecnicaMods.contagioso}
-                        disabled={
-                          !tecnicaMods.contagioso &&
-                          !canIncreaseTechniqueCost(0, 4)
-                        }
+                        disabled={lockContagiosoByPe}
                         onChange={(event) =>
                           atualizarModTecnica(
                             "contagioso",
@@ -13102,30 +14552,66 @@ function App() {
                           )
                         }
                       />
-                      Contagioso (+4 PE)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Contagioso</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_CONTAGIOSO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>
+                          Permite propagacao controlada para alvos proximos.
+                        </small>
+                      </span>
                     </label>
-                    <label>
+                    <label
+                      className={`tecnica-check-card${lockSeletivoByPe ? " pe-locked-field" : ""}`}
+                      data-lock-tooltip={
+                        lockSeletivoByPe
+                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                          : undefined
+                      }
+                    >
                       <input
                         type="checkbox"
                         checked={tecnicaMods.seletivo}
-                        disabled={
-                          !tecnicaMods.seletivo &&
-                          !canIncreaseTechniqueCost(0, 2)
-                        }
+                        disabled={lockSeletivoByPe}
                         onChange={(event) =>
                           atualizarModTecnica("seletivo", event.target.checked)
                         }
                       />
-                      Seletivo (+2 PE)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Seletivo</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_SELETIVO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>Escolhe quem na area sera afetado.</small>
+                      </span>
                     </label>
-                    <label>
+                    <label
+                      className={`tecnica-check-card${lockSequenciaByPe ? " pe-locked-field" : ""}`}
+                      data-lock-tooltip={
+                        lockSequenciaByPe
+                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                          : undefined
+                      }
+                    >
                       <input
                         type="checkbox"
                         checked={tecnicaMods.rastreamento}
-                        disabled={
-                          !tecnicaMods.rastreamento &&
-                          !canIncreaseTechniqueCost(0, 3)
-                        }
+                        disabled={lockSequenciaByTipo || lockSequenciaByPe}
                         onChange={(event) =>
                           atualizarModTecnica(
                             "rastreamento",
@@ -13133,47 +14619,104 @@ function App() {
                           )
                         }
                       />
-                      Rastreamento (+3 PE)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Sequencia</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_SEQUENCIA_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>
+                          Nova tentativa imediata apos erro em Toque.
+                        </small>
+                      </span>
                     </label>
-                    <label>
+                    <label
+                      className={`tecnica-check-card${lockRicocheteByPe ? " pe-locked-field" : ""}`}
+                      data-lock-tooltip={
+                        lockRicocheteByPe
+                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                          : undefined
+                      }
+                    >
                       <input
                         type="checkbox"
-                        checked={tecnicaMods.alternativo}
-                        disabled={
-                          !tecnicaMods.alternativo &&
-                          !canIncreaseTechniqueCost(0, 1)
-                        }
+                        checked={tecnicaRicochete > 0}
+                        disabled={lockRicocheteByTipo || lockRicocheteByPe}
                         onChange={(event) =>
                           atualizarModTecnica(
-                            "alternativo",
-                            event.target.checked,
+                            "ricochete",
+                            event.target.checked ? "1" : "0",
                           )
                         }
                       />
-                      Alternativo (+1 PE)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Ricochete</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_RICOCHETE_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>
+                          Permite um desvio para novo alvo apos erro.
+                        </small>
+                      </span>
                     </label>
-                    <label>
+                    <label
+                      className={`tecnica-check-card${lockReflexoByPe ? " pe-locked-field" : ""}`}
+                      data-lock-tooltip={
+                        lockReflexoByPe
+                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                          : undefined
+                      }
+                    >
                       <input
                         type="checkbox"
                         checked={tecnicaMods.reflexo}
-                        disabled={
-                          !tecnicaMods.reflexo &&
-                          !canIncreaseTechniqueCost(0, 2)
-                        }
+                        disabled={lockReflexoByPe}
                         onChange={(event) =>
                           atualizarModTecnica("reflexo", event.target.checked)
                         }
                       />
-                      Reflexo (+2 PE)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Reflexo</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_REFLEXO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>
+                          Resposta automatica defensiva com gatilho.
+                        </small>
+                      </span>
                     </label>
-                    <label>
+                    <label
+                      className={`tecnica-check-card${lockTraicoeiroByPe ? " pe-locked-field" : ""}`}
+                      data-lock-tooltip={
+                        lockTraicoeiroByPe
+                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                          : undefined
+                      }
+                    >
                       <input
                         type="checkbox"
                         checked={tecnicaMods.traicoeiro}
-                        disabled={
-                          !tecnicaMods.traicoeiro &&
-                          !canIncreaseTechniqueCost(0, 1)
-                        }
+                        disabled={lockTraicoeiroByPe}
                         onChange={(event) =>
                           atualizarModTecnica(
                             "traicoeiro",
@@ -13181,46 +14724,70 @@ function App() {
                           )
                         }
                       />
-                      Traicoeiro (+1 PE)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Traicoeiro</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_TRAICOEIRO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>Oculta os efeitos reais apos a execucao.</small>
+                      </span>
                     </label>
-                    <label>
+                    <label
+                      className={`tecnica-check-card${lockPrecisoByPe ? " pe-locked-field" : ""}`}
+                      data-lock-tooltip={
+                        lockPrecisoByPe
+                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                          : undefined
+                      }
+                    >
                       <input
                         type="checkbox"
                         checked={tecnicaMods.preciso}
-                        disabled={
-                          !tecnicaMods.preciso &&
-                          !canIncreaseTechniqueCost(0, 1)
-                        }
+                        disabled={lockPrecisoByPe}
                         onChange={(event) =>
                           atualizarModTecnica("preciso", event.target.checked)
                         }
                       />
-                      Preciso (+1 PE)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Preciso</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_PRECISO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>
+                          Permite aplicacao refinada e controle fino.
+                        </small>
+                      </span>
                     </label>
                   </div>
 
                   <h5>Falhas e Limitacoes</h5>
                   <div className="tecnicas-dev-grid">
                     <label>
-                      Acao aumentada (etapas)
-                      <select
-                        value={tecnicaDraft.modificadores.acaoAumentadaEtapas}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "acaoAumentadaEtapas",
-                            event.target
-                              .value as DevelopedTechniqueModifierSet["acaoAumentadaEtapas"],
-                          )
-                        }
-                      >
-                        <option value="0">Sem falha</option>
-                        <option value="1">+1 etapa lenta (-1)</option>
-                        <option value="2">+2 etapas lentas (-2)</option>
-                        <option value="3">+3 etapas lentas (-3)</option>
-                      </select>
-                    </label>
-                    <label>
-                      Preparacao obrigatoria
+                      <span className="tecnica-label-with-help">
+                        <span>Preparacao obrigatoria</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={
+                            TECHNIQUE_PREPARACAO_OBRIGATORIA_TOOLTIP
+                          }
+                        >
+                          i
+                        </span>
+                      </span>
                       <select
                         value={tecnicaDraft.modificadores.preparacaoObrigatoria}
                         onChange={(event) =>
@@ -13237,7 +14804,15 @@ function App() {
                       </select>
                     </label>
                     <label>
-                      Exige teste
+                      <span className="tecnica-label-with-help">
+                        <span>Exige teste</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_EXIGE_TESTE_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
                       <select
                         value={tecnicaDraft.modificadores.exigeTeste}
                         onChange={(event) =>
@@ -13249,12 +14824,20 @@ function App() {
                         }
                       >
                         <option value="">Nao</option>
-                        <option value="Simples">Simples (-1)</option>
-                        <option value="Dificil">Dificil (-2)</option>
+                        <option value="Simples">Simples (-2)</option>
+                        <option value="Dificil">Dificil (-3)</option>
                       </select>
                     </label>
                     <label>
-                      Inconstante
+                      <span className="tecnica-label-with-help">
+                        <span>Inconstante</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_INCONSTANTE_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
                       <select
                         value={tecnicaDraft.modificadores.inconstante}
                         onChange={(event) =>
@@ -13266,12 +14849,20 @@ function App() {
                         }
                       >
                         <option value="">Nao</option>
-                        <option value="Parcial">Parcial (-1)</option>
-                        <option value="Metade">Metade do tempo (-2)</option>
+                        <option value="Parcial">Parcial (-2)</option>
+                        <option value="Metade">Metade do tempo (-4)</option>
                       </select>
                     </label>
                     <label>
-                      Efeito colateral
+                      <span className="tecnica-label-with-help">
+                        <span>Efeito colateral</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_EFEITO_COLATERAL_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
                       <select
                         value={tecnicaDraft.modificadores.efeitoColateral}
                         onChange={(event) =>
@@ -13283,12 +14874,20 @@ function App() {
                         }
                       >
                         <option value="">Nao</option>
-                        <option value="Ocasional">Ocasional (-1)</option>
-                        <option value="Sempre">Sempre (-2)</option>
+                        <option value="Ocasional">Ocasional (-2)</option>
+                        <option value="Sempre">Sempre (-3)</option>
                       </select>
                     </label>
                     <label>
-                      Condicional
+                      <span className="tecnica-label-with-help">
+                        <span>Condicional</span>
+                        <span
+                          className="info-dot"
+                          data-tooltip={TECHNIQUE_CONDICIONAL_TOOLTIP}
+                        >
+                          i
+                        </span>
+                      </span>
                       <select
                         value={tecnicaDraft.modificadores.condicional}
                         onChange={(event) =>
@@ -13307,7 +14906,7 @@ function App() {
                   </div>
 
                   <div className="tecnicas-dev-checks">
-                    <label>
+                    <label className="tecnica-check-card">
                       <input
                         type="checkbox"
                         checked={tecnicaDraft.modificadores.exigeTurnoCompleto}
@@ -13318,9 +14917,24 @@ function App() {
                           )
                         }
                       />
-                      Exige 1 turno completo (-2)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Exige 1 turno completo</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={
+                                TECHNIQUE_EXIGE_TURNO_COMPLETO_TOOLTIP
+                              }
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>Execucao fica mais lenta e previsivel.</small>
+                      </span>
                     </label>
-                    <label>
+                    <label className="tecnica-check-card">
                       <input
                         type="checkbox"
                         checked={tecnicaDraft.modificadores.incontrolavel}
@@ -13331,9 +14945,24 @@ function App() {
                           )
                         }
                       />
-                      Incontrolavel (-2)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Incontrolavel</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_INCONTROLAVEL_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>
+                          Pode gerar desvio secundario na resolucao.
+                        </small>
+                      </span>
                     </label>
-                    <label>
+                    <label className="tecnica-check-card">
                       <input
                         type="checkbox"
                         checked={tecnicaDraft.modificadores.cansativo}
@@ -13341,9 +14970,22 @@ function App() {
                           atualizarModTecnica("cansativo", event.target.checked)
                         }
                       />
-                      Cansativo (-1)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Cansativo</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_CANSATIVO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>Aplica desgaste curto apos o uso.</small>
+                      </span>
                     </label>
-                    <label>
+                    <label className="tecnica-check-card">
                       <input
                         type="checkbox"
                         checked={tecnicaDraft.modificadores.retroalimentacao}
@@ -13354,9 +14996,24 @@ function App() {
                           )
                         }
                       />
-                      Retroalimentacao (-3)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Retroalimentacao</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_RETROALIMENTACAO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>
+                          Usuario sofre dano se a tecnica for negada.
+                        </small>
+                      </span>
                     </label>
-                    <label>
+                    <label className="tecnica-check-card">
                       <input
                         type="checkbox"
                         checked={tecnicaDraft.modificadores.impreciso}
@@ -13364,22 +15021,22 @@ function App() {
                           atualizarModTecnica("impreciso", event.target.checked)
                         }
                       />
-                      Impreciso (-1)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Impreciso</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_IMPRECISO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>Reduz o acerto final da tecnica.</small>
+                      </span>
                     </label>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={tecnicaDraft.modificadores.resistivel}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "resistivel",
-                            event.target.checked,
-                          )
-                        }
-                      />
-                      Resistivel (-1)
-                    </label>
-                    <label>
+                    <label className="tecnica-check-card">
                       <input
                         type="checkbox"
                         checked={tecnicaDraft.modificadores.semMovimento}
@@ -13390,9 +15047,24 @@ function App() {
                           )
                         }
                       />
-                      Sem movimento (-1)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Sem movimento</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_SEM_MOVIMENTO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>
+                          Impede deslocamento voluntario ate fim do turno.
+                        </small>
+                      </span>
                     </label>
-                    <label>
+                    <label className="tecnica-check-card">
                       <input
                         type="checkbox"
                         checked={tecnicaDraft.modificadores.alvoRestrito}
@@ -13403,9 +15075,24 @@ function App() {
                           )
                         }
                       />
-                      Alvo restrito (-1)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Alvo restrito</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_ALVO_RESTRITO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>
+                          Funciona apenas contra categoria definida.
+                        </small>
+                      </span>
                     </label>
-                    <label>
+                    <label className="tecnica-check-card">
                       <input
                         type="checkbox"
                         checked={tecnicaDraft.modificadores.recursoExterno}
@@ -13416,40 +15103,87 @@ function App() {
                           )
                         }
                       />
-                      Recurso externo (-1)
+                      <span className="tecnica-check-copy">
+                        <strong>
+                          <span className="tecnica-label-with-help">
+                            <span>Recurso externo</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_RECURSO_EXTERNO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                        </strong>
+                        <small>Exige item, componente ou condicao extra.</small>
+                      </span>
                     </label>
                   </div>
                 </section>
 
                 <section className="tecnicas-dev-subsection tecnica-cost-summary">
                   <h4>Calculo Final</h4>
-                  <p>
-                    <strong>Custo Base:</strong> {tecnicaCustoBasePE} PE
-                  </p>
-                  <p>
-                    <strong>Modificadores:</strong> +
-                    {tecnicaCustoModificadoresPE} PE
-                  </p>
-                  <p>
-                    <strong>Reducoes:</strong> -{tecnicaReducoesPE} PE
-                  </p>
-                  <p>
-                    <strong>Adicional aplicado:</strong> +
-                    {tecnicaAdicionalAplicadoPE} PE
-                    {` (limite ${tecnicaDraft.tipo}: +${tecnicaLimiteAdicional})`}
-                  </p>
-                  <p>
-                    <strong>Margem restante:</strong> +
-                    {tecnicaMargemAdicionalDisponivel} PE
-                  </p>
-                  <p>
-                    <strong>Custo Final:</strong> {tecnicaCustoFinalPE} PE
-                  </p>
-                  <p>
-                    <strong>Limite de escala:</strong> bonus direto bruto =
-                    {` ${tecnicaBonusDiretoBruto}`} | aplicado =
-                    {` ${tecnicaBonusDiretoAplicado}`} | maior graduacao base =
-                    {` ${tecnicaMaiorGraduacaoBase}`}.
+                  <div className="tecnica-cost-cards">
+                    <article className="tecnica-cost-card">
+                      <span className="tecnica-cost-card-label">
+                        Custo Base
+                      </span>
+                      <strong>{tecnicaCustoBasePE} PE</strong>
+                    </article>
+                    <article className="tecnica-cost-card tecnica-cost-card-positive">
+                      <span className="tecnica-cost-card-label">
+                        Modificadores
+                      </span>
+                      <strong>+{tecnicaCustoModificadoresPE} PE</strong>
+                    </article>
+                    <article className="tecnica-cost-card tecnica-cost-card-negative">
+                      <span className="tecnica-cost-card-label">Reducoes</span>
+                      <strong>-{tecnicaReducoesPE} PE</strong>
+                    </article>
+                    <article className="tecnica-cost-card tecnica-cost-card-final">
+                      <span className="tecnica-cost-card-label">
+                        Custo Final
+                      </span>
+                      <strong>{tecnicaCustoFinalPE} PE</strong>
+                    </article>
+                  </div>
+
+                  <div className="tecnica-cost-breakdown-grid">
+                    <article className="tecnica-cost-panel">
+                      <h5>Orcamento de Modificadores</h5>
+                      <p>
+                        <strong>Adicional aplicado:</strong> +
+                        {tecnicaAdicionalAplicadoPE} PE
+                      </p>
+                      <p>
+                        <strong>Limite por tipo:</strong> {tecnicaDraft.tipo} (+
+                        {tecnicaLimiteAdicional} PE)
+                      </p>
+                      <p>
+                        <strong>Margem restante:</strong> +
+                        {tecnicaMargemAdicionalDisponivel} PE
+                      </p>
+                    </article>
+
+                    <article className="tecnica-cost-panel tecnica-cost-panel-scale">
+                      <h5>Escala de Bonus Direto</h5>
+                      <p>
+                        <strong>Bonus bruto:</strong> {tecnicaBonusDiretoBruto}
+                      </p>
+                      <p>
+                        <strong>Bonus aplicado:</strong>{" "}
+                        {tecnicaBonusDiretoAplicado}
+                      </p>
+                      <p>
+                        <strong>Teto de graduacao base:</strong>{" "}
+                        {tecnicaMaiorGraduacaoBase}
+                      </p>
+                    </article>
+                  </div>
+
+                  <p className="tecnica-cost-note">
+                    Formula: Custo Final = Custo Base + Modificadores -
+                    Reducoes.
                   </p>
                   {tecnicaExcedeLimite ? (
                     <p className="danger-value">
