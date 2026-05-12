@@ -10282,41 +10282,27 @@ function App() {
     tecnicaDeslocamentoMetrosAplicados / 2,
   );
   const maxAumentoDano = Math.min(
-    5,
-    tecnicaAumentoDano + tecnicaMargemAdicionalDisponivel,
+    tecnicaAumentoDano + Math.min(5, tecnicaMargemAdicionalDisponivel),
   );
-  const maxPrecisao = Math.min(
-    5,
-    tecnicaPrecisao + tecnicaMargemAdicionalDisponivel,
-  );
-  const maxPenetrante = Math.min(
-    5,
-    tecnicaPenetrante + Math.floor(tecnicaMargemAdicionalDisponivel / 2),
-  );
-  const maxDanoAmpliado = Math.min(
-    3,
-    tecnicaDanoAmpliado + tecnicaMargemAdicionalDisponivel * 2,
-  );
-  const maxCriticoAprimorado = Math.min(
-    3,
-    tecnicaCriticoAprimorado + tecnicaMargemAdicionalDisponivel * 2,
-  );
-  const maxDanoContinuo = Math.min(
-    3,
-    tecnicaDanoContinuo + tecnicaMargemAdicionalDisponivel,
-  );
-  const maxBonusDefesa = Math.min(
-    5,
-    tecnicaBonusDefesa + tecnicaMargemAdicionalDisponivel,
-  );
-  const maxReducaoDano = Math.min(
-    5,
-    tecnicaReducaoDano + tecnicaMargemAdicionalDisponivel,
-  );
-  const maxAbsorcao = Math.min(
-    5,
-    tecnicaAbsorcao + Math.floor(tecnicaMargemAdicionalDisponivel / 2),
-  );
+  const maxPrecisao =
+    tecnicaPrecisao + Math.min(5, tecnicaMargemAdicionalDisponivel);
+  const maxPenetrante =
+    tecnicaPenetrante +
+    Math.min(5, Math.floor(tecnicaMargemAdicionalDisponivel / 2));
+  const maxDanoAmpliado =
+    tecnicaDanoAmpliado + Math.min(3, tecnicaMargemAdicionalDisponivel * 2);
+  const maxCriticoAprimorado =
+    tecnicaCriticoAprimorado +
+    Math.min(3, tecnicaMargemAdicionalDisponivel * 2);
+  const maxDanoContinuo =
+    tecnicaDanoContinuo + Math.min(3, tecnicaMargemAdicionalDisponivel);
+  const maxBonusDefesa =
+    tecnicaBonusDefesa + Math.min(5, tecnicaMargemAdicionalDisponivel);
+  const maxReducaoDano =
+    tecnicaReducaoDano + Math.min(5, tecnicaMargemAdicionalDisponivel);
+  const maxAbsorcao =
+    tecnicaAbsorcao +
+    Math.min(5, Math.floor(tecnicaMargemAdicionalDisponivel / 2));
   const maxDeslocamentoMetros = Math.min(
     10,
     (currentDeslocamentoCost + tecnicaMargemAdicionalDisponivel) * 2,
