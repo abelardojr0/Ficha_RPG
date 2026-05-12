@@ -722,7 +722,7 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
     custoPorGraduacao: 3,
     resumo: "-3 em Defesa para +3 no dano direto (1 vez por turno).",
     efeito:
-      "Ao realizar ataque que cause dano direto, pode sofrer -3 em Defesa ate o inicio do proximo turno para receber +3 no dano. Declarar antes da rolagem. Nao combina com outras habilidades que alterem dano e Defesa ao mesmo tempo e nao pode ser usada mais de 1 vez por turno.",
+      "Ao realizar ataque que cause dano direto, pode sofrer -3 em Defesa ate o inicio do proximo turno para receber +3 no dano. Declarar antes da rolagem.",
   },
   {
     id: "critico-aprimorado",
@@ -10134,13 +10134,10 @@ function App() {
     : 0;
 
   const tecnicaPoderPrincipal = tecnicaBaseResolvida[0]?.power ?? null;
-  const tecnicaGraduacaoPrincipal = tecnicaBaseResolvida[0]?.graduacao ?? 0;
-  const tecnicaSomaDanoBase = tecnicaBaseResolvida[0]?.danoSomaBase ?? false;
-  const tecnicaMetadeGradNoDano =
-    tecnicaBaseResolvida[0]?.danoMetadeGrad ?? false;
-  const tecnicaEhAtaque = Boolean(
-    tecnicaPoderPrincipal?.tipo.includes("Ataque"),
+  const tecnicaPoderesAtaque = tecnicaBaseResolvida.filter((base) =>
+    base.power.tipo.includes("Ataque"),
   );
+  const tecnicaEhAtaque = tecnicaPoderesAtaque.length > 0;
 
   const tecnicaBaseNucleo = tecnicaPoderPrincipal
     ? getTechniqueCoreDefaultsFromPower(tecnicaPoderPrincipal)
@@ -10367,16 +10364,25 @@ function App() {
   const danoBaseTecnica =
     BONUS_BY_DICE[selectedCharacter.atributos[danoBaseAtributoTecnica]];
 
-  const tecnicaGradParaDano = tecnicaMetadeGradNoDano
-    ? Math.ceil(tecnicaGraduacaoPrincipal / 2)
-    : tecnicaGraduacaoPrincipal;
+  const tecnicaGradParaDano = tecnicaPoderesAtaque.reduce((total, base) => {
+    const gradNoDano = base.danoMetadeGrad
+      ? Math.ceil(base.graduacao / 2)
+      : base.graduacao;
+    return total + gradNoDano;
+  }, 0);
+  const tecnicaDanoBaseAplicacoes = tecnicaPoderesAtaque.reduce(
+    (total, base) => total + (base.danoSomaBase ? 1 : 0),
+    0,
+  );
+  const tecnicaTemMetadeGradNoDano = tecnicaPoderesAtaque.some(
+    (base) => base.danoMetadeGrad,
+  );
   const tecnicaDanoSemBase = Math.max(
     0,
     tecnicaGradParaDano + tecnicaAumentoDano,
   );
-  const tecnicaDanoTotal = tecnicaSomaDanoBase
-    ? tecnicaDanoSemBase + danoBaseTecnica
-    : tecnicaDanoSemBase;
+  const tecnicaDanoTotal =
+    tecnicaDanoSemBase + danoBaseTecnica * tecnicaDanoBaseAplicacoes;
 
   const tecnicaUsaDisparo = isTechniqueRanged(tecnicaDraft.alcance);
   const dadoAcertoTecnica = tecnicaUsaDisparo
@@ -10398,11 +10404,10 @@ function App() {
     ? `1d20 + ${dadoAcertoTexto}${tecnicaAcertoFoiModificado ? ` (${tecnicaAcertoPartes.join(" | ")})` : ""} (${tecnicaUsaDisparo ? "Disparo" : "CaC"})`
     : "Sem rolagem de ataque (tecnica nao ofensiva).";
 
-  const tecnicaDanoBaseCalculado = tecnicaSomaDanoBase
-    ? tecnicaGradParaDano + danoBaseTecnica
-    : tecnicaGradParaDano;
+  const tecnicaDanoBaseCalculado =
+    tecnicaGradParaDano + danoBaseTecnica * tecnicaDanoBaseAplicacoes;
   const tecnicaDanoResumo = tecnicaEhAtaque
-    ? `${tecnicaDanoTotal} de dano${tecnicaAumentoDano > 0 ? ` (base ${tecnicaDanoBaseCalculado} + mod. dano +${tecnicaAumentoDano})` : ""}${tecnicaSomaDanoBase ? ` (inclui dano base de ${danoBaseAtributoTecnica}: +${danoBaseTecnica})` : ""}${tecnicaMetadeGradNoDano ? " (graduacao reduzida a metade)" : ""}${tecnicaDanoAmpliado > 0 ? ` | dano ampliado: +${tecnicaDanoAmpliado}` : ""}${tecnicaCriticoAprimorado > 0 ? ` | dano critico: +${tecnicaCriticoAprimorado * 2}` : ""}${tecnicaDanoContinuo > 0 ? ` | dano continuo: +${tecnicaDanoContinuo} por 3 turnos` : ""}${tecnicaMods.ataqueMultiplo !== "1" ? ` | ${tecnicaMods.ataqueMultiplo} ataques (dano dividido)` : ""}${tecnicaMods.area ? ` | area ${tecnicaMods.area} (penalidade por alvo adicional)` : ""}`
+    ? `${tecnicaDanoTotal} de dano${tecnicaAumentoDano > 0 ? ` (base ${tecnicaDanoBaseCalculado} + mod. dano +${tecnicaAumentoDano})` : ""}${tecnicaDanoBaseAplicacoes > 0 ? ` (inclui dano base de ${danoBaseAtributoTecnica}: +${danoBaseTecnica} x${tecnicaDanoBaseAplicacoes})` : ""}${tecnicaTemMetadeGradNoDano ? " (graduacao reduzida a metade em poderes aplicaveis)" : ""}${tecnicaDanoAmpliado > 0 ? ` | dano ampliado: +${tecnicaDanoAmpliado}` : ""}${tecnicaCriticoAprimorado > 0 ? ` | dano critico: +${tecnicaCriticoAprimorado * 2}` : ""}${tecnicaDanoContinuo > 0 ? ` | dano continuo: +${tecnicaDanoContinuo} por 3 turnos` : ""}${tecnicaMods.ataqueMultiplo !== "1" ? ` | ${tecnicaMods.ataqueMultiplo} ataques (dano dividido)` : ""}${tecnicaMods.area ? ` | area ${tecnicaMods.area} (penalidade por alvo adicional)` : ""}`
     : "Sem dano de ataque automatico.";
 
   const adicionarPoderBaseTecnica = () => {
@@ -15194,68 +15199,210 @@ function App() {
                   ) : (
                     <div className="tecnica-dev-list">
                       {selectedCharacter.tecnicasDesenvolvidas.map(
-                        (tecnica) => (
-                          <article
-                            key={tecnica.id}
-                            className="tecnica-dev-item"
-                          >
-                            <div>
-                              {(() => {
-                                const tecnicaEhGratuita =
-                                  tecnicaAcquisitionAtual.freeIds.has(
-                                    tecnica.id,
-                                  );
-                                return (
-                                  <span>
-                                    Aquisicao:{" "}
-                                    {tecnicaEhGratuita
-                                      ? "Gratuita"
-                                      : `${TECHNIQUE_PP_BY_TYPE[tecnica.tipo]} PP`}
-                                  </span>
-                                );
-                              })()}
-                              <strong>
-                                {tecnica.nome} ({tecnica.tipo})
-                              </strong>
-                              <span>Custo: {tecnica.custoFinalPE} PE</span>
-                              <span>Acerto: {tecnica.acerto ?? "-"}</span>
-                              <span>Dano: {tecnica.dano ?? "-"}</span>
-                              <span>
-                                Base: {tecnica.custoBasePE} | Mods: +
-                                {tecnica.custoModificadoresPE} | Reducoes: -
-                                {tecnica.reducoesPE}
-                              </span>
-                              <p>
-                                {tecnica.efeito ||
-                                  tecnica.conceito ||
-                                  "Sem descricao."}
-                              </p>
-                              <ul className="ficha-inline-list">
-                                {tecnica.poderesBase.map((base) => {
-                                  const power = POWER_BY_ID.get(base.powerId);
-                                  return (
-                                    <li key={base.id}>
-                                      {power?.nome ?? "Poder removido"} | Grad.{" "}
-                                      {base.graduacao}
-                                    </li>
-                                  );
-                                })}
-                              </ul>
-                            </div>
-                            <button
-                              type="button"
-                              className="trash-button"
-                              onClick={() =>
-                                removerTecnicaDesenvolvida(tecnica.id)
-                              }
-                              aria-label={`Remover tecnica ${tecnica.nome}`}
+                        (tecnica) => {
+                          const tecnicaEhGratuita =
+                            tecnicaAcquisitionAtual.freeIds.has(tecnica.id);
+                          const tecnicaConfiguracaoCompleta = (
+                            Object.entries(tecnica.modificadores) as Array<
+                              [
+                                keyof DevelopedTechniqueModifierSet,
+                                string | boolean,
+                              ]
                             >
-                              <svg viewBox="0 0 24 24" aria-hidden="true">
-                                <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9z" />
-                              </svg>
-                            </button>
-                          </article>
-                        ),
+                          ).map(([chave, valor]) => {
+                            const valorFormatado =
+                              typeof valor === "boolean"
+                                ? valor
+                                  ? "Sim"
+                                  : "Nao"
+                                : valor === ""
+                                  ? "(vazio)"
+                                  : valor;
+                            return `${chave}: ${valorFormatado}`;
+                          });
+                          const tecnicaModsSelecionados = [
+                            ...[
+                              {
+                                ok:
+                                  clamp(
+                                    parseNatural(
+                                      tecnica.modificadores.aumentoDano,
+                                    ),
+                                    0,
+                                    5,
+                                  ) > 0,
+                                label: `Aumento de dano +${clamp(parseNatural(tecnica.modificadores.aumentoDano), 0, 5)}`,
+                              },
+                              {
+                                ok:
+                                  clamp(
+                                    parseNatural(
+                                      tecnica.modificadores.precisao,
+                                    ),
+                                    0,
+                                    5,
+                                  ) > 0,
+                                label: `Precisao +${clamp(parseNatural(tecnica.modificadores.precisao), 0, 5)}`,
+                              },
+                              {
+                                ok:
+                                  clamp(
+                                    parseNatural(
+                                      tecnica.modificadores.danoAmpliado,
+                                    ),
+                                    0,
+                                    3,
+                                  ) > 0,
+                                label: `Dano ampliado +${clamp(parseNatural(tecnica.modificadores.danoAmpliado), 0, 3)}`,
+                              },
+                              {
+                                ok:
+                                  clamp(
+                                    parseNatural(
+                                      tecnica.modificadores.criticoAprimorado,
+                                    ),
+                                    0,
+                                    3,
+                                  ) > 0,
+                                label: `Dano critico +${clamp(parseNatural(tecnica.modificadores.criticoAprimorado), 0, 3) * 2}`,
+                              },
+                              {
+                                ok:
+                                  clamp(
+                                    parseNatural(
+                                      tecnica.modificadores.danoContinuo,
+                                    ),
+                                    0,
+                                    3,
+                                  ) > 0,
+                                label: `Dano continuo +${clamp(parseNatural(tecnica.modificadores.danoContinuo), 0, 3)} por 3 turnos`,
+                              },
+                              {
+                                ok: tecnica.modificadores.alcanceDelta !== "0",
+                                label: `Ajuste de alcance ${tecnica.modificadores.alcanceDelta}`,
+                              },
+                              {
+                                ok: tecnica.modificadores.duracaoDelta !== "0",
+                                label: `Ajuste de duracao ${tecnica.modificadores.duracaoDelta}`,
+                              },
+                              {
+                                ok: tecnica.modificadores.ativacaoAjuste !== "",
+                                label: `Ajuste de ativacao ${tecnica.modificadores.ativacaoAjuste}`,
+                              },
+                            ]
+                              .filter((entry) => entry.ok)
+                              .map((entry) => entry.label),
+                            ...buildTechniqueAutoEffectLines(
+                              tecnica.modificadores,
+                              tecnica.alcance,
+                            ),
+                          ];
+
+                          return (
+                            <article
+                              key={tecnica.id}
+                              className="tecnica-dev-item"
+                            >
+                              <div>
+                                <span>
+                                  Aquisicao:{" "}
+                                  {tecnicaEhGratuita
+                                    ? "Gratuita"
+                                    : `${TECHNIQUE_PP_BY_TYPE[tecnica.tipo]} PP`}
+                                </span>
+                                <strong>
+                                  {tecnica.nome} ({tecnica.tipo})
+                                </strong>
+                                <span>
+                                  Custo final: {tecnica.custoFinalPE} PE
+                                </span>
+                                <span>Acao: {tecnica.acao || "-"}</span>
+                                <span>Alcance: {tecnica.alcance || "-"}</span>
+                                <span>Alvo: {tecnica.alvo || "-"}</span>
+                                <span>Duracao: {tecnica.duracao || "-"}</span>
+                                <span>Gatilho: {tecnica.gatilho || "-"}</span>
+                                <span>Acerto: {tecnica.acerto ?? "-"}</span>
+                                <span>Dano: {tecnica.dano ?? "-"}</span>
+                                <span>
+                                  Calculo PE: base {tecnica.custoBasePE} | mods
+                                  +{tecnica.custoModificadoresPE} | reducoes -
+                                  {tecnica.reducoesPE}
+                                </span>
+                                <span>
+                                  Limite adicional: +{tecnica.limiteAdicionalPE}{" "}
+                                  | Aplicado: +{tecnica.adicionalAplicadoPE}
+                                </span>
+                                <span>
+                                  Maior graduacao base:{" "}
+                                  {tecnica.maiorGraduacaoBase}
+                                  {" | "}
+                                  Bonus direto aplicado: +
+                                  {tecnica.bonusDiretoAplicado}
+                                </span>
+                                <span>Criada em: {tecnica.createdAt}</span>
+                                <p>{tecnica.conceito || "Sem conceito."}</p>
+                                <p>
+                                  {tecnica.efeito || "Sem descricao de efeito."}
+                                </p>
+                                <ul className="ficha-inline-list">
+                                  {tecnica.poderesBase.map((base) => {
+                                    const power = POWER_BY_ID.get(base.powerId);
+                                    const extras: string[] = [];
+                                    if (base.danoSomaBase) {
+                                      extras.push("dano base");
+                                    }
+                                    if (base.danoMetadeGrad) {
+                                      extras.push("metade grad");
+                                    }
+                                    const extrasTexto =
+                                      extras.length > 0
+                                        ? ` | ${extras.join(" | ")}`
+                                        : "";
+                                    return (
+                                      <li key={base.id}>
+                                        {power?.nome ?? "Poder removido"} |
+                                        Grad. {base.graduacao}
+                                        {extrasTexto}
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                                <ul className="ficha-inline-list">
+                                  {tecnicaModsSelecionados.length > 0 ? (
+                                    tecnicaModsSelecionados.map((linha) => (
+                                      <li key={`${tecnica.id}-${linha}`}>
+                                        {linha}
+                                      </li>
+                                    ))
+                                  ) : (
+                                    <li>
+                                      Nenhum modificador/falha selecionado.
+                                    </li>
+                                  )}
+                                </ul>
+                                <ul className="ficha-inline-list">
+                                  {tecnicaConfiguracaoCompleta.map((linha) => (
+                                    <li key={`${tecnica.id}-config-${linha}`}>
+                                      {linha}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                              <button
+                                type="button"
+                                className="trash-button"
+                                onClick={() =>
+                                  removerTecnicaDesenvolvida(tecnica.id)
+                                }
+                                aria-label={`Remover tecnica ${tecnica.nome}`}
+                              >
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                  <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9z" />
+                                </svg>
+                              </button>
+                            </article>
+                          );
+                        },
                       )}
                     </div>
                   )}
