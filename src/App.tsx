@@ -5002,7 +5002,8 @@ const TECHNIQUE_PENETRANTE_TOOLTIP = "Custo: +2 PE por nivel.";
 
 const TECHNIQUE_DANO_AMPLIADO_TOOLTIP = "Custo: +1 PE por +2 de dano ampliado.";
 
-const TECHNIQUE_CRITICO_APRIMORADO_TOOLTIP = "Custo: +1 PE por +2 (maximo +3).";
+const TECHNIQUE_CRITICO_APRIMORADO_TOOLTIP =
+  "Custo: +1 PE por nível. Cada nível = +2 de dano em crítico (máximo +6).";
 
 const TECHNIQUE_DANO_CONTINUO_TOOLTIP = "Custo: +1 PE por +1 de dano continuo.";
 
@@ -5047,9 +5048,6 @@ const TECHNIQUE_TRAICOEIRO_TOOLTIP =
 
 const TECHNIQUE_PRECISO_TOOLTIP =
   "Custo: +1 PE. Permite controle refinado para aplicacoes delicadas e uso seletivo.";
-
-const TECHNIQUE_ACAO_AUMENTADA_TOOLTIP =
-  "Cada etapa mais lenta reduz 1 PE: +1 etapa (-1), +2 etapas (-2), +3 etapas (-3).";
 
 const TECHNIQUE_PREPARACAO_OBRIGATORIA_TOOLTIP =
   "Preparacao obrigatoria reduz custo: Movimento (-1) ou Padrao (-2). Deve ser preparada antes da execucao.";
@@ -10418,7 +10416,7 @@ function App() {
     ? tecnicaGradParaDano + danoBaseTecnica
     : tecnicaGradParaDano;
   const tecnicaDanoResumo = tecnicaEhAtaque
-    ? `${tecnicaDanoTotal} de dano${tecnicaAumentoDano > 0 ? ` (base ${tecnicaDanoBaseCalculado} + mod. dano +${tecnicaAumentoDano})` : ""}${tecnicaSomaDanoBase ? ` (inclui dano base de ${danoBaseAtributoTecnica}: +${danoBaseTecnica})` : ""}${tecnicaMetadeGradNoDano ? " (graduacao reduzida a metade)" : ""}${tecnicaDanoAmpliado > 0 ? ` | dano ampliado: +${tecnicaDanoAmpliado}` : ""}${tecnicaCriticoAprimorado > 0 ? ` | critico aprimorado: +${tecnicaCriticoAprimorado}` : ""}${tecnicaDanoContinuo > 0 ? ` | dano continuo: +${tecnicaDanoContinuo} por 3 turnos` : ""}${tecnicaMods.ataqueMultiplo !== "1" ? ` | ${tecnicaMods.ataqueMultiplo} ataques (dano dividido)` : ""}${tecnicaMods.area ? ` | area ${tecnicaMods.area} (penalidade por alvo adicional)` : ""}`
+    ? `${tecnicaDanoTotal} de dano${tecnicaAumentoDano > 0 ? ` (base ${tecnicaDanoBaseCalculado} + mod. dano +${tecnicaAumentoDano})` : ""}${tecnicaSomaDanoBase ? ` (inclui dano base de ${danoBaseAtributoTecnica}: +${danoBaseTecnica})` : ""}${tecnicaMetadeGradNoDano ? " (graduacao reduzida a metade)" : ""}${tecnicaDanoAmpliado > 0 ? ` | dano ampliado: +${tecnicaDanoAmpliado}` : ""}${tecnicaCriticoAprimorado > 0 ? ` | dano critico: +${tecnicaCriticoAprimorado * 2}` : ""}${tecnicaDanoContinuo > 0 ? ` | dano continuo: +${tecnicaDanoContinuo} por 3 turnos` : ""}${tecnicaMods.ataqueMultiplo !== "1" ? ` | ${tecnicaMods.ataqueMultiplo} ataques (dano dividido)` : ""}${tecnicaMods.area ? ` | area ${tecnicaMods.area} (penalidade por alvo adicional)` : ""}`
     : "Sem dano de ataque automatico.";
 
   const adicionarPoderBaseTecnica = () => {
