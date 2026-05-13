@@ -4487,19 +4487,57 @@ const stripTechniqueAutoEffectBlock = (effectText: string): string => {
     .trim();
 };
 
+const buildTechniqueEffectDisplayText = (
+  technique: Pick<DevelopedTechnique, "efeito" | "modificadores" | "alcance">,
+): string => {
+  const manualText = stripTechniqueAutoEffectBlock(technique.efeito || "");
+  const autoLines = buildTechniqueAutoEffectLines(
+    {
+      ...createDevelopedTechniqueModifierDefaults(),
+      ...(technique.modificadores ?? {}),
+    },
+    technique.alcance,
+  );
+
+  if (manualText && autoLines.length > 0) {
+    return `${manualText}\n\n${autoLines.join("\n")}`;
+  }
+
+  if (manualText) {
+    return manualText;
+  }
+
+  if (autoLines.length > 0) {
+    return autoLines.join("\n");
+  }
+
+  return "";
+};
+
 type TechniqueCostReportEntry = {
   nome: string;
   custo: number;
 };
 
-const buildTechniqueModifierCostReport = (
-  technique: DevelopedTechnique,
-): TechniqueCostReportEntry[] => {
+const buildTechniqueModifierCostReport = (technique: {
+  modificadores: DevelopedTechniqueModifierSet;
+  alcance: string;
+  acao: string;
+  alvo: string;
+  duracao: string;
+  poderesBase: DevelopedTechniqueBasePower[];
+}): TechniqueCostReportEntry[] => {
   const defaults = createDevelopedTechniqueModifierDefaults();
   const mods = {
     ...defaults,
     ...technique.modificadores,
   };
+  const techniqueCorePower = technique.poderesBase[0]?.powerId
+    ? (POWER_BY_ID.get(technique.poderesBase[0].powerId) ?? null)
+    : null;
+  const techniqueCoreDefaults = techniqueCorePower
+    ? getTechniqueCoreDefaultsFromPower(techniqueCorePower)
+    : null;
 
   const entries: TechniqueCostReportEntry[] = [];
   const push = (nome: string, custo: number) => {
@@ -4552,6 +4590,27 @@ const buildTechniqueModifierCostReport = (
   const absorcao = clamp(asInt(mods.absorcao), 0, 5);
   const acaoAumentadaEtapas = Math.max(0, asInt(mods.acaoAumentadaEtapas));
   const customCusto = asInt(mods.modificadorPersonalizadoCusto);
+  const custoAlvo = getTechniqueTargetCost(technique.alvo);
+  const custoAcao = techniqueCoreDefaults
+    ? getActionSignedCostFromBase(techniqueCoreDefaults.acao, technique.acao)
+    : 0;
+  const custoAlcance = techniqueCoreDefaults
+    ? getRangeSignedCostFromBase(
+        techniqueCoreDefaults.alcance,
+        technique.alcance,
+      )
+    : 0;
+  const custoDuracao = techniqueCoreDefaults
+    ? getDurationSignedCostFromBase(
+        techniqueCoreDefaults.duracao,
+        technique.duracao,
+      )
+    : 0;
+
+  push("Acao", Math.max(0, custoAcao));
+  push("Alcance", Math.max(0, custoAlcance));
+  push("Alvo", Math.max(0, custoAlvo));
+  push("Duracao", Math.max(0, custoDuracao));
 
   push("Aumento de dano", aumentoDano);
   push("Precisao", precisao);
@@ -4591,6 +4650,10 @@ const buildTechniqueModifierCostReport = (
   push("Preciso", isEnabled(mods.preciso) ? 1 : 0);
   push("Modificador personalizado", Math.max(0, customCusto));
 
+  push("Reducao por acao", Math.min(0, custoAcao));
+  push("Reducao por alcance base", Math.min(0, custoAlcance));
+  push("Reducao por alvo", Math.min(0, custoAlvo));
+  push("Reducao por duracao base", Math.min(0, custoDuracao));
   push("Reducao por alcance", Math.min(0, alcanceSigned));
   push("Reducao por duracao", Math.min(0, duracaoSigned));
   push("Reducao por ativacao", Math.min(0, ativacaoAjusteNumerico));
@@ -4650,6 +4713,32 @@ const buildTechniqueModifierCostReport = (
   push("Modificador personalizado (reducao)", Math.min(0, customCusto));
 
   return entries;
+};
+
+const splitTechniqueCostReportEntries = (
+  entries: TechniqueCostReportEntry[],
+) => {
+  const additions = entries
+    .filter((entry) => entry.custo > 0)
+    .sort(
+      (left, right) =>
+        right.custo - left.custo || left.nome.localeCompare(right.nome),
+    );
+  const reductions = entries
+    .filter((entry) => entry.custo < 0)
+    .sort(
+      (left, right) =>
+        left.custo - right.custo || left.nome.localeCompare(right.nome),
+    );
+
+  return {
+    additions,
+    reductions,
+    additionsTotal: additions.reduce((sum, entry) => sum + entry.custo, 0),
+    reductionsTotal: Math.abs(
+      reductions.reduce((sum, entry) => sum + entry.custo, 0),
+    ),
+  };
 };
 
 const buildTechniqueAutoEffectLines = (
@@ -6737,6 +6826,9 @@ function App() {
   >(null);
   const [tecnicaEmEdicaoId, setTecnicaEmEdicaoId] = useState<string | null>(
     null,
+  );
+  const [tecnicasSubTab, setTecnicasSubTab] = useState<"nova" | "minhas">(
+    "nova",
   );
   const [quickSheetRollRevealedDice, setQuickSheetRollRevealedDice] = useState<
     {
@@ -10481,6 +10573,30 @@ function App() {
     0,
     tecnicaLimiteAdicionalExpandido - tecnicaCustoModificadoresPE,
   );
+  const tecnicaRelatorioCustosAtual = buildTechniqueModifierCostReport({
+    modificadores: tecnicaMods,
+    acao: tecnicaDraft.acao,
+    alcance: tecnicaDraft.alcance,
+    alvo: tecnicaDraft.alvo,
+    duracao: tecnicaDraft.duracao,
+    poderesBase: tecnicaDraft.poderesBase,
+  });
+  const {
+    additions: tecnicaCustosAdicionais,
+    reductions: tecnicaCustosReducoes,
+    additionsTotal: tecnicaTotalAdicionais,
+    reductionsTotal: tecnicaTotalReducoesDetalhadas,
+  } = splitTechniqueCostReportEntries(tecnicaRelatorioCustosAtual);
+  const tecnicaUsoOrcamentoPercentual =
+    tecnicaLimiteAdicionalExpandido > 0
+      ? Math.min(
+          100,
+          Math.round(
+            (tecnicaCustoModificadoresPE / tecnicaLimiteAdicionalExpandido) *
+              100,
+          ),
+        )
+      : 0;
   const tecnicaCustoFinalPE = Math.max(
     1,
     tecnicaCustoBasePE + tecnicaCustoModificadoresPE - tecnicaReducoesPE,
@@ -10852,26 +10968,15 @@ function App() {
       }
     }
 
-    // Montar efeito com crítico ampliado e dano ampliado
-    let efetoCompleto = tecnicaDraft.efeito.trim();
-    if (tecnicaDanoAmpliado > 0 || tecnicaCriticoAprimorado > 0) {
-      const efeitos: string[] = [];
-      if (tecnicaDanoAmpliado > 0) {
-        efeitos.push(
-          `Dano ampliado: +${tecnicaDanoAmpliado * 2} de dano adicional quando o dado de dano explodir.`,
-        );
-      }
-      if (tecnicaCriticoAprimorado > 0) {
-        efeitos.push(
-          `Crítico ampliado: +${tecnicaCriticoAprimorado * 2} de dano adicional quando o D20 critar.`,
-        );
-      }
-      if (efetoCompleto) {
-        efetoCompleto = efetoCompleto + " | " + efeitos.join(" | ");
-      } else {
-        efetoCompleto = efeitos.join(" | ");
-      }
-    }
+    // Montar efeito com o sistema de blocos automáticos
+    const tecnicaAutoEfeitoLinhas = buildTechniqueAutoEffectLines(
+      tecnicaDraft.modificadores,
+      tecnicaDraft.alcance,
+    );
+    const efetoCompleto = upsertTechniqueAutoEffectBlock(
+      tecnicaDraft.efeito.trim(),
+      tecnicaAutoEfeitoLinhas,
+    );
 
     const tecnica: DevelopedTechnique = {
       id: emEdicao ? tecnicaEmEdicaoId : crypto.randomUUID(),
@@ -10934,6 +11039,7 @@ function App() {
         ),
       }));
       setTecnicaEmEdicaoId(null);
+      setTecnicasSubTab("minhas");
       toast.success("Tecnica atualizada com sucesso.");
     } else {
       // Adicionar nova técnica
@@ -10941,6 +11047,7 @@ function App() {
         ...current,
         tecnicasDesenvolvidas: [...current.tecnicasDesenvolvidas, tecnica],
       }));
+      setTecnicasSubTab("minhas");
       toast.success("Tecnica cadastrada na ficha.");
     }
 
@@ -10972,11 +11079,15 @@ function App() {
       dano: tecnica.dano,
       danoNumerico: tecnica.danoNumerico,
       poderesBase: tecnica.poderesBase,
-      modificadores: tecnica.modificadores,
+      modificadores: {
+        ...createDevelopedTechniqueModifierDefaults(),
+        ...tecnica.modificadores,
+      },
     };
 
     setTecnicaDraft(novosDraft);
     setTecnicaEmEdicaoId(tecnica.id);
+    setTecnicasSubTab("nova");
 
     // Scroll para o formulário
     setTimeout(() => {
@@ -10992,6 +11103,7 @@ function App() {
   const cancelarEdicaoTecnica = () => {
     setTecnicaEmEdicaoId(null);
     setTecnicaDraft(createDevelopedTechniqueDraft());
+    setTecnicasSubTab("minhas");
   };
 
   const conhecimentosEditaveis = getEditableConhecimentos(
@@ -14307,7 +14419,10 @@ function App() {
             {activeEditorTab === "tecnicas-desenvolvimento" ? (
               <section className="block tecnicas-dev-panel">
                 <h3>Desenvolvimento de Tecnicas</h3>
-                <div className="tecnicas-dev-intro">
+                <div
+                  className="tecnicas-dev-intro"
+                  style={tecnicaEmEdicaoId ? { display: "none" } : undefined}
+                >
                   <div className="tecnicas-dev-guide-duo">
                     <div className="tecnicas-dev-guide-card">
                       <p className="tecnicas-dev-guide-title">
@@ -14383,2392 +14498,2650 @@ function App() {
                   </div>
                 </div>
 
-                <section className="tecnicas-dev-subsection tecnica-base-section">
-                  <h4>Poder Base</h4>
-                  <p className="rule-note">
-                    O Poder é a referência principal. Ação, alcance e duração
-                    usam essa base e os ajustes seguem a progressão do Capítulo
-                    12.
-                  </p>
-                  {tecnicaDraft.poderesBase.map((base, index) => {
-                    const selectedPowerData =
-                      poderesDisponiveisParaTecnica.find(
-                        (item) => item.power.id === base.powerId,
-                      );
-                    const baseEhAtaque =
-                      index === 0 &&
-                      Boolean(selectedPowerData?.power.tipo.includes("Ataque"));
-                    const displayGraduacao =
-                      selectedPowerData?.graduacaoAtual ?? base.graduacao;
+                <div className="powers-tabs">
+                  <button
+                    type="button"
+                    className={
+                      tecnicasSubTab === "nova" || !!tecnicaEmEdicaoId
+                        ? "active"
+                        : ""
+                    }
+                    onClick={() => setTecnicasSubTab("nova")}
+                  >
+                    {tecnicaEmEdicaoId ? "Editar Tecnica" : "Nova Tecnica"}
+                  </button>
+                  <button
+                    type="button"
+                    className={
+                      tecnicasSubTab === "minhas" && !tecnicaEmEdicaoId
+                        ? "active"
+                        : ""
+                    }
+                    onClick={() => {
+                      if (!tecnicaEmEdicaoId) setTecnicasSubTab("minhas");
+                    }}
+                    disabled={!!tecnicaEmEdicaoId}
+                    title={
+                      tecnicaEmEdicaoId
+                        ? "Salve ou cancele a edicao antes de ver as tecnicas cadastradas"
+                        : ""
+                    }
+                  >
+                    Minhas Tecnicas
+                  </button>
+                </div>
 
-                    return (
-                      <div className="tecnica-base-row" key={base.id}>
+                {(tecnicasSubTab === "nova" || !!tecnicaEmEdicaoId) && (
+                  <>
+                    <section className="tecnicas-dev-subsection tecnica-base-section">
+                      <h4>Poder Base</h4>
+                      <p className="rule-note">
+                        O Poder é a referência principal. Ação, alcance e
+                        duração usam essa base e os ajustes seguem a progressão
+                        do Capítulo 12.
+                      </p>
+                      {tecnicaDraft.poderesBase.map((base, index) => {
+                        const selectedPowerData =
+                          poderesDisponiveisParaTecnica.find(
+                            (item) => item.power.id === base.powerId,
+                          );
+                        const baseEhAtaque =
+                          index === 0 &&
+                          Boolean(
+                            selectedPowerData?.power.tipo.includes("Ataque"),
+                          );
+                        const displayGraduacao =
+                          selectedPowerData?.graduacaoAtual ?? base.graduacao;
+
+                        return (
+                          <div className="tecnica-base-row" key={base.id}>
+                            <label>
+                              Poder #{index + 1}
+                              <select
+                                value={base.powerId}
+                                onChange={(event) => {
+                                  const newPowerId = event.target.value;
+                                  const newPowerData =
+                                    poderesDisponiveisParaTecnica.find(
+                                      (item) => item.power.id === newPowerId,
+                                    );
+
+                                  setTecnicaDraft((current) => {
+                                    const poderesBaseAtualizados =
+                                      current.poderesBase.map((item) =>
+                                        item.id === base.id
+                                          ? {
+                                              ...item,
+                                              powerId: newPowerId,
+                                              nome:
+                                                newPowerData?.power.nome ?? "",
+                                              graduacao: newPowerData
+                                                ? String(
+                                                    newPowerData.graduacaoAtual,
+                                                  )
+                                                : item.graduacao,
+                                              danoSomaBase: newPowerData
+                                                ? item.danoSomaBase
+                                                : false,
+                                              danoMetadeGrad: newPowerData
+                                                ? item.danoMetadeGrad
+                                                : false,
+                                            }
+                                          : item,
+                                      );
+
+                                    const principalId =
+                                      current.poderesBase[0]?.id ?? "";
+
+                                    if (
+                                      !newPowerData ||
+                                      base.id !== principalId
+                                    ) {
+                                      return {
+                                        ...current,
+                                        poderesBase: poderesBaseAtualizados,
+                                      };
+                                    }
+
+                                    const defaults =
+                                      getTechniqueCoreDefaultsFromPower(
+                                        newPowerData.power,
+                                      );
+
+                                    return {
+                                      ...current,
+                                      ...defaults,
+                                      poderesBase: poderesBaseAtualizados,
+                                    };
+                                  });
+                                }}
+                              >
+                                <option value="">
+                                  Selecione um poder do arsenal
+                                </option>
+                                {poderesDisponiveisParaTecnica.map((item) => (
+                                  <option
+                                    key={item.power.id}
+                                    value={item.power.id}
+                                  >
+                                    {item.power.nome} ({item.power.naipe}) -
+                                    Grad. {item.graduacaoAtual}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+
+                            <label>
+                              Graduacao
+                              <input
+                                type="number"
+                                value={displayGraduacao}
+                                disabled
+                                aria-label={`Graduacao do poder base ${index + 1} (fixo)`}
+                              />
+                            </label>
+
+                            <button
+                              type="button"
+                              className="danger"
+                              onClick={() => removerPoderBaseTecnica(base.id)}
+                              disabled={tecnicaDraft.poderesBase.length <= 1}
+                            >
+                              Remover
+                            </button>
+
+                            {baseEhAtaque ? (
+                              <div className="tecnicas-dano-checks-wrapper">
+                                <p className="tecnicas-dano-checks-header">
+                                  Modificadores de dano
+                                </p>
+                                <div className="tecnicas-dev-checks tecnica-dano-checks">
+                                  <label
+                                    className="tecnica-check-card-beauty"
+                                    data-tooltip="Somar Dano Base é quando o poder permite adicionar seu dano base, seja ele baseado em Força ou em Agilidade, ao dano final do seu poder. Exclusivo de poderes de toque (corpo a corpo)."
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={base.danoSomaBase}
+                                      onChange={(event) =>
+                                        setTecnicaDraft((current) => ({
+                                          ...current,
+                                          poderesBase: current.poderesBase.map(
+                                            (item) =>
+                                              item.id === base.id
+                                                ? {
+                                                    ...item,
+                                                    danoSomaBase:
+                                                      event.target.checked,
+                                                  }
+                                                : item,
+                                          ),
+                                        }))
+                                      }
+                                    />
+                                    <span className="checkbox-label-content">
+                                      <span className="checkbox-icon">+</span>
+                                      <span className="checkbox-text">
+                                        Somar dano base (
+                                        {danoBaseAtributoTecnica})
+                                      </span>
+                                    </span>
+                                  </label>
+                                  <label
+                                    className="tecnica-check-card-beauty"
+                                    data-tooltip="Metade do Dano é para poderes que na descrição do poder já diz que ele progride o dano igual a metade da graduação. Se o poder que você selecionou é desse tipo, então essa caixa deve ser marcada."
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={base.danoMetadeGrad}
+                                      onChange={(event) =>
+                                        setTecnicaDraft((current) => ({
+                                          ...current,
+                                          poderesBase: current.poderesBase.map(
+                                            (item) =>
+                                              item.id === base.id
+                                                ? {
+                                                    ...item,
+                                                    danoMetadeGrad:
+                                                      event.target.checked,
+                                                  }
+                                                : item,
+                                          ),
+                                        }))
+                                      }
+                                    />
+                                    <span className="checkbox-label-content">
+                                      <span className="checkbox-icon">½</span>
+                                      <span className="checkbox-text">
+                                        Metade da graduacao no dano
+                                      </span>
+                                    </span>
+                                  </label>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                      <button type="button" onClick={adicionarPoderBaseTecnica}>
+                        Adicionar poder base
+                      </button>
+                    </section>
+
+                    <section className="tecnicas-dev-subsection tecnica-info-section">
+                      <h4>Informacoes da Tecnica</h4>
+                      <p className="rule-note">
+                        Defina os dados centrais da execucao: identidade, tipo,
+                        fluxo de acao, alcance, alvo e resultado base.
+                      </p>
+
+                      <div className="tecnica-info-name-block">
                         <label>
-                          Poder #{index + 1}
+                          Nome da tecnica
+                          <input
+                            disabled={!tecnicaTemPoderBaseSelecionado}
+                            value={tecnicaDraft.nome}
+                            onChange={(event) =>
+                              setTecnicaDraft((current) => ({
+                                ...current,
+                                nome: event.target.value,
+                              }))
+                            }
+                            placeholder="Ex: Lamina Perfurante"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="tecnicas-dev-grid">
+                        <label>
+                          Tipo
                           <select
-                            value={base.powerId}
-                            onChange={(event) => {
-                              const newPowerId = event.target.value;
-                              const newPowerData =
-                                poderesDisponiveisParaTecnica.find(
-                                  (item) => item.power.id === newPowerId,
-                                );
-
-                              setTecnicaDraft((current) => {
-                                const poderesBaseAtualizados =
-                                  current.poderesBase.map((item) =>
-                                    item.id === base.id
-                                      ? {
-                                          ...item,
-                                          powerId: newPowerId,
-                                          nome: newPowerData?.power.nome ?? "",
-                                          graduacao: newPowerData
-                                            ? String(
-                                                newPowerData.graduacaoAtual,
-                                              )
-                                            : item.graduacao,
-                                          danoSomaBase: newPowerData
-                                            ? item.danoSomaBase
-                                            : false,
-                                          danoMetadeGrad: newPowerData
-                                            ? item.danoMetadeGrad
-                                            : false,
-                                        }
-                                      : item,
-                                  );
-
-                                const principalId =
-                                  current.poderesBase[0]?.id ?? "";
-
-                                if (!newPowerData || base.id !== principalId) {
-                                  return {
-                                    ...current,
-                                    poderesBase: poderesBaseAtualizados,
-                                  };
-                                }
-
-                                const defaults =
-                                  getTechniqueCoreDefaultsFromPower(
-                                    newPowerData.power,
-                                  );
-
-                                return {
-                                  ...current,
-                                  ...defaults,
-                                  poderesBase: poderesBaseAtualizados,
-                                };
-                              });
-                            }}
+                            disabled={!tecnicaTemPoderBaseSelecionado}
+                            value={tecnicaDraft.tipo}
+                            onChange={(event) =>
+                              setTecnicaDraft((current) => ({
+                                ...current,
+                                tipo: event.target
+                                  .value as DevelopedTechniqueType,
+                              }))
+                            }
                           >
-                            <option value="">
-                              Selecione um poder do arsenal
-                            </option>
-                            {poderesDisponiveisParaTecnica.map((item) => (
-                              <option key={item.power.id} value={item.power.id}>
-                                {item.power.nome} ({item.power.naipe}) - Grad.{" "}
-                                {item.graduacaoAtual}
+                            <option value="Primaria">Primaria</option>
+                            <option value="Avancada">Avancada</option>
+                            <option value="Especial">Especial</option>
+                          </select>
+                        </label>
+
+                        <label>
+                          Acao
+                          <select
+                            disabled={!tecnicaTemPoderBaseSelecionado}
+                            value={tecnicaDraft.acao}
+                            onChange={(event) =>
+                              setTecnicaDraft((current) => ({
+                                ...current,
+                                acao: event.target.value,
+                              }))
+                            }
+                          >
+                            {actionOptionsWithCost.map((option) => (
+                              <option
+                                key={option.value}
+                                value={option.value}
+                                disabled={
+                                  !canIncreaseTechniqueCost(
+                                    currentActionCost,
+                                    option.cost,
+                                  )
+                                }
+                              >
+                                {option.value} ({formatSignedPe(option.cost)})
                               </option>
                             ))}
                           </select>
                         </label>
 
                         <label>
-                          Graduacao
-                          <input
-                            type="number"
-                            value={displayGraduacao}
-                            disabled
-                            aria-label={`Graduacao do poder base ${index + 1} (fixo)`}
-                          />
-                        </label>
-
-                        <button
-                          type="button"
-                          className="danger"
-                          onClick={() => removerPoderBaseTecnica(base.id)}
-                          disabled={tecnicaDraft.poderesBase.length <= 1}
-                        >
-                          Remover
-                        </button>
-
-                        {baseEhAtaque ? (
-                          <div className="tecnicas-dano-checks-wrapper">
-                            <p className="tecnicas-dano-checks-header">
-                              Modificadores de dano
-                            </p>
-                            <div className="tecnicas-dev-checks tecnica-dano-checks">
-                              <label
-                                className="tecnica-check-card-beauty"
-                                data-tooltip="Somar Dano Base é quando o poder permite adicionar seu dano base, seja ele baseado em Força ou em Agilidade, ao dano final do seu poder. Exclusivo de poderes de toque (corpo a corpo)."
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={base.danoSomaBase}
-                                  onChange={(event) =>
-                                    setTecnicaDraft((current) => ({
-                                      ...current,
-                                      poderesBase: current.poderesBase.map(
-                                        (item) =>
-                                          item.id === base.id
-                                            ? {
-                                                ...item,
-                                                danoSomaBase:
-                                                  event.target.checked,
-                                              }
-                                            : item,
-                                      ),
-                                    }))
-                                  }
-                                />
-                                <span className="checkbox-label-content">
-                                  <span className="checkbox-icon">+</span>
-                                  <span className="checkbox-text">
-                                    Somar dano base ({danoBaseAtributoTecnica})
-                                  </span>
-                                </span>
-                              </label>
-                              <label
-                                className="tecnica-check-card-beauty"
-                                data-tooltip="Metade do Dano é para poderes que na descrição do poder já diz que ele progride o dano igual a metade da graduação. Se o poder que você selecionou é desse tipo, então essa caixa deve ser marcada."
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={base.danoMetadeGrad}
-                                  onChange={(event) =>
-                                    setTecnicaDraft((current) => ({
-                                      ...current,
-                                      poderesBase: current.poderesBase.map(
-                                        (item) =>
-                                          item.id === base.id
-                                            ? {
-                                                ...item,
-                                                danoMetadeGrad:
-                                                  event.target.checked,
-                                              }
-                                            : item,
-                                      ),
-                                    }))
-                                  }
-                                />
-                                <span className="checkbox-label-content">
-                                  <span className="checkbox-icon">½</span>
-                                  <span className="checkbox-text">
-                                    Metade da graduacao no dano
-                                  </span>
-                                </span>
-                              </label>
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                  <button type="button" onClick={adicionarPoderBaseTecnica}>
-                    Adicionar poder base
-                  </button>
-                </section>
-
-                <section className="tecnicas-dev-subsection tecnica-info-section">
-                  <h4>Informacoes da Tecnica</h4>
-                  <p className="rule-note">
-                    Defina os dados centrais da execucao: identidade, tipo,
-                    fluxo de acao, alcance, alvo e resultado base.
-                  </p>
-
-                  <div className="tecnica-info-name-block">
-                    <label>
-                      Nome da tecnica
-                      <input
-                        disabled={!tecnicaTemPoderBaseSelecionado}
-                        value={tecnicaDraft.nome}
-                        onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            nome: event.target.value,
-                          }))
-                        }
-                        placeholder="Ex: Lamina Perfurante"
-                      />
-                    </label>
-                  </div>
-
-                  <div className="tecnicas-dev-grid">
-                    <label>
-                      Tipo
-                      <select
-                        disabled={!tecnicaTemPoderBaseSelecionado}
-                        value={tecnicaDraft.tipo}
-                        onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            tipo: event.target.value as DevelopedTechniqueType,
-                          }))
-                        }
-                      >
-                        <option value="Primaria">Primaria</option>
-                        <option value="Avancada">Avancada</option>
-                        <option value="Especial">Especial</option>
-                      </select>
-                    </label>
-
-                    <label>
-                      Acao
-                      <select
-                        disabled={!tecnicaTemPoderBaseSelecionado}
-                        value={tecnicaDraft.acao}
-                        onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            acao: event.target.value,
-                          }))
-                        }
-                      >
-                        {actionOptionsWithCost.map((option) => (
-                          <option
-                            key={option.value}
-                            value={option.value}
-                            disabled={
-                              !canIncreaseTechniqueCost(
-                                currentActionCost,
-                                option.cost,
-                              )
-                            }
-                          >
-                            {option.value} ({formatSignedPe(option.cost)})
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label>
-                      Alcance
-                      <select
-                        disabled={!tecnicaTemPoderBaseSelecionado}
-                        value={tecnicaDraft.alcance}
-                        onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            alcance: event.target.value,
-                          }))
-                        }
-                      >
-                        {rangeOptionsWithCost.map((option) => (
-                          <option
-                            key={option.value}
-                            value={option.value}
-                            disabled={
-                              !canIncreaseTechniqueCost(
-                                currentRangeCost,
-                                option.cost,
-                              )
-                            }
-                          >
-                            {option.value} ({formatSignedPe(option.cost)})
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label>
-                      Alvo
-                      <select
-                        disabled={
-                          !tecnicaTemPoderBaseSelecionado || tecnicaAreaAtiva
-                        }
-                        value={tecnicaDraft.alvo}
-                        onChange={(event) =>
-                          setTecnicaDraft((current) => {
-                            const nextTarget = event.target.value;
-
-                            return {
-                              ...current,
-                              alvo: nextTarget,
-                              modificadores: {
-                                ...current.modificadores,
-                                ataqueMultiplo:
-                                  nextTarget === "2 alvos"
-                                    ? "2"
-                                    : nextTarget === "3 alvos"
-                                      ? "3"
-                                      : "1",
-                              },
-                            };
-                          })
-                        }
-                      >
-                        {targetOptionsWithCost.map((option) => (
-                          <option
-                            key={option.value}
-                            value={option.value}
-                            disabled={
-                              option.disabled ||
-                              !canIncreaseTechniqueCost(
-                                currentTargetCost,
-                                option.cost,
-                              )
-                            }
-                          >
-                            {option.cost === 0
-                              ? option.value
-                              : `${option.value} (${formatSignedPe(option.cost)})`}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label>
-                      Duracao
-                      <select
-                        disabled={!tecnicaTemPoderBaseSelecionado}
-                        value={tecnicaDraft.duracao}
-                        onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            duracao: event.target.value,
-                          }))
-                        }
-                      >
-                        {durationOptionsWithCost.map((option) => (
-                          <option
-                            key={option.value}
-                            value={option.value}
-                            disabled={
-                              !canIncreaseTechniqueCost(
-                                currentDurationCost,
-                                option.cost,
-                              )
-                            }
-                          >
-                            {option.value} ({formatSignedPe(option.cost)})
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-
-                  <div className="tecnica-info-readouts">
-                    <article className="tecnica-info-readout-card">
-                      <span className="tecnica-info-readout-label">
-                        Acerto da tecnica
-                      </span>
-                      {tecnicaEhAtaque ? (
-                        <div className="tecnica-acerto-detalhado">
-                          <div className="tecnica-acerto-item">
-                            <span className="tecnica-acerto-item-label">
-                              Dado Base
-                            </span>
-                            <div className="tecnica-acerto-item-content">
-                              {renderQuickSheetDieChip("D20")}
-                            </div>
-                          </div>
-
-                          <div className="tecnica-acerto-item">
-                            <span className="tecnica-acerto-item-label">
-                              {tecnicaAcertoFonteLabel}
-                            </span>
-                            <div className="tecnica-acerto-item-content">
-                              {dadoAcertoTecnica === "-" ? (
-                                <span className="tecnica-acerto-no-die">
-                                  Sem dado
-                                </span>
-                              ) : (
-                                renderQuickSheetDieChip(
-                                  dadoAcertoTecnica as Dice,
-                                )
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="tecnica-acerto-item">
-                            <span className="tecnica-acerto-item-label">
-                              Precisao
-                            </span>
-                            <div className="tecnica-acerto-item-content tecnica-acerto-precisao-content">
-                              <strong className="tecnica-acerto-precisao-valor">
-                                {tecnicaPrecisaoTexto}
-                              </strong>
-                              {penalidadeImpreciso > 0 ? (
-                                <span className="tecnica-acerto-precisao-nota">
-                                  (inclui -{penalidadeImpreciso} Impreciso)
-                                </span>
-                              ) : null}
-                            </div>
-                          </div>
-
-                          <div className="tecnica-acerto-item tecnica-acerto-resumo-final-item">
-                            <span className="tecnica-acerto-item-label">
-                              <span className="tecnica-acerto-label-text">
-                                Rolagem Final
-                              </span>
-                              <span className="tecnica-acerto-tipo-badge">
-                                {tecnicaUsaDisparo
-                                  ? "Disparo"
-                                  : "Corpo a corpo"}
-                              </span>
-                            </span>
-                            <div className="tecnica-acerto-item-content tecnica-acerto-resumo-final-content">
-                              <span className="tecnica-acerto-formula-base">
-                                1D20 +
-                              </span>
-                              {dadoAcertoTecnica === "-" ? (
-                                <span className="tecnica-acerto-no-die">
-                                  Sem dado
-                                </span>
-                              ) : (
-                                <span className="tecnica-acerto-dado-texto">
-                                  1{dadoAcertoTecnica.toUpperCase()}
-                                </span>
-                              )}
-                              {tecnicaPrecisao > 0 ? (
-                                <span className="tecnica-acerto-precisao-aplicada">
-                                  {tecnicaPrecisaoTexto}
-                                </span>
-                              ) : (
-                                <span className="tecnica-acerto-precisao-zero">
-                                  +0
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <p>{tecnicaAcertoResumo}</p>
-                      )}
-                    </article>
-                    <article className="tecnica-info-readout-card">
-                      <span className="tecnica-info-readout-label">
-                        Dano da tecnica
-                      </span>
-                      {tecnicaDanoDetalhado ? (
-                        <div className="tecnica-dano-detalhado">
-                          <div className="tecnica-dano-total">
-                            <span className="dano-total-label">
-                              Dano total:
-                            </span>
-                            <strong className="dano-total-valor">
-                              {tecnicaDanoDetalhado.total}
-                            </strong>
-                          </div>
-                          <div className="tecnica-dano-breakdown">
-                            {tecnicaDanoDetalhado.base && (
-                              <div className="dano-item dano-base">
-                                <span className="dano-label">
-                                  Dano Base (
-                                  {tecnicaDanoDetalhado.base.atributo ===
-                                  "Agilidade"
-                                    ? "Agi"
-                                    : "For"}
-                                  ):
-                                </span>
-                                <span className="dano-valor">
-                                  {tecnicaDanoDetalhado.base.valor}
-                                  {tecnicaDanoDetalhado.base.aplicacoes > 1
-                                    ? ` x${tecnicaDanoDetalhado.base.aplicacoes}`
-                                    : ""}
-                                </span>
-                              </div>
-                            )}
-                            {tecnicaDanoDetalhado.poderes.map((poder) => (
-                              <div
-                                key={poder.id}
-                                className="dano-item dano-poder"
-                              >
-                                <span className="dano-label">
-                                  {poder.nome}:
-                                </span>
-                                <span className="dano-valor">
-                                  {poder.dano}
-                                  {poder.graduacao > poder.dano &&
-                                    tecnicaDanoDetalhado.especiais.metadeGrad &&
-                                    " (½ grad)"}
-                                </span>
-                              </div>
-                            ))}
-                            {tecnicaDanoDetalhado.modificadores.aumentoDano >
-                              0 && (
-                              <div className="dano-item dano-modificador">
-                                <span className="dano-label">
-                                  Aumento de Dano:
-                                </span>
-                                <span className="dano-valor">
-                                  {
-                                    tecnicaDanoDetalhado.modificadores
-                                      .aumentoDano
-                                  }
-                                </span>
-                              </div>
-                            )}
-
-                            {tecnicaDanoDetalhado.modificadores.danoContinuo >
-                              0 && (
-                              <div className="dano-item dano-continuo">
-                                <span className="dano-label">
-                                  Dano Contínuo:
-                                </span>
-                                <span className="dano-valor">
-                                  +
-                                  {
-                                    tecnicaDanoDetalhado.modificadores
-                                      .danoContinuo
-                                  }{" "}
-                                  por 3 turnos
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                          {(tecnicaDanoDetalhado.especiais.ataqueMultiplo !==
-                            "1" ||
-                            tecnicaDanoDetalhado.especiais.area) && (
-                            <div className="tecnica-dano-notas">
-                              {tecnicaDanoDetalhado.especiais.ataqueMultiplo !==
-                                "1" && (
-                                <div className="nota-item">
-                                  {
-                                    tecnicaDanoDetalhado.especiais
-                                      .ataqueMultiplo
-                                  }{" "}
-                                  ataques (dano dividido)
-                                </div>
-                              )}
-                              {tecnicaDanoDetalhado.especiais.area && (
-                                <div className="nota-item">
-                                  Área {tecnicaDanoDetalhado.especiais.area}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <p>{tecnicaDanoResumo}</p>
-                      )}
-                    </article>
-                  </div>
-
-                  <div className="tecnicas-dev-textareas">
-                    <label>
-                      Conceito
-                      <textarea
-                        disabled={!tecnicaTemPoderBaseSelecionado}
-                        value={tecnicaDraft.conceito}
-                        onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            conceito: event.target.value,
-                          }))
-                        }
-                        placeholder="Defina a intencao e identidade da tecnica."
-                      />
-                    </label>
-                    <label>
-                      Efeito completo
-                      <textarea
-                        disabled={!tecnicaTemPoderBaseSelecionado}
-                        value={tecnicaDraft.efeito}
-                        onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            efeito: event.target.value,
-                          }))
-                        }
-                        placeholder="Descreva resolucao mecanica objetiva."
-                      />
-                    </label>
-                    <label>
-                      Gatilho / condicao
-                      <textarea
-                        disabled={!tecnicaTemPoderBaseSelecionado}
-                        value={tecnicaDraft.gatilho}
-                        onChange={(event) =>
-                          setTecnicaDraft((current) => ({
-                            ...current,
-                            gatilho: event.target.value,
-                          }))
-                        }
-                        placeholder="Opcional. Ex: exige preparacao."
-                      />
-                    </label>
-                  </div>
-                </section>
-
-                <section className="tecnicas-dev-subsection">
-                  <h4>Modificadores e Reducoes</h4>
-                  <p className="rule-note">
-                    Capitulo 12: Custo Final = Custo Base + Modificadores -
-                    Limitacoes/Falhas. O limite de modificacao por tipo e
-                    aplicado antes das reducoes.
-                  </p>
-
-                  <h5>Modificadores</h5>
-                  <div className="tecnicas-dev-grid">
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Aumento de dano</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_AUMENTO_DANO_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </span>
-                      <NumericStepperInput
-                        min={0}
-                        max={maxAumentoDano}
-                        value={tecnicaMods.aumentoDano}
-                        ariaLabel="Aumento de dano"
-                        onChange={(value) =>
-                          atualizarModTecnica("aumentoDano", value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Precisao</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_PRECISAO_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </span>
-                      <NumericStepperInput
-                        min={0}
-                        max={maxPrecisao}
-                        value={tecnicaMods.precisao}
-                        ariaLabel="Precisao"
-                        onChange={(value) =>
-                          atualizarModTecnica("precisao", value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Penetrante</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_PENETRANTE_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </span>
-                      <NumericStepperInput
-                        min={0}
-                        max={maxPenetrante}
-                        value={tecnicaMods.penetrante}
-                        ariaLabel="Penetrante"
-                        onChange={(value) =>
-                          atualizarModTecnica("penetrante", value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Dano ampliado </span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_DANO_AMPLIADO_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </span>
-                      <NumericStepperInput
-                        min={0}
-                        max={maxDanoAmpliado}
-                        value={tecnicaMods.danoAmpliado}
-                        ariaLabel="Dano ampliado"
-                        onChange={(value) =>
-                          atualizarModTecnica("danoAmpliado", value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Critico ampliado</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_CRITICO_AMPLIADO_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </span>
-                      <NumericStepperInput
-                        min={0}
-                        max={maxCriticoAprimorado}
-                        value={tecnicaMods.criticoAprimorado}
-                        ariaLabel="Critico ampliado"
-                        onChange={(value) =>
-                          atualizarModTecnica("criticoAprimorado", value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Dano continuo</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_DANO_CONTINUO_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </span>
-                      <NumericStepperInput
-                        min={0}
-                        max={maxDanoContinuo}
-                        value={tecnicaMods.danoContinuo}
-                        ariaLabel="Dano continuo"
-                        onChange={(value) =>
-                          atualizarModTecnica("danoContinuo", value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Resultado em Defesa</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_DEFESA_RESULTADO_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </span>
-                      <NumericStepperInput
-                        min={0}
-                        max={maxBonusDefesa}
-                        value={tecnicaMods.bonusDefesa}
-                        ariaLabel="Bonus em defesa"
-                        onChange={(value) =>
-                          atualizarModTecnica("bonusDefesa", value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Reducao de dano</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_REDUCAO_DANO_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </span>
-                      <NumericStepperInput
-                        min={0}
-                        max={maxReducaoDano}
-                        value={tecnicaMods.reducaoDanoRecebido}
-                        ariaLabel="Reducao de dano"
-                        onChange={(value) =>
-                          atualizarModTecnica("reducaoDanoRecebido", value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Absorcao convertida</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_ABSORCAO_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </span>
-                      <NumericStepperInput
-                        min={0}
-                        max={maxAbsorcao}
-                        value={tecnicaMods.absorcao}
-                        ariaLabel="Absorcao convertida"
-                        onChange={(value) =>
-                          atualizarModTecnica("absorcao", value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Area</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_AREA_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </span>
-                      <select
-                        value={tecnicaMods.area}
-                        onChange={(event) =>
-                          setTecnicaDraft((current) => {
-                            const nextArea = event.target
-                              .value as DevelopedTechniqueModifierSet["area"];
-
-                            return {
-                              ...current,
-                              alvo: nextArea
-                                ? "Todos na area"
-                                : getTechniqueTargetFromMultipleAttacks(
-                                    current.modificadores.ataqueMultiplo,
-                                  ),
-                              modificadores: {
-                                ...current.modificadores,
-                                ataqueMultiplo: nextArea
-                                  ? "1"
-                                  : current.modificadores.ataqueMultiplo,
-                                area: nextArea,
-                              },
-                            };
-                          })
-                        }
-                      >
-                        <option value="">Sem area</option>
-                        <option
-                          value="3m"
-                          disabled={
-                            !canIncreaseTechniqueCost(currentAreaCost, 2)
-                          }
-                        >
-                          3m (+2 PE)
-                        </option>
-                        <option
-                          value="5m"
-                          disabled={
-                            !canIncreaseTechniqueCost(currentAreaCost, 3)
-                          }
-                        >
-                          5m (+3 PE)
-                        </option>
-                        <option
-                          value="10m"
-                          disabled={
-                            !canIncreaseTechniqueCost(currentAreaCost, 5)
-                          }
-                        >
-                          10m (+5 PE)
-                        </option>
-                      </select>
-                    </label>
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Controle</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_CONTROLE_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </span>
-                      <select
-                        value={tecnicaMods.controleNivel}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "controleNivel",
-                            event.target
-                              .value as DevelopedTechniqueModifierSet["controleNivel"],
-                          )
-                        }
-                      >
-                        <option value="">Sem controle</option>
-                        <option
-                          value="Leve"
-                          disabled={
-                            !canIncreaseTechniqueCost(currentControlCost, 1)
-                          }
-                        >
-                          Leve (+1 PE)
-                        </option>
-                        <option
-                          value="Moderado"
-                          disabled={
-                            !canIncreaseTechniqueCost(currentControlCost, 2)
-                          }
-                        >
-                          Moderado (+2 PE)
-                        </option>
-                        <option
-                          value="Forte"
-                          disabled={
-                            !canIncreaseTechniqueCost(currentControlCost, 3)
-                          }
-                        >
-                          Forte (+3 PE)
-                        </option>
-                      </select>
-                    </label>
-                    {!tecnicaAreaAtiva ? (
-                      <label>
-                        <span className="tecnica-label-with-help">
-                          <span>Ataque multiplo</span>
-                          <span
-                            className="info-dot"
-                            data-tooltip={TECHNIQUE_ATAQUE_MULTIPLO_TOOLTIP}
-                          >
-                            i
-                          </span>
-                        </span>
-                        <select
-                          value={tecnicaMods.ataqueMultiplo}
-                          onChange={(event) =>
-                            setTecnicaDraft((current) => {
-                              const nextAttackMultiple = event.target
-                                .value as DevelopedTechniqueModifierSet["ataqueMultiplo"];
-
-                              return {
+                          Alcance
+                          <select
+                            disabled={!tecnicaTemPoderBaseSelecionado}
+                            value={tecnicaDraft.alcance}
+                            onChange={(event) =>
+                              setTecnicaDraft((current) => ({
                                 ...current,
-                                alvo: getTechniqueTargetFromMultipleAttacks(
-                                  nextAttackMultiple,
-                                ),
-                                modificadores: {
-                                  ...current.modificadores,
-                                  ataqueMultiplo: nextAttackMultiple,
-                                },
-                              };
-                            })
-                          }
-                        >
-                          <option value="1">1 ataque (+0 PE)</option>
-                          <option
-                            value="2"
-                            disabled={
-                              !canIncreaseTechniqueCost(
-                                currentAttackMultipleCost,
-                                1,
-                              )
+                                alcance: event.target.value,
+                              }))
                             }
                           >
-                            2 ataques (+1 PE)
-                          </option>
-                          <option
-                            value="3"
-                            disabled={
-                              !canIncreaseTechniqueCost(
-                                currentAttackMultipleCost,
-                                2,
-                              )
-                            }
-                          >
-                            3 ataques (+2 PE)
-                          </option>
-                        </select>
-                      </label>
-                    ) : null}
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Indireto</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_INDIRETO_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </span>
-                      <select
-                        value={tecnicaMods.indireto}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "indireto",
-                            event.target
-                              .value as DevelopedTechniqueModifierSet["indireto"],
-                          )
-                        }
-                      >
-                        <option value="">Nao</option>
-                        <option
-                          value="Basico"
-                          disabled={
-                            !canIncreaseTechniqueCost(currentIndiretoCost, 2)
-                          }
-                        >
-                          Basico (+2 PE)
-                        </option>
-                        <option
-                          value="Avancado"
-                          disabled={
-                            !canIncreaseTechniqueCost(currentIndiretoCost, 4)
-                          }
-                        >
-                          Avancado (+4 PE)
-                        </option>
-                      </select>
-                    </label>
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Sutil</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_SUTIL_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </span>
-                      <select
-                        value={tecnicaMods.sutil}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "sutil",
-                            event.target
-                              .value as DevelopedTechniqueModifierSet["sutil"],
-                          )
-                        }
-                      >
-                        <option value="">Nao</option>
-                        <option
-                          value="Dificil"
-                          disabled={
-                            !canIncreaseTechniqueCost(currentSutilCost, 1)
-                          }
-                        >
-                          Dificil de perceber (+1)
-                        </option>
-                        <option
-                          value="Imperceptivel"
-                          disabled={
-                            !canIncreaseTechniqueCost(currentSutilCost, 2)
-                          }
-                        >
-                          Imperceptivel (+2)
-                        </option>
-                      </select>
-                    </label>
-                    <div className="tecnica-custom-group">
-                      <p className="tecnica-custom-title">
-                        Modificador personalizado (
-                        {formatSignedPe(tecnicaCustomCustoNormalizado)})
-                      </p>
-                      <div className="tecnica-custom-fields">
+                            {rangeOptionsWithCost.map((option) => (
+                              <option
+                                key={option.value}
+                                value={option.value}
+                                disabled={
+                                  !canIncreaseTechniqueCost(
+                                    currentRangeCost,
+                                    option.cost,
+                                  )
+                                }
+                              >
+                                {option.value} ({formatSignedPe(option.cost)})
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
                         <label>
-                          Nome
-                          <input
-                            value={
-                              tecnicaDraft.modificadores
-                                .modificadorPersonalizadoNome
+                          Alvo
+                          <select
+                            disabled={
+                              !tecnicaTemPoderBaseSelecionado ||
+                              tecnicaAreaAtiva
                             }
+                            value={tecnicaDraft.alvo}
                             onChange={(event) =>
-                              atualizarModTecnica(
-                                "modificadorPersonalizadoNome",
-                                event.target.value,
-                              )
+                              setTecnicaDraft((current) => {
+                                const nextTarget = event.target.value;
+
+                                return {
+                                  ...current,
+                                  alvo: nextTarget,
+                                  modificadores: {
+                                    ...current.modificadores,
+                                    ataqueMultiplo:
+                                      nextTarget === "2 alvos"
+                                        ? "2"
+                                        : nextTarget === "3 alvos"
+                                          ? "3"
+                                          : "1",
+                                  },
+                                };
+                              })
                             }
-                            placeholder="Ex: Ajuste narrativo"
+                          >
+                            {targetOptionsWithCost.map((option) => (
+                              <option
+                                key={option.value}
+                                value={option.value}
+                                disabled={
+                                  option.disabled ||
+                                  !canIncreaseTechniqueCost(
+                                    currentTargetCost,
+                                    option.cost,
+                                  )
+                                }
+                              >
+                                {option.cost === 0
+                                  ? option.value
+                                  : `${option.value} (${formatSignedPe(option.cost)})`}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label>
+                          Duracao
+                          <select
+                            disabled={!tecnicaTemPoderBaseSelecionado}
+                            value={tecnicaDraft.duracao}
+                            onChange={(event) =>
+                              setTecnicaDraft((current) => ({
+                                ...current,
+                                duracao: event.target.value,
+                              }))
+                            }
+                          >
+                            {durationOptionsWithCost.map((option) => (
+                              <option
+                                key={option.value}
+                                value={option.value}
+                                disabled={
+                                  !canIncreaseTechniqueCost(
+                                    currentDurationCost,
+                                    option.cost,
+                                  )
+                                }
+                              >
+                                {option.value} ({formatSignedPe(option.cost)})
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className="tecnica-info-readouts">
+                        <article className="tecnica-info-readout-card">
+                          <span className="tecnica-info-readout-label">
+                            Acerto da tecnica
+                          </span>
+                          {tecnicaEhAtaque ? (
+                            <div className="tecnica-acerto-detalhado">
+                              <div className="tecnica-acerto-item">
+                                <span className="tecnica-acerto-item-label">
+                                  Dado Base
+                                </span>
+                                <div className="tecnica-acerto-item-content">
+                                  {renderQuickSheetDieChip("D20")}
+                                </div>
+                              </div>
+
+                              <div className="tecnica-acerto-item">
+                                <span className="tecnica-acerto-item-label">
+                                  {tecnicaAcertoFonteLabel}
+                                </span>
+                                <div className="tecnica-acerto-item-content">
+                                  {dadoAcertoTecnica === "-" ? (
+                                    <span className="tecnica-acerto-no-die">
+                                      Sem dado
+                                    </span>
+                                  ) : (
+                                    renderQuickSheetDieChip(
+                                      dadoAcertoTecnica as Dice,
+                                    )
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="tecnica-acerto-item">
+                                <span className="tecnica-acerto-item-label">
+                                  Precisao
+                                </span>
+                                <div className="tecnica-acerto-item-content tecnica-acerto-precisao-content">
+                                  <strong className="tecnica-acerto-precisao-valor">
+                                    {tecnicaPrecisaoTexto}
+                                  </strong>
+                                  {penalidadeImpreciso > 0 ? (
+                                    <span className="tecnica-acerto-precisao-nota">
+                                      (inclui -{penalidadeImpreciso} Impreciso)
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+
+                              <div className="tecnica-acerto-item tecnica-acerto-resumo-final-item">
+                                <span className="tecnica-acerto-item-label">
+                                  <span className="tecnica-acerto-label-text">
+                                    Rolagem Final
+                                  </span>
+                                  <span className="tecnica-acerto-tipo-badge">
+                                    {tecnicaUsaDisparo
+                                      ? "Disparo"
+                                      : "Corpo a corpo"}
+                                  </span>
+                                </span>
+                                <div className="tecnica-acerto-item-content tecnica-acerto-resumo-final-content">
+                                  <span className="tecnica-acerto-formula-base">
+                                    1D20 +
+                                  </span>
+                                  {dadoAcertoTecnica === "-" ? (
+                                    <span className="tecnica-acerto-no-die">
+                                      Sem dado
+                                    </span>
+                                  ) : (
+                                    <span className="tecnica-acerto-dado-texto">
+                                      1{dadoAcertoTecnica.toUpperCase()}
+                                    </span>
+                                  )}
+                                  {tecnicaPrecisao > 0 ? (
+                                    <span className="tecnica-acerto-precisao-aplicada">
+                                      {tecnicaPrecisaoTexto}
+                                    </span>
+                                  ) : (
+                                    <span className="tecnica-acerto-precisao-zero">
+                                      +0
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <p>{tecnicaAcertoResumo}</p>
+                          )}
+                        </article>
+                        <article className="tecnica-info-readout-card">
+                          <span className="tecnica-info-readout-label">
+                            Dano da tecnica
+                          </span>
+                          {tecnicaDanoDetalhado ? (
+                            <div className="tecnica-dano-detalhado">
+                              <div className="tecnica-dano-total">
+                                <span className="dano-total-label">
+                                  Dano total:
+                                </span>
+                                <strong className="dano-total-valor">
+                                  {tecnicaDanoDetalhado.total}
+                                </strong>
+                              </div>
+                              <div className="tecnica-dano-breakdown">
+                                {tecnicaDanoDetalhado.base && (
+                                  <div className="dano-item dano-base">
+                                    <span className="dano-label">
+                                      Dano Base (
+                                      {tecnicaDanoDetalhado.base.atributo ===
+                                      "Agilidade"
+                                        ? "Agi"
+                                        : "For"}
+                                      ):
+                                    </span>
+                                    <span className="dano-valor">
+                                      {tecnicaDanoDetalhado.base.valor}
+                                      {tecnicaDanoDetalhado.base.aplicacoes > 1
+                                        ? ` x${tecnicaDanoDetalhado.base.aplicacoes}`
+                                        : ""}
+                                    </span>
+                                  </div>
+                                )}
+                                {tecnicaDanoDetalhado.poderes.map((poder) => (
+                                  <div
+                                    key={poder.id}
+                                    className="dano-item dano-poder"
+                                  >
+                                    <span className="dano-label">
+                                      {poder.nome}:
+                                    </span>
+                                    <span className="dano-valor">
+                                      {poder.dano}
+                                      {poder.graduacao > poder.dano &&
+                                        tecnicaDanoDetalhado.especiais
+                                          .metadeGrad &&
+                                        " (½ grad)"}
+                                    </span>
+                                  </div>
+                                ))}
+                                {tecnicaDanoDetalhado.modificadores
+                                  .aumentoDano > 0 && (
+                                  <div className="dano-item dano-modificador">
+                                    <span className="dano-label">
+                                      Aumento de Dano:
+                                    </span>
+                                    <span className="dano-valor">
+                                      {
+                                        tecnicaDanoDetalhado.modificadores
+                                          .aumentoDano
+                                      }
+                                    </span>
+                                  </div>
+                                )}
+
+                                {tecnicaDanoDetalhado.modificadores
+                                  .danoContinuo > 0 && (
+                                  <div className="dano-item dano-continuo">
+                                    <span className="dano-label">
+                                      Dano Contínuo:
+                                    </span>
+                                    <span className="dano-valor">
+                                      +
+                                      {
+                                        tecnicaDanoDetalhado.modificadores
+                                          .danoContinuo
+                                      }{" "}
+                                      por 3 turnos
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                              {(tecnicaDanoDetalhado.especiais
+                                .ataqueMultiplo !== "1" ||
+                                tecnicaDanoDetalhado.especiais.area) && (
+                                <div className="tecnica-dano-notas">
+                                  {tecnicaDanoDetalhado.especiais
+                                    .ataqueMultiplo !== "1" && (
+                                    <div className="nota-item">
+                                      {
+                                        tecnicaDanoDetalhado.especiais
+                                          .ataqueMultiplo
+                                      }{" "}
+                                      ataques (dano dividido)
+                                    </div>
+                                  )}
+                                  {tecnicaDanoDetalhado.especiais.area && (
+                                    <div className="nota-item">
+                                      Área {tecnicaDanoDetalhado.especiais.area}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <p>{tecnicaDanoResumo}</p>
+                          )}
+                        </article>
+                      </div>
+
+                      <div className="tecnicas-dev-textareas">
+                        <label>
+                          Conceito
+                          <textarea
+                            disabled={!tecnicaTemPoderBaseSelecionado}
+                            value={tecnicaDraft.conceito}
+                            onChange={(event) =>
+                              setTecnicaDraft((current) => ({
+                                ...current,
+                                conceito: event.target.value,
+                              }))
+                            }
+                            placeholder="Defina a intencao e identidade da tecnica."
                           />
                         </label>
                         <label>
-                          PE
-                          <input
-                            type="number"
-                            max={maxCustomPositive}
-                            value={tecnicaMods.modificadorPersonalizadoCusto}
+                          Efeito completo
+                          <textarea
+                            disabled={!tecnicaTemPoderBaseSelecionado}
+                            value={tecnicaDraft.efeito}
                             onChange={(event) =>
-                              atualizarModTecnica(
-                                "modificadorPersonalizadoCusto",
-                                event.target.value,
-                              )
+                              setTecnicaDraft((current) => ({
+                                ...current,
+                                efeito: event.target.value,
+                              }))
                             }
-                            placeholder="Pode ser negativo"
+                            placeholder="Descreva resolucao mecanica objetiva."
+                          />
+                        </label>
+                        <label>
+                          Gatilho / condicao
+                          <textarea
+                            disabled={!tecnicaTemPoderBaseSelecionado}
+                            value={tecnicaDraft.gatilho}
+                            onChange={(event) =>
+                              setTecnicaDraft((current) => ({
+                                ...current,
+                                gatilho: event.target.value,
+                              }))
+                            }
+                            placeholder="Opcional. Ex: exige preparacao."
                           />
                         </label>
                       </div>
-                    </div>
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Deslocamento</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_DESLOCAMENTO_TOOLTIP}
-                        >
-                          i
-                        </span>
-                      </span>
-                      <select
-                        value={deslocamentoSelectValue}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "deslocamentoMetros",
-                            event.target.value,
-                          )
-                        }
-                      >
-                        {deslocamentoOpcoesMetros.map((metros) => {
-                          const custo = Math.ceil(metros / 2);
-                          const permitido =
-                            metros <= maxDeslocamentoMetros &&
-                            canIncreaseTechniqueCost(
-                              currentDeslocamentoCost,
-                              custo,
-                            );
+                    </section>
 
-                          return (
+                    <section className="tecnicas-dev-subsection">
+                      <h4>Modificadores e Reducoes</h4>
+                      <p className="rule-note">
+                        Capitulo 12: Custo Final = Custo Base + Modificadores -
+                        Limitacoes/Falhas. O limite de modificacao por tipo e
+                        aplicado antes das reducoes.
+                      </p>
+
+                      <h5>Modificadores</h5>
+                      <div className="tecnicas-dev-grid">
+                        <label>
+                          <span className="tecnica-label-with-help">
+                            <span>Aumento de dano</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_AUMENTO_DANO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                          <NumericStepperInput
+                            min={0}
+                            max={maxAumentoDano}
+                            value={tecnicaMods.aumentoDano}
+                            ariaLabel="Aumento de dano"
+                            onChange={(value) =>
+                              atualizarModTecnica("aumentoDano", value)
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span className="tecnica-label-with-help">
+                            <span>Precisao</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_PRECISAO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                          <NumericStepperInput
+                            min={0}
+                            max={maxPrecisao}
+                            value={tecnicaMods.precisao}
+                            ariaLabel="Precisao"
+                            onChange={(value) =>
+                              atualizarModTecnica("precisao", value)
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span className="tecnica-label-with-help">
+                            <span>Penetrante</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_PENETRANTE_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                          <NumericStepperInput
+                            min={0}
+                            max={maxPenetrante}
+                            value={tecnicaMods.penetrante}
+                            ariaLabel="Penetrante"
+                            onChange={(value) =>
+                              atualizarModTecnica("penetrante", value)
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span className="tecnica-label-with-help">
+                            <span>Dano ampliado </span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_DANO_AMPLIADO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                          <NumericStepperInput
+                            min={0}
+                            max={maxDanoAmpliado}
+                            value={tecnicaMods.danoAmpliado}
+                            ariaLabel="Dano ampliado"
+                            onChange={(value) =>
+                              atualizarModTecnica("danoAmpliado", value)
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span className="tecnica-label-with-help">
+                            <span>Critico ampliado</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_CRITICO_AMPLIADO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                          <NumericStepperInput
+                            min={0}
+                            max={maxCriticoAprimorado}
+                            value={tecnicaMods.criticoAprimorado}
+                            ariaLabel="Critico ampliado"
+                            onChange={(value) =>
+                              atualizarModTecnica("criticoAprimorado", value)
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span className="tecnica-label-with-help">
+                            <span>Dano continuo</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_DANO_CONTINUO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                          <NumericStepperInput
+                            min={0}
+                            max={maxDanoContinuo}
+                            value={tecnicaMods.danoContinuo}
+                            ariaLabel="Dano continuo"
+                            onChange={(value) =>
+                              atualizarModTecnica("danoContinuo", value)
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span className="tecnica-label-with-help">
+                            <span>Resultado em Defesa</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_DEFESA_RESULTADO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                          <NumericStepperInput
+                            min={0}
+                            max={maxBonusDefesa}
+                            value={tecnicaMods.bonusDefesa}
+                            ariaLabel="Bonus em defesa"
+                            onChange={(value) =>
+                              atualizarModTecnica("bonusDefesa", value)
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span className="tecnica-label-with-help">
+                            <span>Reducao de dano</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_REDUCAO_DANO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                          <NumericStepperInput
+                            min={0}
+                            max={maxReducaoDano}
+                            value={tecnicaMods.reducaoDanoRecebido}
+                            ariaLabel="Reducao de dano"
+                            onChange={(value) =>
+                              atualizarModTecnica("reducaoDanoRecebido", value)
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span className="tecnica-label-with-help">
+                            <span>Absorcao convertida</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_ABSORCAO_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                          <NumericStepperInput
+                            min={0}
+                            max={maxAbsorcao}
+                            value={tecnicaMods.absorcao}
+                            ariaLabel="Absorcao convertida"
+                            onChange={(value) =>
+                              atualizarModTecnica("absorcao", value)
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span className="tecnica-label-with-help">
+                            <span>Area</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_AREA_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                          <select
+                            value={tecnicaMods.area}
+                            onChange={(event) =>
+                              setTecnicaDraft((current) => {
+                                const nextArea = event.target
+                                  .value as DevelopedTechniqueModifierSet["area"];
+
+                                return {
+                                  ...current,
+                                  alvo: nextArea
+                                    ? "Todos na area"
+                                    : getTechniqueTargetFromMultipleAttacks(
+                                        current.modificadores.ataqueMultiplo,
+                                      ),
+                                  modificadores: {
+                                    ...current.modificadores,
+                                    ataqueMultiplo: nextArea
+                                      ? "1"
+                                      : current.modificadores.ataqueMultiplo,
+                                    area: nextArea,
+                                  },
+                                };
+                              })
+                            }
+                          >
+                            <option value="">Sem area</option>
                             <option
-                              key={metros}
-                              value={String(metros)}
-                              disabled={!permitido}
+                              value="3m"
+                              disabled={
+                                !canIncreaseTechniqueCost(currentAreaCost, 2)
+                              }
                             >
-                              {metros === 0
-                                ? "Sem deslocamento (+0 PE)"
-                                : `${metros}m (+${custo} PE)`}
+                              3m (+2 PE)
                             </option>
-                          );
-                        })}
-                      </select>
-                    </label>
-                  </div>
+                            <option
+                              value="5m"
+                              disabled={
+                                !canIncreaseTechniqueCost(currentAreaCost, 3)
+                              }
+                            >
+                              5m (+3 PE)
+                            </option>
+                            <option
+                              value="10m"
+                              disabled={
+                                !canIncreaseTechniqueCost(currentAreaCost, 5)
+                              }
+                            >
+                              10m (+5 PE)
+                            </option>
+                          </select>
+                        </label>
+                        <label>
+                          <span className="tecnica-label-with-help">
+                            <span>Controle</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_CONTROLE_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                          <select
+                            value={tecnicaMods.controleNivel}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "controleNivel",
+                                event.target
+                                  .value as DevelopedTechniqueModifierSet["controleNivel"],
+                              )
+                            }
+                          >
+                            <option value="">Sem controle</option>
+                            <option
+                              value="Leve"
+                              disabled={
+                                !canIncreaseTechniqueCost(currentControlCost, 1)
+                              }
+                            >
+                              Leve (+1 PE)
+                            </option>
+                            <option
+                              value="Moderado"
+                              disabled={
+                                !canIncreaseTechniqueCost(currentControlCost, 2)
+                              }
+                            >
+                              Moderado (+2 PE)
+                            </option>
+                            <option
+                              value="Forte"
+                              disabled={
+                                !canIncreaseTechniqueCost(currentControlCost, 3)
+                              }
+                            >
+                              Forte (+3 PE)
+                            </option>
+                          </select>
+                        </label>
+                        {!tecnicaAreaAtiva ? (
+                          <label>
+                            <span className="tecnica-label-with-help">
+                              <span>Ataque multiplo</span>
+                              <span
+                                className="info-dot"
+                                data-tooltip={TECHNIQUE_ATAQUE_MULTIPLO_TOOLTIP}
+                              >
+                                i
+                              </span>
+                            </span>
+                            <select
+                              value={tecnicaMods.ataqueMultiplo}
+                              onChange={(event) =>
+                                setTecnicaDraft((current) => {
+                                  const nextAttackMultiple = event.target
+                                    .value as DevelopedTechniqueModifierSet["ataqueMultiplo"];
 
-                  <div className="tecnicas-dev-checks">
-                    <label
-                      className={`tecnica-check-card${lockEfeitoSecundarioByPe ? " pe-locked-field" : ""}`}
-                      data-lock-tooltip={
-                        lockEfeitoSecundarioByPe
-                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
-                          : undefined
-                      }
-                    >
-                      <input
-                        type="checkbox"
-                        checked={tecnicaMods.efeitoSecundario}
-                        disabled={lockEfeitoSecundarioByPe}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "efeitoSecundario",
-                            event.target.checked,
-                          )
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
+                                  return {
+                                    ...current,
+                                    alvo: getTechniqueTargetFromMultipleAttacks(
+                                      nextAttackMultiple,
+                                    ),
+                                    modificadores: {
+                                      ...current.modificadores,
+                                      ataqueMultiplo: nextAttackMultiple,
+                                    },
+                                  };
+                                })
+                              }
+                            >
+                              <option value="1">1 ataque (+0 PE)</option>
+                              <option
+                                value="2"
+                                disabled={
+                                  !canIncreaseTechniqueCost(
+                                    currentAttackMultipleCost,
+                                    1,
+                                  )
+                                }
+                              >
+                                2 ataques (+1 PE)
+                              </option>
+                              <option
+                                value="3"
+                                disabled={
+                                  !canIncreaseTechniqueCost(
+                                    currentAttackMultipleCost,
+                                    2,
+                                  )
+                                }
+                              >
+                                3 ataques (+2 PE)
+                              </option>
+                            </select>
+                          </label>
+                        ) : null}
+                        <label>
                           <span className="tecnica-label-with-help">
-                            <span>Efeito secundario</span>
+                            <span>Indireto</span>
                             <span
                               className="info-dot"
-                              data-tooltip={TECHNIQUE_EFEITO_SECUNDARIO_TOOLTIP}
+                              data-tooltip={TECHNIQUE_INDIRETO_TOOLTIP}
                             >
                               i
                             </span>
                           </span>
-                        </strong>
-                        <small>
-                          Repete o efeito no turno seguinte uma vez.
-                        </small>
-                      </span>
-                    </label>
-                    <label
-                      className={`tecnica-check-card${lockIncuravelByPe ? " pe-locked-field" : ""}`}
-                      data-lock-tooltip={
-                        lockIncuravelByPe
-                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
-                          : undefined
-                      }
-                    >
-                      <input
-                        type="checkbox"
-                        checked={tecnicaMods.incuravel}
-                        disabled={lockIncuravelByPe}
-                        onChange={(event) =>
-                          atualizarModTecnica("incuravel", event.target.checked)
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
+                          <select
+                            value={tecnicaMods.indireto}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "indireto",
+                                event.target
+                                  .value as DevelopedTechniqueModifierSet["indireto"],
+                              )
+                            }
+                          >
+                            <option value="">Nao</option>
+                            <option
+                              value="Basico"
+                              disabled={
+                                !canIncreaseTechniqueCost(
+                                  currentIndiretoCost,
+                                  2,
+                                )
+                              }
+                            >
+                              Basico (+2 PE)
+                            </option>
+                            <option
+                              value="Avancado"
+                              disabled={
+                                !canIncreaseTechniqueCost(
+                                  currentIndiretoCost,
+                                  4,
+                                )
+                              }
+                            >
+                              Avancado (+4 PE)
+                            </option>
+                          </select>
+                        </label>
+                        <label>
                           <span className="tecnica-label-with-help">
-                            <span>Incuravel</span>
+                            <span>Sutil</span>
                             <span
                               className="info-dot"
-                              data-tooltip={TECHNIQUE_INCURAVEL_TOOLTIP}
+                              data-tooltip={TECHNIQUE_SUTIL_TOOLTIP}
                             >
                               i
                             </span>
                           </span>
-                        </strong>
-                        <small>Limita ou impede recuperacao dos efeitos.</small>
-                      </span>
-                    </label>
-                    <label
-                      className={`tecnica-check-card${lockContagiosoByPe ? " pe-locked-field" : ""}`}
-                      data-lock-tooltip={
-                        lockContagiosoByPe
-                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
-                          : undefined
-                      }
-                    >
-                      <input
-                        type="checkbox"
-                        checked={tecnicaMods.contagioso}
-                        disabled={lockContagiosoByPe}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "contagioso",
-                            event.target.checked,
-                          )
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
+                          <select
+                            value={tecnicaMods.sutil}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "sutil",
+                                event.target
+                                  .value as DevelopedTechniqueModifierSet["sutil"],
+                              )
+                            }
+                          >
+                            <option value="">Nao</option>
+                            <option
+                              value="Dificil"
+                              disabled={
+                                !canIncreaseTechniqueCost(currentSutilCost, 1)
+                              }
+                            >
+                              Dificil de perceber (+1)
+                            </option>
+                            <option
+                              value="Imperceptivel"
+                              disabled={
+                                !canIncreaseTechniqueCost(currentSutilCost, 2)
+                              }
+                            >
+                              Imperceptivel (+2)
+                            </option>
+                          </select>
+                        </label>
+                        <div className="tecnica-custom-group">
+                          <p className="tecnica-custom-title">
+                            Modificador personalizado (
+                            {formatSignedPe(tecnicaCustomCustoNormalizado)})
+                          </p>
+                          <div className="tecnica-custom-fields">
+                            <label>
+                              Nome
+                              <input
+                                value={
+                                  tecnicaDraft.modificadores
+                                    .modificadorPersonalizadoNome
+                                }
+                                onChange={(event) =>
+                                  atualizarModTecnica(
+                                    "modificadorPersonalizadoNome",
+                                    event.target.value,
+                                  )
+                                }
+                                placeholder="Ex: Ajuste narrativo"
+                              />
+                            </label>
+                            <label>
+                              PE
+                              <input
+                                type="number"
+                                max={maxCustomPositive}
+                                value={
+                                  tecnicaMods.modificadorPersonalizadoCusto
+                                }
+                                onChange={(event) =>
+                                  atualizarModTecnica(
+                                    "modificadorPersonalizadoCusto",
+                                    event.target.value,
+                                  )
+                                }
+                                placeholder="Pode ser negativo"
+                              />
+                            </label>
+                          </div>
+                        </div>
+                        <label>
                           <span className="tecnica-label-with-help">
-                            <span>Contagioso</span>
+                            <span>Deslocamento</span>
                             <span
                               className="info-dot"
-                              data-tooltip={TECHNIQUE_CONTAGIOSO_TOOLTIP}
+                              data-tooltip={TECHNIQUE_DESLOCAMENTO_TOOLTIP}
                             >
                               i
                             </span>
                           </span>
-                        </strong>
-                        <small>
-                          Permite propagacao controlada para alvos proximos.
-                        </small>
-                      </span>
-                    </label>
-                    <label
-                      className={`tecnica-check-card${lockSeletivoByPe ? " pe-locked-field" : ""}`}
-                      data-lock-tooltip={
-                        lockSeletivoByPe
-                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
-                          : undefined
-                      }
-                    >
-                      <input
-                        type="checkbox"
-                        checked={tecnicaMods.seletivo}
-                        disabled={lockSeletivoByPe}
-                        onChange={(event) =>
-                          atualizarModTecnica("seletivo", event.target.checked)
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
-                          <span className="tecnica-label-with-help">
-                            <span>Seletivo</span>
-                            <span
-                              className="info-dot"
-                              data-tooltip={TECHNIQUE_SELETIVO_TOOLTIP}
-                            >
-                              i
-                            </span>
-                          </span>
-                        </strong>
-                        <small>Escolhe quem na area sera afetado.</small>
-                      </span>
-                    </label>
-                    <label
-                      className={`tecnica-check-card${lockSequenciaByPe ? " pe-locked-field" : ""}`}
-                      data-lock-tooltip={
-                        lockSequenciaByPe
-                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
-                          : undefined
-                      }
-                    >
-                      <input
-                        type="checkbox"
-                        checked={tecnicaMods.rastreamento}
-                        disabled={lockSequenciaByTipo || lockSequenciaByPe}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "rastreamento",
-                            event.target.checked,
-                          )
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
-                          <span className="tecnica-label-with-help">
-                            <span>Sequencia</span>
-                            <span
-                              className="info-dot"
-                              data-tooltip={TECHNIQUE_SEQUENCIA_TOOLTIP}
-                            >
-                              i
-                            </span>
-                          </span>
-                        </strong>
-                        <small>
-                          Nova tentativa imediata apos erro em Toque.
-                        </small>
-                      </span>
-                    </label>
-                    <label
-                      className={`tecnica-check-card${lockRicocheteByPe ? " pe-locked-field" : ""}`}
-                      data-lock-tooltip={
-                        lockRicocheteByPe
-                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
-                          : undefined
-                      }
-                    >
-                      <input
-                        type="checkbox"
-                        checked={tecnicaRicochete > 0}
-                        disabled={lockRicocheteByTipo || lockRicocheteByPe}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "ricochete",
-                            event.target.checked ? "1" : "0",
-                          )
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
-                          <span className="tecnica-label-with-help">
-                            <span>Ricochete</span>
-                            <span
-                              className="info-dot"
-                              data-tooltip={TECHNIQUE_RICOCHETE_TOOLTIP}
-                            >
-                              i
-                            </span>
-                          </span>
-                        </strong>
-                        <small>
-                          Permite um desvio para novo alvo apos erro.
-                        </small>
-                      </span>
-                    </label>
-                    <label
-                      className={`tecnica-check-card${lockReflexoByPe ? " pe-locked-field" : ""}`}
-                      data-lock-tooltip={
-                        lockReflexoByPe
-                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
-                          : undefined
-                      }
-                    >
-                      <input
-                        type="checkbox"
-                        checked={tecnicaMods.reflexo}
-                        disabled={lockReflexoByPe}
-                        onChange={(event) =>
-                          atualizarModTecnica("reflexo", event.target.checked)
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
-                          <span className="tecnica-label-with-help">
-                            <span>Reflexo</span>
-                            <span
-                              className="info-dot"
-                              data-tooltip={TECHNIQUE_REFLEXO_TOOLTIP}
-                            >
-                              i
-                            </span>
-                          </span>
-                        </strong>
-                        <small>
-                          Resposta automatica defensiva com gatilho.
-                        </small>
-                      </span>
-                    </label>
-                    <label
-                      className={`tecnica-check-card${lockTraicoeiroByPe ? " pe-locked-field" : ""}`}
-                      data-lock-tooltip={
-                        lockTraicoeiroByPe
-                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
-                          : undefined
-                      }
-                    >
-                      <input
-                        type="checkbox"
-                        checked={tecnicaMods.traicoeiro}
-                        disabled={lockTraicoeiroByPe}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "traicoeiro",
-                            event.target.checked,
-                          )
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
-                          <span className="tecnica-label-with-help">
-                            <span>Traicoeiro</span>
-                            <span
-                              className="info-dot"
-                              data-tooltip={TECHNIQUE_TRAICOEIRO_TOOLTIP}
-                            >
-                              i
-                            </span>
-                          </span>
-                        </strong>
-                        <small>Oculta os efeitos reais apos a execucao.</small>
-                      </span>
-                    </label>
-                    <label
-                      className={`tecnica-check-card${lockPrecisoByPe ? " pe-locked-field" : ""}`}
-                      data-lock-tooltip={
-                        lockPrecisoByPe
-                          ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
-                          : undefined
-                      }
-                    >
-                      <input
-                        type="checkbox"
-                        checked={tecnicaMods.preciso}
-                        disabled={lockPrecisoByPe}
-                        onChange={(event) =>
-                          atualizarModTecnica("preciso", event.target.checked)
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
-                          <span className="tecnica-label-with-help">
-                            <span>Preciso</span>
-                            <span
-                              className="info-dot"
-                              data-tooltip={TECHNIQUE_PRECISO_TOOLTIP}
-                            >
-                              i
-                            </span>
-                          </span>
-                        </strong>
-                        <small>
-                          Permite aplicacao refinada e controle fino.
-                        </small>
-                      </span>
-                    </label>
-                  </div>
+                          <select
+                            value={deslocamentoSelectValue}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "deslocamentoMetros",
+                                event.target.value,
+                              )
+                            }
+                          >
+                            {deslocamentoOpcoesMetros.map((metros) => {
+                              const custo = Math.ceil(metros / 2);
+                              const permitido =
+                                metros <= maxDeslocamentoMetros &&
+                                canIncreaseTechniqueCost(
+                                  currentDeslocamentoCost,
+                                  custo,
+                                );
 
-                  <h5>Falhas e Limitacoes</h5>
-                  <div className="tecnicas-dev-grid">
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Preparacao obrigatoria</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={
-                            TECHNIQUE_PREPARACAO_OBRIGATORIA_TOOLTIP
+                              return (
+                                <option
+                                  key={metros}
+                                  value={String(metros)}
+                                  disabled={!permitido}
+                                >
+                                  {metros === 0
+                                    ? "Sem deslocamento (+0 PE)"
+                                    : `${metros}m (+${custo} PE)`}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className="tecnicas-dev-checks">
+                        <label
+                          className={`tecnica-check-card${lockEfeitoSecundarioByPe ? " pe-locked-field" : ""}`}
+                          data-lock-tooltip={
+                            lockEfeitoSecundarioByPe
+                              ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                              : undefined
                           }
                         >
-                          i
-                        </span>
-                      </span>
-                      <select
-                        value={tecnicaDraft.modificadores.preparacaoObrigatoria}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "preparacaoObrigatoria",
-                            event.target
-                              .value as DevelopedTechniqueModifierSet["preparacaoObrigatoria"],
-                          )
-                        }
-                      >
-                        <option value="">Nao</option>
-                        <option value="Movimento">Movimento (-1)</option>
-                        <option value="Padrao">Padrao (-2)</option>
-                      </select>
-                    </label>
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Exige teste</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_EXIGE_TESTE_TOOLTIP}
+                          <input
+                            type="checkbox"
+                            checked={tecnicaMods.efeitoSecundario}
+                            disabled={lockEfeitoSecundarioByPe}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "efeitoSecundario",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Efeito secundario</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={
+                                    TECHNIQUE_EFEITO_SECUNDARIO_TOOLTIP
+                                  }
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>
+                              Repete o efeito no turno seguinte uma vez.
+                            </small>
+                          </span>
+                        </label>
+                        <label
+                          className={`tecnica-check-card${lockIncuravelByPe ? " pe-locked-field" : ""}`}
+                          data-lock-tooltip={
+                            lockIncuravelByPe
+                              ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                              : undefined
+                          }
                         >
-                          i
-                        </span>
-                      </span>
-                      <select
-                        value={tecnicaDraft.modificadores.exigeTeste}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "exigeTeste",
-                            event.target
-                              .value as DevelopedTechniqueModifierSet["exigeTeste"],
-                          )
-                        }
-                      >
-                        <option value="">Nao</option>
-                        <option value="Simples">Simples (-2)</option>
-                        <option value="Dificil">Dificil (-3)</option>
-                      </select>
-                    </label>
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Inconstante</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_INCONSTANTE_TOOLTIP}
+                          <input
+                            type="checkbox"
+                            checked={tecnicaMods.incuravel}
+                            disabled={lockIncuravelByPe}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "incuravel",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Incuravel</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={TECHNIQUE_INCURAVEL_TOOLTIP}
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>
+                              Limita ou impede recuperacao dos efeitos.
+                            </small>
+                          </span>
+                        </label>
+                        <label
+                          className={`tecnica-check-card${lockContagiosoByPe ? " pe-locked-field" : ""}`}
+                          data-lock-tooltip={
+                            lockContagiosoByPe
+                              ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                              : undefined
+                          }
                         >
-                          i
-                        </span>
-                      </span>
-                      <select
-                        value={tecnicaDraft.modificadores.inconstante}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "inconstante",
-                            event.target
-                              .value as DevelopedTechniqueModifierSet["inconstante"],
-                          )
-                        }
-                      >
-                        <option value="">Nao</option>
-                        <option value="Parcial">Parcial (-2)</option>
-                        <option value="Metade">Metade do tempo (-4)</option>
-                      </select>
-                    </label>
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Efeito colateral</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_EFEITO_COLATERAL_TOOLTIP}
+                          <input
+                            type="checkbox"
+                            checked={tecnicaMods.contagioso}
+                            disabled={lockContagiosoByPe}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "contagioso",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Contagioso</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={TECHNIQUE_CONTAGIOSO_TOOLTIP}
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>
+                              Permite propagacao controlada para alvos proximos.
+                            </small>
+                          </span>
+                        </label>
+                        <label
+                          className={`tecnica-check-card${lockSeletivoByPe ? " pe-locked-field" : ""}`}
+                          data-lock-tooltip={
+                            lockSeletivoByPe
+                              ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                              : undefined
+                          }
                         >
-                          i
-                        </span>
-                      </span>
-                      <select
-                        value={tecnicaDraft.modificadores.efeitoColateral}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "efeitoColateral",
-                            event.target
-                              .value as DevelopedTechniqueModifierSet["efeitoColateral"],
-                          )
-                        }
-                      >
-                        <option value="">Nao</option>
-                        <option value="Ocasional">Ocasional (-2)</option>
-                        <option value="Sempre">Sempre (-3)</option>
-                      </select>
-                    </label>
-                    <label>
-                      <span className="tecnica-label-with-help">
-                        <span>Condicional</span>
-                        <span
-                          className="info-dot"
-                          data-tooltip={TECHNIQUE_CONDICIONAL_TOOLTIP}
+                          <input
+                            type="checkbox"
+                            checked={tecnicaMods.seletivo}
+                            disabled={lockSeletivoByPe}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "seletivo",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Seletivo</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={TECHNIQUE_SELETIVO_TOOLTIP}
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>Escolhe quem na area sera afetado.</small>
+                          </span>
+                        </label>
+                        <label
+                          className={`tecnica-check-card${lockSequenciaByPe ? " pe-locked-field" : ""}`}
+                          data-lock-tooltip={
+                            lockSequenciaByPe
+                              ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                              : undefined
+                          }
                         >
-                          i
-                        </span>
-                      </span>
-                      <select
-                        value={tecnicaDraft.modificadores.condicional}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "condicional",
-                            event.target
-                              .value as DevelopedTechniqueModifierSet["condicional"],
-                          )
-                        }
-                      >
-                        <option value="">Nao</option>
-                        <option value="Simples">Simples (-1)</option>
-                        <option value="Restrita">Restrita (-2)</option>
-                      </select>
-                    </label>
-                  </div>
+                          <input
+                            type="checkbox"
+                            checked={tecnicaMods.rastreamento}
+                            disabled={lockSequenciaByTipo || lockSequenciaByPe}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "rastreamento",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Sequencia</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={TECHNIQUE_SEQUENCIA_TOOLTIP}
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>
+                              Nova tentativa imediata apos erro em Toque.
+                            </small>
+                          </span>
+                        </label>
+                        <label
+                          className={`tecnica-check-card${lockRicocheteByPe ? " pe-locked-field" : ""}`}
+                          data-lock-tooltip={
+                            lockRicocheteByPe
+                              ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                              : undefined
+                          }
+                        >
+                          <input
+                            type="checkbox"
+                            checked={tecnicaRicochete > 0}
+                            disabled={lockRicocheteByTipo || lockRicocheteByPe}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "ricochete",
+                                event.target.checked ? "1" : "0",
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Ricochete</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={TECHNIQUE_RICOCHETE_TOOLTIP}
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>
+                              Permite um desvio para novo alvo apos erro.
+                            </small>
+                          </span>
+                        </label>
+                        <label
+                          className={`tecnica-check-card${lockReflexoByPe ? " pe-locked-field" : ""}`}
+                          data-lock-tooltip={
+                            lockReflexoByPe
+                              ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                              : undefined
+                          }
+                        >
+                          <input
+                            type="checkbox"
+                            checked={tecnicaMods.reflexo}
+                            disabled={lockReflexoByPe}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "reflexo",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Reflexo</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={TECHNIQUE_REFLEXO_TOOLTIP}
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>
+                              Resposta automatica defensiva com gatilho.
+                            </small>
+                          </span>
+                        </label>
+                        <label
+                          className={`tecnica-check-card${lockTraicoeiroByPe ? " pe-locked-field" : ""}`}
+                          data-lock-tooltip={
+                            lockTraicoeiroByPe
+                              ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                              : undefined
+                          }
+                        >
+                          <input
+                            type="checkbox"
+                            checked={tecnicaMods.traicoeiro}
+                            disabled={lockTraicoeiroByPe}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "traicoeiro",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Traicoeiro</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={TECHNIQUE_TRAICOEIRO_TOOLTIP}
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>
+                              Oculta os efeitos reais apos a execucao.
+                            </small>
+                          </span>
+                        </label>
+                        <label
+                          className={`tecnica-check-card${lockPrecisoByPe ? " pe-locked-field" : ""}`}
+                          data-lock-tooltip={
+                            lockPrecisoByPe
+                              ? TECHNIQUE_LOCKED_BY_PE_TOOLTIP
+                              : undefined
+                          }
+                        >
+                          <input
+                            type="checkbox"
+                            checked={tecnicaMods.preciso}
+                            disabled={lockPrecisoByPe}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "preciso",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Preciso</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={TECHNIQUE_PRECISO_TOOLTIP}
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>
+                              Permite aplicacao refinada e controle fino.
+                            </small>
+                          </span>
+                        </label>
+                      </div>
 
-                  <div className="tecnicas-dev-checks">
-                    <label className="tecnica-check-card">
-                      <input
-                        type="checkbox"
-                        checked={tecnicaDraft.modificadores.exigeTurnoCompleto}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "exigeTurnoCompleto",
-                            event.target.checked,
-                          )
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
+                      <h5>Falhas e Limitacoes</h5>
+                      <div className="tecnicas-dev-grid">
+                        <label>
                           <span className="tecnica-label-with-help">
-                            <span>Exige 1 turno completo</span>
+                            <span>Preparacao obrigatoria</span>
                             <span
                               className="info-dot"
                               data-tooltip={
-                                TECHNIQUE_EXIGE_TURNO_COMPLETO_TOOLTIP
+                                TECHNIQUE_PREPARACAO_OBRIGATORIA_TOOLTIP
                               }
                             >
                               i
                             </span>
                           </span>
-                        </strong>
-                        <small>Execucao fica mais lenta e previsivel.</small>
-                      </span>
-                    </label>
-                    <label className="tecnica-check-card">
-                      <input
-                        type="checkbox"
-                        checked={tecnicaDraft.modificadores.incontrolavel}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "incontrolavel",
-                            event.target.checked,
-                          )
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
-                          <span className="tecnica-label-with-help">
-                            <span>Incontrolavel</span>
-                            <span
-                              className="info-dot"
-                              data-tooltip={TECHNIQUE_INCONTROLAVEL_TOOLTIP}
-                            >
-                              i
-                            </span>
-                          </span>
-                        </strong>
-                        <small>
-                          Pode gerar desvio secundario na resolucao.
-                        </small>
-                      </span>
-                    </label>
-                    <label className="tecnica-check-card">
-                      <input
-                        type="checkbox"
-                        checked={tecnicaDraft.modificadores.cansativo}
-                        onChange={(event) =>
-                          atualizarModTecnica("cansativo", event.target.checked)
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
-                          <span className="tecnica-label-with-help">
-                            <span>Cansativo</span>
-                            <span
-                              className="info-dot"
-                              data-tooltip={TECHNIQUE_CANSATIVO_TOOLTIP}
-                            >
-                              i
-                            </span>
-                          </span>
-                        </strong>
-                        <small>Aplica desgaste curto apos o uso.</small>
-                      </span>
-                    </label>
-                    <label className="tecnica-check-card">
-                      <input
-                        type="checkbox"
-                        checked={tecnicaDraft.modificadores.retroalimentacao}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "retroalimentacao",
-                            event.target.checked,
-                          )
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
-                          <span className="tecnica-label-with-help">
-                            <span>Retroalimentacao</span>
-                            <span
-                              className="info-dot"
-                              data-tooltip={TECHNIQUE_RETROALIMENTACAO_TOOLTIP}
-                            >
-                              i
-                            </span>
-                          </span>
-                        </strong>
-                        <small>
-                          Usuario sofre dano se a tecnica for negada.
-                        </small>
-                      </span>
-                    </label>
-                    <label className="tecnica-check-card">
-                      <input
-                        type="checkbox"
-                        checked={tecnicaDraft.modificadores.impreciso}
-                        onChange={(event) =>
-                          atualizarModTecnica("impreciso", event.target.checked)
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
-                          <span className="tecnica-label-with-help">
-                            <span>Impreciso</span>
-                            <span
-                              className="info-dot"
-                              data-tooltip={TECHNIQUE_IMPRECISO_TOOLTIP}
-                            >
-                              i
-                            </span>
-                          </span>
-                        </strong>
-                        <small>Reduz o acerto final da tecnica.</small>
-                      </span>
-                    </label>
-                    <label className="tecnica-check-card">
-                      <input
-                        type="checkbox"
-                        checked={tecnicaDraft.modificadores.semMovimento}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "semMovimento",
-                            event.target.checked,
-                          )
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
-                          <span className="tecnica-label-with-help">
-                            <span>Sem movimento</span>
-                            <span
-                              className="info-dot"
-                              data-tooltip={TECHNIQUE_SEM_MOVIMENTO_TOOLTIP}
-                            >
-                              i
-                            </span>
-                          </span>
-                        </strong>
-                        <small>
-                          Impede deslocamento voluntario ate fim do turno.
-                        </small>
-                      </span>
-                    </label>
-                    <label className="tecnica-check-card">
-                      <input
-                        type="checkbox"
-                        checked={tecnicaDraft.modificadores.alvoRestrito}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "alvoRestrito",
-                            event.target.checked,
-                          )
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
-                          <span className="tecnica-label-with-help">
-                            <span>Alvo restrito</span>
-                            <span
-                              className="info-dot"
-                              data-tooltip={TECHNIQUE_ALVO_RESTRITO_TOOLTIP}
-                            >
-                              i
-                            </span>
-                          </span>
-                        </strong>
-                        <small>
-                          Funciona apenas contra categoria definida.
-                        </small>
-                      </span>
-                    </label>
-                    <label className="tecnica-check-card">
-                      <input
-                        type="checkbox"
-                        checked={tecnicaDraft.modificadores.recursoExterno}
-                        onChange={(event) =>
-                          atualizarModTecnica(
-                            "recursoExterno",
-                            event.target.checked,
-                          )
-                        }
-                      />
-                      <span className="tecnica-check-copy">
-                        <strong>
-                          <span className="tecnica-label-with-help">
-                            <span>Recurso externo</span>
-                            <span
-                              className="info-dot"
-                              data-tooltip={TECHNIQUE_RECURSO_EXTERNO_TOOLTIP}
-                            >
-                              i
-                            </span>
-                          </span>
-                        </strong>
-                        <small>Exige item, componente ou condicao extra.</small>
-                      </span>
-                    </label>
-                  </div>
-                </section>
-
-                <section className="tecnicas-dev-subsection tecnica-cost-summary">
-                  <h4>Calculo Final</h4>
-                  <div className="tecnica-cost-cards">
-                    <article className="tecnica-cost-card">
-                      <span className="tecnica-cost-card-label">
-                        Custo Base
-                      </span>
-                      <strong>{tecnicaCustoBasePE} PE</strong>
-                    </article>
-                    <article className="tecnica-cost-card tecnica-cost-card-positive">
-                      <span className="tecnica-cost-card-label">
-                        Modificadores
-                      </span>
-                      <strong>+{tecnicaCustoModificadoresPE} PE</strong>
-                    </article>
-                    <article className="tecnica-cost-card tecnica-cost-card-negative">
-                      <span className="tecnica-cost-card-label">Reducoes</span>
-                      <strong>-{tecnicaReducoesPE} PE</strong>
-                    </article>
-                    <article className="tecnica-cost-card tecnica-cost-card-final">
-                      <span className="tecnica-cost-card-label">
-                        Custo Final
-                      </span>
-                      <strong>{tecnicaCustoFinalPE} PE</strong>
-                    </article>
-                  </div>
-
-                  <div className="tecnica-cost-breakdown-grid">
-                    <article className="tecnica-cost-panel">
-                      <h5>Orcamento de Modificadores</h5>
-                      <p>
-                        <strong>Adicional aplicado:</strong> +
-                        {tecnicaAdicionalAplicadoPE} PE
-                      </p>
-                      <p>
-                        <strong>Limite por tipo:</strong> {tecnicaDraft.tipo} (+
-                        {tecnicaLimiteAdicional} PE)
-                      </p>
-                      <p>
-                        <strong>Margem restante:</strong> +
-                        {tecnicaMargemAdicionalDisponivel} PE
-                      </p>
-                    </article>
-
-                    <article className="tecnica-cost-panel tecnica-cost-panel-scale">
-                      <h5>Escala de Bonus Direto</h5>
-                      <p>
-                        <strong>Bonus bruto:</strong> {tecnicaBonusDiretoBruto}
-                      </p>
-                      <p>
-                        <strong>Bonus aplicado:</strong>{" "}
-                        {tecnicaBonusDiretoAplicado}
-                      </p>
-                      <p>
-                        <strong>Teto de graduacao base:</strong>{" "}
-                        {tecnicaMaiorGraduacaoBase}
-                      </p>
-                    </article>
-                  </div>
-
-                  <p className="tecnica-cost-note">
-                    Formula: Custo Final = Custo Base + Modificadores -
-                    Reducoes.
-                  </p>
-                  {tecnicaExcedeLimite ? (
-                    <p className="danger-value">
-                      Excede limite de PE adicional para tecnica{" "}
-                      {tecnicaDraft.tipo}.
-                    </p>
-                  ) : null}
-                  <div className="tecnica-form-actions">
-                    <button
-                      type="button"
-                      onClick={salvarTecnicaDesenvolvida}
-                      disabled={
-                        tecnicaExcedeLimite ||
-                        !Number.isFinite(tecnicaCustoFinalPE)
-                      }
-                    >
-                      {tecnicaEmEdicaoId
-                        ? "Salvar alteracoes"
-                        : "Cadastrar tecnica"}
-                    </button>
-                    {tecnicaEmEdicaoId && (
-                      <button
-                        type="button"
-                        className="tecnica-cancel-button"
-                        onClick={cancelarEdicaoTecnica}
-                      >
-                        Cancelar
-                      </button>
-                    )}
-                  </div>
-                </section>
-
-                <section className="tecnicas-dev-subsection">
-                  <h4>Tecnicas cadastradas</h4>
-                  {selectedCharacter.tecnicasDesenvolvidas.length === 0 ? (
-                    <p>Nenhuma tecnica cadastrada.</p>
-                  ) : (
-                    <div className="tecnica-dev-list">
-                      {selectedCharacter.tecnicasDesenvolvidas.map(
-                        (tecnica) => {
-                          const tecnicaEhGratuita =
-                            tecnicaAcquisitionAtual.freeIds.has(tecnica.id);
-                          const tecnicaRelatorioCustos =
-                            buildTechniqueModifierCostReport(tecnica);
-                          const tecnicaEfeitoAuto =
-                            buildTechniqueAutoEffectLines(
-                              tecnica.modificadores,
-                              tecnica.alcance,
-                            );
-                          const tecnicaEfeitoManual =
-                            stripTechniqueAutoEffectBlock(tecnica.efeito || "");
-                          const tecnicaEfeitoExibicao =
-                            tecnicaEfeitoManual ||
-                            (tecnicaEfeitoAuto.length > 0
-                              ? tecnicaEfeitoAuto.join(" ")
-                              : "Sem descricao de efeito.");
-                          const resolvePoderBaseNome = (
-                            base: DevelopedTechniqueBasePower,
-                          ): string => {
-                            const nomeSalvo = base.nome?.trim();
-                            if (nomeSalvo) {
-                              return nomeSalvo;
+                          <select
+                            value={
+                              tecnicaDraft.modificadores.preparacaoObrigatoria
                             }
-
-                            const nomeCatalogo =
-                              POWER_BY_ID.get(base.powerId)?.nome?.trim() ?? "";
-                            if (nomeCatalogo) {
-                              return nomeCatalogo;
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "preparacaoObrigatoria",
+                                event.target
+                                  .value as DevelopedTechniqueModifierSet["preparacaoObrigatoria"],
+                              )
                             }
-
-                            return "Poder sem nome";
-                          };
-                          const tecnicaAumentoDanoCard = clamp(
-                            parseNatural(tecnica.modificadores.aumentoDano),
-                            0,
-                            5,
-                          );
-                          const tecnicaBaseAtributoCard = hasAcuidadeTecnica
-                            ? "Agi"
-                            : "For";
-                          const tecnicaBaseValorCard =
-                            BONUS_BY_DICE[
-                              selectedCharacter.atributos[
-                                hasAcuidadeTecnica ? "Agilidade" : "Forca"
-                              ]
-                            ];
-                          const tecnicaBaseAplicacoesCard =
-                            tecnica.poderesBase.reduce(
-                              (total, base) =>
-                                total + (base.danoSomaBase ? 1 : 0),
-                              0,
-                            );
-                          const tecnicaPoderesDanoCard =
-                            tecnica.poderesBase.map((base) => ({
-                              id: base.id,
-                              nome: resolvePoderBaseNome(base),
-                              dano: base.danoMetadeGrad
-                                ? Math.ceil(
-                                    clamp(parseNatural(base.graduacao), 1, 10) /
-                                      2,
-                                  )
-                                : clamp(parseNatural(base.graduacao), 1, 10),
-                            }));
-                          const tecnicaDanoTotalCard =
-                            tecnicaPoderesDanoCard.reduce(
-                              (sum, poder) => sum + poder.dano,
-                              0,
-                            ) +
-                            tecnicaBaseValorCard * tecnicaBaseAplicacoesCard +
-                            tecnicaAumentoDanoCard;
-                          const totalGraduacoesBase =
-                            tecnica.poderesBase.reduce(
-                              (sum, base) =>
-                                sum +
-                                clamp(parseNatural(base.graduacao), 1, 10),
-                              0,
-                            );
-                          const tecnicaTagsVisuais = tecnicaRelatorioCustos
-                            .slice(0, 8)
-                            .map(
-                              (entry) =>
-                                `${entry.nome} (${formatSignedPe(entry.custo)})`,
-                            );
-
-                          return (
-                            <article
-                              key={tecnica.id}
-                              className="tecnica-showcase-wrap"
+                          >
+                            <option value="">Nao</option>
+                            <option value="Movimento">Movimento (-1)</option>
+                            <option value="Padrao">Padrao (-2)</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span className="tecnica-label-with-help">
+                            <span>Exige teste</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_EXIGE_TESTE_TOOLTIP}
                             >
-                              <div className="tecnica-showcase-card">
-                                <header className="tecnica-showcase-head">
-                                  <div className="tecnica-showcase-headline">
-                                    <span className="tecnica-showcase-acq">
-                                      Aquisicao:{" "}
-                                      {tecnicaEhGratuita
-                                        ? "Gratuita"
-                                        : `${TECHNIQUE_PP_BY_TYPE[tecnica.tipo]} PP`}
-                                    </span>
-                                    <strong>{tecnica.nome}</strong>
-                                  </div>
-                                  <div className="tecnica-showcase-head-actions">
-                                    <div className="tecnica-info-group">
-                                      <span
-                                        className={`tecnica-tipo-badge tipo-${tecnica.tipo.toLowerCase()}`}
-                                      >
-                                        {tecnica.tipo}
+                              i
+                            </span>
+                          </span>
+                          <select
+                            value={tecnicaDraft.modificadores.exigeTeste}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "exigeTeste",
+                                event.target
+                                  .value as DevelopedTechniqueModifierSet["exigeTeste"],
+                              )
+                            }
+                          >
+                            <option value="">Nao</option>
+                            <option value="Simples">Simples (-2)</option>
+                            <option value="Dificil">Dificil (-3)</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span className="tecnica-label-with-help">
+                            <span>Inconstante</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_INCONSTANTE_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                          <select
+                            value={tecnicaDraft.modificadores.inconstante}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "inconstante",
+                                event.target
+                                  .value as DevelopedTechniqueModifierSet["inconstante"],
+                              )
+                            }
+                          >
+                            <option value="">Nao</option>
+                            <option value="Parcial">Parcial (-2)</option>
+                            <option value="Metade">Metade do tempo (-4)</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span className="tecnica-label-with-help">
+                            <span>Efeito colateral</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_EFEITO_COLATERAL_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                          <select
+                            value={tecnicaDraft.modificadores.efeitoColateral}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "efeitoColateral",
+                                event.target
+                                  .value as DevelopedTechniqueModifierSet["efeitoColateral"],
+                              )
+                            }
+                          >
+                            <option value="">Nao</option>
+                            <option value="Ocasional">Ocasional (-2)</option>
+                            <option value="Sempre">Sempre (-3)</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span className="tecnica-label-with-help">
+                            <span>Condicional</span>
+                            <span
+                              className="info-dot"
+                              data-tooltip={TECHNIQUE_CONDICIONAL_TOOLTIP}
+                            >
+                              i
+                            </span>
+                          </span>
+                          <select
+                            value={tecnicaDraft.modificadores.condicional}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "condicional",
+                                event.target
+                                  .value as DevelopedTechniqueModifierSet["condicional"],
+                              )
+                            }
+                          >
+                            <option value="">Nao</option>
+                            <option value="Simples">Simples (-1)</option>
+                            <option value="Restrita">Restrita (-2)</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className="tecnicas-dev-checks">
+                        <label className="tecnica-check-card">
+                          <input
+                            type="checkbox"
+                            checked={
+                              tecnicaDraft.modificadores.exigeTurnoCompleto
+                            }
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "exigeTurnoCompleto",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Exige 1 turno completo</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={
+                                    TECHNIQUE_EXIGE_TURNO_COMPLETO_TOOLTIP
+                                  }
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>
+                              Execucao fica mais lenta e previsivel.
+                            </small>
+                          </span>
+                        </label>
+                        <label className="tecnica-check-card">
+                          <input
+                            type="checkbox"
+                            checked={tecnicaDraft.modificadores.incontrolavel}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "incontrolavel",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Incontrolavel</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={TECHNIQUE_INCONTROLAVEL_TOOLTIP}
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>
+                              Pode gerar desvio secundario na resolucao.
+                            </small>
+                          </span>
+                        </label>
+                        <label className="tecnica-check-card">
+                          <input
+                            type="checkbox"
+                            checked={tecnicaDraft.modificadores.cansativo}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "cansativo",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Cansativo</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={TECHNIQUE_CANSATIVO_TOOLTIP}
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>Aplica desgaste curto apos o uso.</small>
+                          </span>
+                        </label>
+                        <label className="tecnica-check-card">
+                          <input
+                            type="checkbox"
+                            checked={
+                              tecnicaDraft.modificadores.retroalimentacao
+                            }
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "retroalimentacao",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Retroalimentacao</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={
+                                    TECHNIQUE_RETROALIMENTACAO_TOOLTIP
+                                  }
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>
+                              Usuario sofre dano se a tecnica for negada.
+                            </small>
+                          </span>
+                        </label>
+                        <label className="tecnica-check-card">
+                          <input
+                            type="checkbox"
+                            checked={tecnicaDraft.modificadores.impreciso}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "impreciso",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Impreciso</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={TECHNIQUE_IMPRECISO_TOOLTIP}
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>Reduz o acerto final da tecnica.</small>
+                          </span>
+                        </label>
+                        <label className="tecnica-check-card">
+                          <input
+                            type="checkbox"
+                            checked={tecnicaDraft.modificadores.semMovimento}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "semMovimento",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Sem movimento</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={TECHNIQUE_SEM_MOVIMENTO_TOOLTIP}
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>
+                              Impede deslocamento voluntario ate fim do turno.
+                            </small>
+                          </span>
+                        </label>
+                        <label className="tecnica-check-card">
+                          <input
+                            type="checkbox"
+                            checked={tecnicaDraft.modificadores.alvoRestrito}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "alvoRestrito",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Alvo restrito</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={TECHNIQUE_ALVO_RESTRITO_TOOLTIP}
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>
+                              Funciona apenas contra categoria definida.
+                            </small>
+                          </span>
+                        </label>
+                        <label className="tecnica-check-card">
+                          <input
+                            type="checkbox"
+                            checked={tecnicaDraft.modificadores.recursoExterno}
+                            onChange={(event) =>
+                              atualizarModTecnica(
+                                "recursoExterno",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          <span className="tecnica-check-copy">
+                            <strong>
+                              <span className="tecnica-label-with-help">
+                                <span>Recurso externo</span>
+                                <span
+                                  className="info-dot"
+                                  data-tooltip={
+                                    TECHNIQUE_RECURSO_EXTERNO_TOOLTIP
+                                  }
+                                >
+                                  i
+                                </span>
+                              </span>
+                            </strong>
+                            <small>
+                              Exige item, componente ou condicao extra.
+                            </small>
+                          </span>
+                        </label>
+                      </div>
+                    </section>
+
+                    <section className="tecnicas-dev-subsection tecnica-cost-summary">
+                      <h4>Calculo Final</h4>
+                      <div className="tecnica-cost-cards">
+                        <article className="tecnica-cost-card">
+                          <span className="tecnica-cost-card-label">
+                            Custo Base
+                          </span>
+                          <strong>{tecnicaCustoBasePE} PE</strong>
+                        </article>
+                        <article className="tecnica-cost-card tecnica-cost-card-positive">
+                          <span className="tecnica-cost-card-label">
+                            Modificadores
+                          </span>
+                          <strong>+{tecnicaCustoModificadoresPE} PE</strong>
+                        </article>
+                        <article className="tecnica-cost-card tecnica-cost-card-negative">
+                          <span className="tecnica-cost-card-label">
+                            Reducoes
+                          </span>
+                          <strong>-{tecnicaReducoesPE} PE</strong>
+                        </article>
+                        <article className="tecnica-cost-card tecnica-cost-card-final">
+                          <span className="tecnica-cost-card-label">
+                            Custo Final
+                          </span>
+                          <strong>{tecnicaCustoFinalPE} PE</strong>
+                        </article>
+                      </div>
+
+                      <div className="tecnica-cost-breakdown-grid">
+                        <article className="tecnica-budget-panel">
+                          <div className="tecnica-budget-head">
+                            <div>
+                              <h5>Orcamento de Modificadores</h5>
+                              <p>
+                                Quanto da margem da tecnica esta sendo consumido
+                                agora.
+                              </p>
+                            </div>
+                            <span
+                              className={`tecnica-budget-status ${
+                                tecnicaExcedeLimite
+                                  ? "tecnica-budget-status-danger"
+                                  : "tecnica-budget-status-ok"
+                              }`}
+                            >
+                              {tecnicaExcedeLimite
+                                ? "Acima do limite"
+                                : "Dentro do limite"}
+                            </span>
+                          </div>
+
+                          <div className="tecnica-budget-meter-block">
+                            <div className="tecnica-budget-meter-labels">
+                              <strong>
+                                {tecnicaCustoModificadoresPE}/
+                                {tecnicaLimiteAdicionalExpandido} PE
+                              </strong>
+                              <span>
+                                Consumo atual da margem total disponivel
+                              </span>
+                            </div>
+                            <div
+                              className="tecnica-budget-meter-track"
+                              aria-hidden="true"
+                            >
+                              <span
+                                className={`tecnica-budget-meter-fill ${
+                                  tecnicaExcedeLimite
+                                    ? "tecnica-budget-meter-fill-danger"
+                                    : ""
+                                }`}
+                                style={{
+                                  width: `${tecnicaUsoOrcamentoPercentual}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="tecnica-budget-stats">
+                            <article className="tecnica-budget-stat-card tecnica-budget-stat-card-emphasis">
+                              <span>Adicional aplicado</span>
+                              <strong>+{tecnicaAdicionalAplicadoPE} PE</strong>
+                              <small>
+                                Liquido depois de abater as reducoes
+                                selecionadas.
+                              </small>
+                            </article>
+                            <article className="tecnica-budget-stat-card">
+                              <span>Limite base</span>
+                              <strong>+{tecnicaLimiteAdicional} PE</strong>
+                              <small>{tecnicaDraft.tipo}</small>
+                            </article>
+                            <article className="tecnica-budget-stat-card">
+                              <span>Folga por reducoes</span>
+                              <strong>+{tecnicaReducoesPE} PE</strong>
+                              <small>
+                                Total de reducoes que ampliam a margem.
+                              </small>
+                            </article>
+                            <article className="tecnica-budget-stat-card">
+                              <span>Margem restante</span>
+                              <strong>
+                                +{tecnicaMargemAdicionalDisponivel} PE
+                              </strong>
+                              <small>
+                                Ainda disponivel sem estourar o limite.
+                              </small>
+                            </article>
+                          </div>
+
+                          <div className="tecnica-budget-columns">
+                            <div className="tecnica-budget-column">
+                              <div className="tecnica-budget-column-head">
+                                <h6>Aplicado em</h6>
+                                <span>+{tecnicaTotalAdicionais} PE brutos</span>
+                              </div>
+                              {tecnicaCustosAdicionais.length > 0 ? (
+                                <ul className="tecnica-budget-chip-list">
+                                  {tecnicaCustosAdicionais.map((entry) => (
+                                    <li
+                                      key={`draft-addition-${entry.nome}`}
+                                      className="tecnica-budget-chip"
+                                    >
+                                      <span>{entry.nome}</span>
+                                      <strong>
+                                        {formatSignedPe(entry.custo)}
+                                      </strong>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="tecnica-budget-empty">
+                                  Nenhum modificador consumindo adicional no
+                                  momento.
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="tecnica-budget-column">
+                              <div className="tecnica-budget-column-head">
+                                <h6>Reducoes que aliviam o custo</h6>
+                                <span>
+                                  -{tecnicaTotalReducoesDetalhadas} PE
+                                </span>
+                              </div>
+                              {tecnicaCustosReducoes.length > 0 ? (
+                                <ul className="tecnica-budget-chip-list">
+                                  {tecnicaCustosReducoes.map((entry) => (
+                                    <li
+                                      key={`draft-reduction-${entry.nome}`}
+                                      className="tecnica-budget-chip tecnica-budget-chip-reduction"
+                                    >
+                                      <span>{entry.nome}</span>
+                                      <strong>
+                                        {formatSignedPe(entry.custo)}
+                                      </strong>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="tecnica-budget-empty">
+                                  Nenhuma reducao compensando os modificadores.
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </article>
+                      </div>
+
+                      <p className="tecnica-cost-note">
+                        Formula: Custo Final = Custo Base + Modificadores -
+                        Reducoes.
+                      </p>
+                      {tecnicaExcedeLimite ? (
+                        <p className="danger-value">
+                          Excede limite de PE adicional para tecnica{" "}
+                          {tecnicaDraft.tipo}.
+                        </p>
+                      ) : null}
+                      <div className="tecnica-form-actions">
+                        <button
+                          type="button"
+                          onClick={salvarTecnicaDesenvolvida}
+                          disabled={
+                            tecnicaExcedeLimite ||
+                            !Number.isFinite(tecnicaCustoFinalPE)
+                          }
+                        >
+                          {tecnicaEmEdicaoId
+                            ? "Salvar alteracoes"
+                            : "Cadastrar tecnica"}
+                        </button>
+                        {tecnicaEmEdicaoId && (
+                          <button
+                            type="button"
+                            className="tecnica-cancel-button"
+                            onClick={cancelarEdicaoTecnica}
+                          >
+                            Cancelar
+                          </button>
+                        )}
+                      </div>
+                    </section>
+                  </>
+                )}
+
+                {tecnicasSubTab === "minhas" && !tecnicaEmEdicaoId && (
+                  <section className="tecnicas-dev-subsection">
+                    <h4>Tecnicas cadastradas</h4>
+                    {selectedCharacter.tecnicasDesenvolvidas.length === 0 ? (
+                      <p>Nenhuma tecnica cadastrada.</p>
+                    ) : (
+                      <div className="tecnica-dev-list">
+                        {selectedCharacter.tecnicasDesenvolvidas.map(
+                          (tecnica) => {
+                            const tecnicaEhGratuita =
+                              tecnicaAcquisitionAtual.freeIds.has(tecnica.id);
+                            const tecnicaRelatorioCustos =
+                              buildTechniqueModifierCostReport(tecnica);
+                            const {
+                              additions: tecnicaCustosAdicionaisSalvos,
+                              reductions: tecnicaCustosReducoesSalvas,
+                            } = splitTechniqueCostReportEntries(
+                              tecnicaRelatorioCustos,
+                            );
+                            const tecnicaEfeitoAuto =
+                              buildTechniqueAutoEffectLines(
+                                {
+                                  ...createDevelopedTechniqueModifierDefaults(),
+                                  ...tecnica.modificadores,
+                                },
+                                tecnica.alcance,
+                              );
+                            const tecnicaEfeitoExibicao =
+                              buildTechniqueEffectDisplayText(tecnica) ||
+                              "Sem descricao de efeito.";
+                            const resolvePoderBaseNome = (
+                              base: DevelopedTechniqueBasePower,
+                            ): string => {
+                              const nomeSalvo = base.nome?.trim();
+                              if (nomeSalvo) {
+                                return nomeSalvo;
+                              }
+
+                              const nomeCatalogo =
+                                POWER_BY_ID.get(base.powerId)?.nome?.trim() ??
+                                "";
+                              if (nomeCatalogo) {
+                                return nomeCatalogo;
+                              }
+
+                              return "Poder sem nome";
+                            };
+                            const tecnicaAumentoDanoCard = clamp(
+                              parseNatural(tecnica.modificadores.aumentoDano),
+                              0,
+                              5,
+                            );
+                            const tecnicaBaseAtributoCard = hasAcuidadeTecnica
+                              ? "Agi"
+                              : "For";
+                            const tecnicaBaseValorCard =
+                              BONUS_BY_DICE[
+                                selectedCharacter.atributos[
+                                  hasAcuidadeTecnica ? "Agilidade" : "Forca"
+                                ]
+                              ];
+                            const tecnicaBaseAplicacoesCard =
+                              tecnica.poderesBase.reduce(
+                                (total, base) =>
+                                  total + (base.danoSomaBase ? 1 : 0),
+                                0,
+                              );
+                            const tecnicaPoderesDanoCard =
+                              tecnica.poderesBase.map((base) => ({
+                                id: base.id,
+                                nome: resolvePoderBaseNome(base),
+                                dano: base.danoMetadeGrad
+                                  ? Math.ceil(
+                                      clamp(
+                                        parseNatural(base.graduacao),
+                                        1,
+                                        10,
+                                      ) / 2,
+                                    )
+                                  : clamp(parseNatural(base.graduacao), 1, 10),
+                              }));
+                            const tecnicaDanoTotalCard =
+                              tecnicaPoderesDanoCard.reduce(
+                                (sum, poder) => sum + poder.dano,
+                                0,
+                              ) +
+                              tecnicaBaseValorCard * tecnicaBaseAplicacoesCard +
+                              tecnicaAumentoDanoCard;
+                            const totalGraduacoesBase =
+                              tecnica.poderesBase.reduce(
+                                (sum, base) =>
+                                  sum +
+                                  clamp(parseNatural(base.graduacao), 1, 10),
+                                0,
+                              );
+                            const tecnicaTagsVisuais = tecnicaRelatorioCustos
+                              .slice(0, 8)
+                              .map(
+                                (entry) =>
+                                  `${entry.nome} (${formatSignedPe(entry.custo)})`,
+                              );
+
+                            return (
+                              <article
+                                key={tecnica.id}
+                                className="tecnica-showcase-wrap"
+                              >
+                                <div className="tecnica-showcase-card">
+                                  <header className="tecnica-showcase-head">
+                                    <div className="tecnica-showcase-headline">
+                                      <span className="tecnica-showcase-acq">
+                                        Aquisicao:{" "}
+                                        {tecnicaEhGratuita
+                                          ? "Gratuita"
+                                          : `${TECHNIQUE_PP_BY_TYPE[tecnica.tipo]} PP`}
                                       </span>
-                                      <span className="tecnica-custo-badge">
-                                        {tecnica.custoFinalPE} PE
+                                      <strong>{tecnica.nome}</strong>
+                                    </div>
+                                    <div className="tecnica-showcase-head-actions">
+                                      <div className="tecnica-info-group">
+                                        <span
+                                          className={`tecnica-tipo-badge tipo-${tecnica.tipo.toLowerCase()}`}
+                                        >
+                                          {tecnica.tipo}
+                                        </span>
+                                        <span className="tecnica-custo-badge">
+                                          {tecnica.custoFinalPE} PE
+                                        </span>
+                                      </div>
+                                      <div className="tecnica-actions-group">
+                                        <button
+                                          type="button"
+                                          className="tecnica-report-trigger"
+                                          onClick={() =>
+                                            setTecnicaRelatorioModalId(
+                                              tecnica.id,
+                                            )
+                                          }
+                                          aria-haspopup="dialog"
+                                          aria-expanded={
+                                            tecnicaRelatorioModalId ===
+                                            tecnica.id
+                                          }
+                                          aria-label={`Abrir relatorio da tecnica ${tecnica.nome}`}
+                                          title="Ver detalhes"
+                                        >
+                                          <svg
+                                            width="16"
+                                            height="16"
+                                            viewBox="0 0 24 24"
+                                            fill="currentColor"
+                                          >
+                                            <circle cx="12" cy="5" r="2" />
+                                            <circle cx="12" cy="12" r="2" />
+                                            <circle cx="12" cy="19" r="2" />
+                                          </svg>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="tecnica-edit-button"
+                                          onClick={() =>
+                                            iniciarEdicaoTecnica(tecnica)
+                                          }
+                                          aria-label={`Editar tecnica ${tecnica.nome}`}
+                                          title="Editar"
+                                        >
+                                          <svg
+                                            width="16"
+                                            height="16"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          >
+                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                          </svg>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="trash-button"
+                                          onClick={() =>
+                                            removerTecnicaDesenvolvida(
+                                              tecnica.id,
+                                            )
+                                          }
+                                          aria-label={`Remover tecnica ${tecnica.nome}`}
+                                        >
+                                          <svg
+                                            viewBox="0 0 24 24"
+                                            aria-hidden="true"
+                                          >
+                                            <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9z" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </header>
+
+                                  <div className="tecnica-showcase-frame">
+                                    <div className="tecnica-showcase-meta-grid">
+                                      <span>
+                                        <strong>Acao:</strong>{" "}
+                                        {tecnica.acao || "-"}
+                                      </span>
+                                      <span>
+                                        <strong>Alcance:</strong>{" "}
+                                        {tecnica.alcance || "-"}
+                                      </span>
+                                      <span>
+                                        <strong>Alvo:</strong>{" "}
+                                        {tecnica.alvo || "-"}
+                                      </span>
+                                      <span>
+                                        <strong>Duracao:</strong>{" "}
+                                        {tecnica.duracao || "-"}
+                                      </span>
+                                      <span>
+                                        <strong>Acerto:</strong>{" "}
+                                        {tecnica.acerto ?? "-"}
+                                      </span>
+                                      <span>
+                                        <strong>Dano:</strong>{" "}
+                                        {tecnica.danoNumerico ??
+                                          tecnicaDanoTotalCard}
                                       </span>
                                     </div>
-                                    <div className="tecnica-actions-group">
-                                      <button
-                                        type="button"
-                                        className="tecnica-report-trigger"
-                                        onClick={() =>
-                                          setTecnicaRelatorioModalId(tecnica.id)
-                                        }
-                                        aria-haspopup="dialog"
-                                        aria-expanded={
-                                          tecnicaRelatorioModalId === tecnica.id
-                                        }
-                                        aria-label={`Abrir relatorio da tecnica ${tecnica.nome}`}
-                                        title="Ver detalhes"
-                                      >
-                                        <svg
-                                          width="16"
-                                          height="16"
-                                          viewBox="0 0 24 24"
-                                          fill="currentColor"
-                                        >
-                                          <circle cx="12" cy="5" r="2" />
-                                          <circle cx="12" cy="12" r="2" />
-                                          <circle cx="12" cy="19" r="2" />
-                                        </svg>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="tecnica-edit-button"
-                                        onClick={() =>
-                                          iniciarEdicaoTecnica(tecnica)
-                                        }
-                                        aria-label={`Editar tecnica ${tecnica.nome}`}
-                                        title="Editar"
-                                      >
-                                        <svg
-                                          width="16"
-                                          height="16"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        >
-                                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                        </svg>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="trash-button"
-                                        onClick={() =>
-                                          removerTecnicaDesenvolvida(tecnica.id)
-                                        }
-                                        aria-label={`Remover tecnica ${tecnica.nome}`}
-                                      >
-                                        <svg
-                                          viewBox="0 0 24 24"
-                                          aria-hidden="true"
-                                        >
-                                          <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9z" />
-                                        </svg>
-                                      </button>
-                                    </div>
-                                  </div>
-                                </header>
 
-                                <div className="tecnica-showcase-frame">
-                                  <div className="tecnica-showcase-meta-grid">
-                                    <span>
-                                      <strong>Acao:</strong>{" "}
-                                      {tecnica.acao || "-"}
-                                    </span>
-                                    <span>
-                                      <strong>Alcance:</strong>{" "}
-                                      {tecnica.alcance || "-"}
-                                    </span>
-                                    <span>
-                                      <strong>Alvo:</strong>{" "}
-                                      {tecnica.alvo || "-"}
-                                    </span>
-                                    <span>
-                                      <strong>Duracao:</strong>{" "}
-                                      {tecnica.duracao || "-"}
-                                    </span>
-                                    <span>
-                                      <strong>Acerto:</strong>{" "}
-                                      {tecnica.acerto ?? "-"}
-                                    </span>
-                                    <span>
-                                      <strong>Dano:</strong>{" "}
-                                      {tecnica.danoNumerico ??
-                                        tecnicaDanoTotalCard}
-                                    </span>
-                                  </div>
-
-                                  <div className="tecnica-showcase-box">
-                                    <span className="tecnica-showcase-label">
-                                      Conceito
-                                    </span>
-                                    <p>{tecnica.conceito || "Sem conceito."}</p>
-                                  </div>
-
-                                  <div className="tecnica-showcase-box">
-                                    <span className="tecnica-showcase-label">
-                                      Efeito
-                                    </span>
-                                    <p>{tecnicaEfeitoExibicao}</p>
-                                  </div>
-
-                                  {tecnica.gatilho ? (
-                                    <div className="tecnica-showcase-box tecnica-showcase-box-small">
+                                    <div className="tecnica-showcase-box">
                                       <span className="tecnica-showcase-label">
-                                        Gatilho
+                                        Conceito
                                       </span>
-                                      <p>{tecnica.gatilho}</p>
+                                      <p>
+                                        {tecnica.conceito || "Sem conceito."}
+                                      </p>
                                     </div>
-                                  ) : null}
 
-                                  <div className="tecnica-showcase-subsection">
-                                    <span className="tecnica-showcase-label">
-                                      Poderes Base
-                                    </span>
-                                    <ul className="tecnica-showcase-tag-list">
-                                      {tecnica.poderesBase.map((base) => {
-                                        const extras: string[] = [];
-                                        if (base.danoSomaBase)
-                                          extras.push("dano base");
-                                        if (base.danoMetadeGrad)
-                                          extras.push("metade grad");
-                                        const extrasTexto =
-                                          extras.length > 0
-                                            ? ` | ${extras.join(" | ")}`
-                                            : "";
-                                        return (
-                                          <li key={base.id}>
-                                            {resolvePoderBaseNome(base)} ·{" "}
-                                            {base.graduacao} grad
-                                            {extrasTexto}
-                                          </li>
-                                        );
-                                      })}
-                                    </ul>
-                                  </div>
+                                    <div className="tecnica-showcase-box">
+                                      <span className="tecnica-showcase-label">
+                                        Efeito
+                                      </span>
+                                      <p>{tecnicaEfeitoExibicao}</p>
+                                    </div>
 
-                                  <div className="tecnica-showcase-subsection">
-                                    <span className="tecnica-showcase-label">
-                                      Modificacoes Aplicadas
-                                    </span>
-                                    <ul className="tecnica-showcase-tag-list tecnica-showcase-tag-list-mods">
-                                      {tecnicaTagsVisuais.length > 0 ? (
-                                        tecnicaTagsVisuais.map((tag) => (
-                                          <li key={`${tecnica.id}-${tag}`}>
-                                            {tag}
+                                    {tecnica.gatilho ? (
+                                      <div className="tecnica-showcase-box tecnica-showcase-box-small">
+                                        <span className="tecnica-showcase-label">
+                                          Gatilho
+                                        </span>
+                                        <p>{tecnica.gatilho}</p>
+                                      </div>
+                                    ) : null}
+
+                                    <div className="tecnica-showcase-subsection">
+                                      <span className="tecnica-showcase-label">
+                                        Poderes Base
+                                      </span>
+                                      <ul className="tecnica-showcase-tag-list">
+                                        {tecnica.poderesBase.map((base) => {
+                                          const extras: string[] = [];
+                                          if (base.danoSomaBase)
+                                            extras.push("dano base");
+                                          if (base.danoMetadeGrad)
+                                            extras.push("metade grad");
+                                          const extrasTexto =
+                                            extras.length > 0
+                                              ? ` | ${extras.join(" | ")}`
+                                              : "";
+                                          return (
+                                            <li key={base.id}>
+                                              {resolvePoderBaseNome(base)} ·{" "}
+                                              {base.graduacao} grad
+                                              {extrasTexto}
+                                            </li>
+                                          );
+                                        })}
+                                      </ul>
+                                    </div>
+
+                                    <div className="tecnica-showcase-subsection">
+                                      <span className="tecnica-showcase-label">
+                                        Modificacoes Aplicadas
+                                      </span>
+                                      <ul className="tecnica-showcase-tag-list tecnica-showcase-tag-list-mods">
+                                        {tecnicaTagsVisuais.length > 0 ? (
+                                          tecnicaTagsVisuais.map((tag) => (
+                                            <li key={`${tecnica.id}-${tag}`}>
+                                              {tag}
+                                            </li>
+                                          ))
+                                        ) : (
+                                          <li>
+                                            Sem modificacoes com custo direto.
                                           </li>
-                                        ))
-                                      ) : (
-                                        <li>
-                                          Sem modificacoes com custo direto.
-                                        </li>
-                                      )}
-                                    </ul>
+                                        )}
+                                      </ul>
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
 
-                              {tecnicaRelatorioModalId === tecnica.id
-                                ? createPortal(
-                                    <div
-                                      className="tecnica-report-modal-overlay"
-                                      onClick={() =>
-                                        setTecnicaRelatorioModalId(null)
-                                      }
-                                    >
-                                      <section
-                                        className="tecnica-report-modal"
-                                        role="dialog"
-                                        aria-modal="true"
-                                        aria-labelledby={`tecnica-report-modal-title-${tecnica.id}`}
-                                        onClick={(event) =>
-                                          event.stopPropagation()
+                                {tecnicaRelatorioModalId === tecnica.id
+                                  ? createPortal(
+                                      <div
+                                        className="tecnica-report-modal-overlay"
+                                        onClick={() =>
+                                          setTecnicaRelatorioModalId(null)
                                         }
                                       >
-                                        <header className="tecnica-report-modal-head">
-                                          <div className="tecnica-report-modal-title-wrap">
-                                            <span className="tecnica-report-modal-kicker">
-                                              Relatorio completo
-                                            </span>
-                                            <h4
-                                              id={`tecnica-report-modal-title-${tecnica.id}`}
+                                        <section
+                                          className="tecnica-report-modal"
+                                          role="dialog"
+                                          aria-modal="true"
+                                          aria-labelledby={`tecnica-report-modal-title-${tecnica.id}`}
+                                          onClick={(event) =>
+                                            event.stopPropagation()
+                                          }
+                                        >
+                                          <header className="tecnica-report-modal-head">
+                                            <div className="tecnica-report-modal-title-wrap">
+                                              <span className="tecnica-report-modal-kicker">
+                                                Relatorio completo
+                                              </span>
+                                              <h4
+                                                id={`tecnica-report-modal-title-${tecnica.id}`}
+                                              >
+                                                {tecnica.nome}
+                                              </h4>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              className="tecnica-report-modal-close"
+                                              onClick={() =>
+                                                setTecnicaRelatorioModalId(null)
+                                              }
+                                              aria-label="Fechar relatorio"
                                             >
-                                              {tecnica.nome}
-                                            </h4>
-                                          </div>
-                                          <button
-                                            type="button"
-                                            className="tecnica-report-modal-close"
-                                            onClick={() =>
-                                              setTecnicaRelatorioModalId(null)
-                                            }
-                                            aria-label="Fechar relatorio"
-                                          >
-                                            Fechar
-                                          </button>
-                                        </header>
+                                              Fechar
+                                            </button>
+                                          </header>
 
-                                        <div className="tecnica-report-content">
-                                          <div className="tecnica-report-grid">
-                                            <p>
-                                              <strong>Custo base:</strong>{" "}
-                                              {formatSignedPe(
-                                                tecnica.custoBasePE,
-                                              )}
-                                            </p>
-                                            <p>
-                                              <strong>Modificadores:</strong>{" "}
-                                              {formatSignedPe(
-                                                tecnica.custoModificadoresPE,
-                                              )}
-                                            </p>
-                                            <p>
-                                              <strong>Reducoes:</strong>{" "}
-                                              {formatSignedPe(
-                                                -tecnica.reducoesPE,
-                                              )}
-                                            </p>
-                                            <p>
-                                              <strong>Custo final:</strong>{" "}
-                                              {tecnica.custoFinalPE} PE
-                                            </p>
-                                            <p>
-                                              <strong>Limite adicional:</strong>{" "}
-                                              +{tecnica.limiteAdicionalPE} PE
-                                            </p>
-                                            <p>
-                                              <strong>
-                                                Adicional aplicado:
-                                              </strong>{" "}
-                                              +{tecnica.adicionalAplicadoPE} PE
-                                            </p>
-                                            <p>
-                                              <strong>
-                                                Maior graduacao base:
-                                              </strong>{" "}
-                                              {tecnica.maiorGraduacaoBase}
-                                            </p>
-                                            <p>
-                                              <strong>
-                                                Bonus direto aplicado:
-                                              </strong>{" "}
-                                              +{tecnica.bonusDiretoAplicado}
-                                            </p>
-                                          </div>
+                                          <div className="tecnica-report-content">
+                                            <div className="tecnica-report-grid">
+                                              <p>
+                                                <strong>Custo base:</strong>{" "}
+                                                {formatSignedPe(
+                                                  tecnica.custoBasePE,
+                                                )}
+                                              </p>
+                                              <p>
+                                                <strong>Modificadores:</strong>{" "}
+                                                {formatSignedPe(
+                                                  tecnica.custoModificadoresPE,
+                                                )}
+                                              </p>
+                                              <p>
+                                                <strong>Reducoes:</strong>{" "}
+                                                {formatSignedPe(
+                                                  -tecnica.reducoesPE,
+                                                )}
+                                              </p>
+                                              <p>
+                                                <strong>Custo final:</strong>{" "}
+                                                {tecnica.custoFinalPE} PE
+                                              </p>
+                                              <p>
+                                                <strong>
+                                                  Limite adicional:
+                                                </strong>{" "}
+                                                +{tecnica.limiteAdicionalPE} PE
+                                              </p>
+                                              <p>
+                                                <strong>
+                                                  Adicional aplicado:
+                                                </strong>{" "}
+                                                +{tecnica.adicionalAplicadoPE}{" "}
+                                                PE
+                                              </p>
+                                              {tecnicaCustosAdicionaisSalvos.length >
+                                              0 ? (
+                                                <p>
+                                                  <strong>Aplicado em:</strong>{" "}
+                                                  {tecnicaCustosAdicionaisSalvos
+                                                    .map(
+                                                      (entry) =>
+                                                        `${entry.nome} (${formatSignedPe(entry.custo)})`,
+                                                    )
+                                                    .join(", ")}
+                                                </p>
+                                              ) : null}
+                                              {tecnicaCustosReducoesSalvas.length >
+                                              0 ? (
+                                                <p>
+                                                  <strong>
+                                                    Compensado por:
+                                                  </strong>{" "}
+                                                  {tecnicaCustosReducoesSalvas
+                                                    .map(
+                                                      (entry) =>
+                                                        `${entry.nome} (${formatSignedPe(entry.custo)})`,
+                                                    )
+                                                    .join(", ")}
+                                                </p>
+                                              ) : null}
+                                              <p>
+                                                <strong>
+                                                  Maior graduacao base:
+                                                </strong>{" "}
+                                                {tecnica.maiorGraduacaoBase}
+                                              </p>
+                                              <p>
+                                                <strong>
+                                                  Bonus direto aplicado:
+                                                </strong>{" "}
+                                                +{tecnica.bonusDiretoAplicado}
+                                              </p>
+                                            </div>
 
-                                          <div className="tecnica-report-block">
-                                            <h5>Estrutura do dano</h5>
-                                            <ul className="ficha-inline-list">
-                                              <li>
-                                                Dano total:{" "}
-                                                {tecnicaDanoTotalCard}
-                                              </li>
-                                              {tecnicaPoderesDanoCard.map(
-                                                (poder) => (
-                                                  <li
-                                                    key={`${tecnica.id}-dano-${poder.id}`}
-                                                  >
-                                                    {poder.nome}: {poder.dano}
+                                            <div className="tecnica-report-block">
+                                              <h5>Estrutura do dano</h5>
+                                              <ul className="ficha-inline-list">
+                                                <li>
+                                                  Dano total:{" "}
+                                                  {tecnicaDanoTotalCard}
+                                                </li>
+                                                {tecnicaPoderesDanoCard.map(
+                                                  (poder) => (
+                                                    <li
+                                                      key={`${tecnica.id}-dano-${poder.id}`}
+                                                    >
+                                                      {poder.nome}: {poder.dano}
+                                                    </li>
+                                                  ),
+                                                )}
+                                                {tecnicaBaseAplicacoesCard >
+                                                0 ? (
+                                                  <li>
+                                                    Dano Base (
+                                                    {tecnicaBaseAtributoCard}):{" "}
+                                                    {tecnicaBaseValorCard}
+                                                    {tecnicaBaseAplicacoesCard >
+                                                    1
+                                                      ? ` x${tecnicaBaseAplicacoesCard}`
+                                                      : ""}
                                                   </li>
-                                                ),
-                                              )}
-                                              {tecnicaBaseAplicacoesCard > 0 ? (
-                                                <li>
-                                                  Dano Base (
-                                                  {tecnicaBaseAtributoCard}):{" "}
-                                                  {tecnicaBaseValorCard}
-                                                  {tecnicaBaseAplicacoesCard > 1
-                                                    ? ` x${tecnicaBaseAplicacoesCard}`
-                                                    : ""}
-                                                </li>
-                                              ) : null}
-                                              {tecnicaAumentoDanoCard > 0 ? (
-                                                <li>
-                                                  Aumento de Dano:{" "}
-                                                  {tecnicaAumentoDanoCard}
-                                                </li>
-                                              ) : null}
-                                            </ul>
-                                          </div>
+                                                ) : null}
+                                                {tecnicaAumentoDanoCard > 0 ? (
+                                                  <li>
+                                                    Aumento de Dano:{" "}
+                                                    {tecnicaAumentoDanoCard}
+                                                  </li>
+                                                ) : null}
+                                              </ul>
+                                            </div>
 
-                                          <div className="tecnica-report-block">
-                                            <h5>
-                                              Poderes base usados (
-                                              {tecnica.poderesBase.length})
-                                            </h5>
-                                            <p>
-                                              Total de graduacoes:{" "}
-                                              {totalGraduacoesBase}
+                                            <div className="tecnica-report-block">
+                                              <h5>
+                                                Poderes base usados (
+                                                {tecnica.poderesBase.length})
+                                              </h5>
+                                              <p>
+                                                Total de graduacoes:{" "}
+                                                {totalGraduacoesBase}
+                                              </p>
+                                              <ul className="ficha-inline-list">
+                                                {tecnica.poderesBase.map(
+                                                  (base) => {
+                                                    const extras: string[] = [];
+                                                    if (base.danoSomaBase)
+                                                      extras.push("dano base");
+                                                    if (base.danoMetadeGrad)
+                                                      extras.push(
+                                                        "metade grad",
+                                                      );
+                                                    return (
+                                                      <li
+                                                        key={`${tecnica.id}-report-base-${base.id}`}
+                                                      >
+                                                        {resolvePoderBaseNome(
+                                                          base,
+                                                        )}{" "}
+                                                        | GRAD {base.graduacao}
+                                                        {extras.length > 0
+                                                          ? ` | ${extras.join(" | ")}`
+                                                          : ""}
+                                                      </li>
+                                                    );
+                                                  },
+                                                )}
+                                              </ul>
+                                            </div>
+
+                                            <div className="tecnica-report-block">
+                                              <h5>
+                                                Modificacoes e custos aplicados
+                                              </h5>
+                                              {tecnicaRelatorioCustos.length >
+                                              0 ? (
+                                                <ul className="ficha-inline-list">
+                                                  {tecnicaRelatorioCustos.map(
+                                                    (entry, idx) => (
+                                                      <li
+                                                        key={`${tecnica.id}-report-cost-${idx}`}
+                                                      >
+                                                        {entry.nome}:{" "}
+                                                        {formatSignedPe(
+                                                          entry.custo,
+                                                        )}
+                                                      </li>
+                                                    ),
+                                                  )}
+                                                </ul>
+                                              ) : (
+                                                <p>
+                                                  Sem modificacoes que alterem o
+                                                  custo.
+                                                </p>
+                                              )}
+                                            </div>
+
+                                            <div className="tecnica-report-block">
+                                              <h5>
+                                                Efeitos automaticos dos
+                                                modificadores
+                                              </h5>
+                                              {tecnicaEfeitoAuto.length > 0 ? (
+                                                <ul className="ficha-inline-list">
+                                                  {tecnicaEfeitoAuto.map(
+                                                    (linha, idx) => (
+                                                      <li
+                                                        key={`${tecnica.id}-report-auto-${idx}`}
+                                                      >
+                                                        {linha}
+                                                      </li>
+                                                    ),
+                                                  )}
+                                                </ul>
+                                              ) : (
+                                                <p>
+                                                  Nenhum efeito automatico
+                                                  gerado.
+                                                </p>
+                                              )}
+                                            </div>
+
+                                            <p className="tecnica-report-created">
+                                              Criada em: {tecnica.createdAt}
                                             </p>
-                                            <ul className="ficha-inline-list">
-                                              {tecnica.poderesBase.map(
-                                                (base) => {
-                                                  const extras: string[] = [];
-                                                  if (base.danoSomaBase)
-                                                    extras.push("dano base");
-                                                  if (base.danoMetadeGrad)
-                                                    extras.push("metade grad");
-                                                  return (
-                                                    <li
-                                                      key={`${tecnica.id}-report-base-${base.id}`}
-                                                    >
-                                                      {resolvePoderBaseNome(
-                                                        base,
-                                                      )}{" "}
-                                                      | GRAD {base.graduacao}
-                                                      {extras.length > 0
-                                                        ? ` | ${extras.join(" | ")}`
-                                                        : ""}
-                                                    </li>
-                                                  );
-                                                },
-                                              )}
-                                            </ul>
                                           </div>
-
-                                          <div className="tecnica-report-block">
-                                            <h5>
-                                              Modificacoes e custos aplicados
-                                            </h5>
-                                            {tecnicaRelatorioCustos.length >
-                                            0 ? (
-                                              <ul className="ficha-inline-list">
-                                                {tecnicaRelatorioCustos.map(
-                                                  (entry, idx) => (
-                                                    <li
-                                                      key={`${tecnica.id}-report-cost-${idx}`}
-                                                    >
-                                                      {entry.nome}:{" "}
-                                                      {formatSignedPe(
-                                                        entry.custo,
-                                                      )}
-                                                    </li>
-                                                  ),
-                                                )}
-                                              </ul>
-                                            ) : (
-                                              <p>
-                                                Sem modificacoes que alterem o
-                                                custo.
-                                              </p>
-                                            )}
-                                          </div>
-
-                                          <div className="tecnica-report-block">
-                                            <h5>
-                                              Efeitos automaticos dos
-                                              modificadores
-                                            </h5>
-                                            {tecnicaEfeitoAuto.length > 0 ? (
-                                              <ul className="ficha-inline-list">
-                                                {tecnicaEfeitoAuto.map(
-                                                  (linha, idx) => (
-                                                    <li
-                                                      key={`${tecnica.id}-report-auto-${idx}`}
-                                                    >
-                                                      {linha}
-                                                    </li>
-                                                  ),
-                                                )}
-                                              </ul>
-                                            ) : (
-                                              <p>
-                                                Nenhum efeito automatico gerado.
-                                              </p>
-                                            )}
-                                          </div>
-
-                                          <p className="tecnica-report-created">
-                                            Criada em: {tecnica.createdAt}
-                                          </p>
-                                        </div>
-                                      </section>
-                                    </div>,
-                                    document.body,
-                                  )
-                                : null}
-                            </article>
-                          );
-                        },
-                      )}
-                    </div>
-                  )}
-                </section>
+                                        </section>
+                                      </div>,
+                                      document.body,
+                                    )
+                                  : null}
+                              </article>
+                            );
+                          },
+                        )}
+                      </div>
+                    )}
+                  </section>
+                )}
               </section>
             ) : null}
 
