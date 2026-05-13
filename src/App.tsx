@@ -6,6 +6,7 @@
   type ChangeEvent,
   type FormEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { ToastContainer, toast } from "react-toastify";
 import { FaShieldHalved, FaWeightHanging } from "react-icons/fa6";
 import { GiRollingEnergy, GiScrollQuill, GiWalkingBoot } from "react-icons/gi";
@@ -150,6 +151,7 @@ type DevelopedTechniqueType = "Primaria" | "Avancada" | "Especial";
 type DevelopedTechniqueBasePower = {
   id: string;
   powerId: string;
+  nome: string;
   graduacao: string;
   danoSomaBase: boolean;
   danoMetadeGrad: boolean;
@@ -241,6 +243,7 @@ type DevelopedTechnique = {
   gatilho: string;
   acerto: string;
   dano: string;
+  danoNumerico: number;
   poderesBase: DevelopedTechniqueBasePower[];
   modificadores: DevelopedTechniqueModifierSet;
   custoBasePE: number;
@@ -266,6 +269,7 @@ type DevelopedTechniqueDraft = {
   gatilho: string;
   acerto: string;
   dano: string;
+  danoNumerico: number;
   poderesBase: DevelopedTechniqueBasePower[];
   modificadores: DevelopedTechniqueModifierSet;
 };
@@ -725,8 +729,8 @@ const VANTAGENS_CATALOGO: AdvantageDefinition[] = [
       "Ao realizar ataque que cause dano direto, pode sofrer -3 em Defesa ate o inicio do proximo turno para receber +3 no dano. Declarar antes da rolagem.",
   },
   {
-    id: "critico-aprimorado",
-    nome: "Critico Aprimorado",
+    id: "critico-ampliado",
+    nome: "Critico Ampliado",
     categoria: "Combate",
     temGraduacao: true,
     custoPorGraduacao: 4,
@@ -4363,6 +4367,7 @@ const createEmptyDevelopedTechniqueBasePower =
   (): DevelopedTechniqueBasePower => ({
     id: crypto.randomUUID(),
     powerId: "",
+    nome: "",
     graduacao: "1",
     danoSomaBase: false,
     danoMetadeGrad: false,
@@ -4380,6 +4385,7 @@ const createDevelopedTechniqueDraft = (): DevelopedTechniqueDraft => ({
   gatilho: "",
   acerto: "",
   dano: "",
+  danoNumerico: 0,
   poderesBase: [createEmptyDevelopedTechniqueBasePower()],
   modificadores: createDevelopedTechniqueModifierDefaults(),
 });
@@ -4443,6 +4449,207 @@ const upsertTechniqueAutoEffectBlock = (
   ].join("\n");
 
   return manualNormalized ? `${manualNormalized}\n\n${autoBlock}` : autoBlock;
+};
+
+const stripTechniqueAutoEffectBlock = (effectText: string): string => {
+  const removeDelimitedBlock = (
+    text: string,
+    startMarker: string,
+    endMarker: string,
+  ) => {
+    const start = text.indexOf(startMarker);
+    const end = text.indexOf(endMarker);
+    if (start >= 0 && end > start) {
+      return `${text.slice(0, start)}${text.slice(end + endMarker.length)}`;
+    }
+    return text;
+  };
+
+  let manualText = removeDelimitedBlock(
+    effectText,
+    AUTO_TECHNIQUE_EFFECT_BLOCK_START,
+    AUTO_TECHNIQUE_EFFECT_BLOCK_END,
+  );
+  manualText = removeDelimitedBlock(
+    manualText,
+    LEGACY_AUTO_TECHNIQUE_EFFECT_BLOCK_START,
+    LEGACY_AUTO_TECHNIQUE_EFFECT_BLOCK_END,
+  );
+
+  return manualText
+    .split("\n")
+    .filter(
+      (line) =>
+        line.trim() !== "----------" &&
+        line.trim() !== "Efeitos automaticos (modificadores/falhas):",
+    )
+    .join("\n")
+    .trim();
+};
+
+type TechniqueCostReportEntry = {
+  nome: string;
+  custo: number;
+};
+
+const buildTechniqueModifierCostReport = (
+  technique: DevelopedTechnique,
+): TechniqueCostReportEntry[] => {
+  const defaults = createDevelopedTechniqueModifierDefaults();
+  const mods = {
+    ...defaults,
+    ...technique.modificadores,
+  };
+
+  const entries: TechniqueCostReportEntry[] = [];
+  const push = (nome: string, custo: number) => {
+    if (custo !== 0) {
+      entries.push({ nome, custo });
+    }
+  };
+
+  const asText = (value: unknown): string =>
+    value === undefined || value === null ? "" : String(value).trim();
+  const asInt = (value: unknown): number => {
+    const parsed = Number.parseInt(asText(value), 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+  const isEnabled = (value: unknown): boolean => {
+    if (typeof value === "boolean") {
+      return value;
+    }
+    const normalized = asText(value).toLowerCase();
+    return normalized === "sim" || normalized === "true" || normalized === "1";
+  };
+
+  const aumentoDano = clamp(asInt(mods.aumentoDano), 0, 5);
+  const precisao = clamp(asInt(mods.precisao), 0, 5);
+  const penetrante = clamp(asInt(mods.penetrante), 0, 5);
+  const danoAmpliado = clamp(asInt(mods.danoAmpliado), 0, 3);
+  const criticoAprimorado = clamp(asInt(mods.criticoAprimorado), 0, 3);
+  const danoContinuo = clamp(asInt(mods.danoContinuo), 0, 3);
+  const ataqueMultiplo = asText(
+    mods.ataqueMultiplo,
+  ) as DevelopedTechniqueModifierSet["ataqueMultiplo"];
+  const area = asText(mods.area) as DevelopedTechniqueModifierSet["area"];
+  const controleNivel = asText(
+    mods.controleNivel,
+  ) as DevelopedTechniqueModifierSet["controleNivel"];
+  const indireto = asText(
+    mods.indireto,
+  ) as DevelopedTechniqueModifierSet["indireto"];
+  const sutil = asText(mods.sutil) as DevelopedTechniqueModifierSet["sutil"];
+  const alcanceDelta = String(
+    asInt(mods.alcanceDelta),
+  ) as DevelopedTechniqueModifierSet["alcanceDelta"];
+  const duracaoDelta = String(
+    asInt(mods.duracaoDelta),
+  ) as DevelopedTechniqueModifierSet["duracaoDelta"];
+  const deslocamentoMetros = clamp(asInt(mods.deslocamentoMetros), 0, 10);
+  const ricochete = clamp(asInt(mods.ricochete), 0, 1);
+  const bonusDefesa = clamp(asInt(mods.bonusDefesa), 0, 5);
+  const reducaoDano = clamp(asInt(mods.reducaoDanoRecebido), 0, 5);
+  const absorcao = clamp(asInt(mods.absorcao), 0, 5);
+  const acaoAumentadaEtapas = Math.max(0, asInt(mods.acaoAumentadaEtapas));
+  const customCusto = asInt(mods.modificadorPersonalizadoCusto);
+
+  push("Aumento de dano", aumentoDano);
+  push("Precisao", precisao);
+  push("Penetrante", penetrante * 2);
+  push("Dano ampliado", danoAmpliado);
+  push("Critico ampliado", criticoAprimorado);
+  push("Dano continuo", danoContinuo);
+  push("Ataque multiplo", ATTACK_MULTIPLE_COST[ataqueMultiplo] ?? 0);
+  push("Efeito secundario", isEnabled(mods.efeitoSecundario) ? 2 : 0);
+  push("Incuravel", isEnabled(mods.incuravel) ? 3 : 0);
+  push("Contagioso", isEnabled(mods.contagioso) ? 4 : 0);
+  push("Area", AREA_COST[area] ?? 0);
+  push("Controle", CONTROLE_COST[controleNivel] ?? 0);
+
+  const alcanceSigned = getAlcanceDeltaSignedCost(alcanceDelta);
+  const duracaoSigned = getDuracaoDeltaSignedCost(duracaoDelta);
+  push("Ajuste de alcance", Math.max(0, alcanceSigned));
+  push("Ajuste de duracao", Math.max(0, duracaoSigned));
+
+  const ativacaoAjusteNumerico = asInt(mods.ativacaoAjuste);
+  push("Ajuste de ativacao", Math.max(0, ativacaoAjusteNumerico));
+
+  push("Deslocamento", Math.ceil(deslocamentoMetros / 2));
+  push("Seletivo", isEnabled(mods.seletivo) ? 2 : 0);
+  push("Indireto", INDIRETO_COST[indireto] ?? 0);
+  push(
+    "Rastreamento",
+    isEnabled(mods.rastreamento) && technique.alcance === "Toque" ? 3 : 0,
+  );
+  push("Ricochete", isTechniqueRanged(technique.alcance) ? ricochete * 3 : 0);
+  push("Bonus em defesa", bonusDefesa);
+  push("Reducao de dano", reducaoDano);
+  push("Absorcao", absorcao * 2);
+  push("Reflexo", isEnabled(mods.reflexo) ? 2 : 0);
+  push("Sutil", SUTIL_COST[sutil] ?? 0);
+  push("Traicoeiro", isEnabled(mods.traicoeiro) ? 1 : 0);
+  push("Preciso", isEnabled(mods.preciso) ? 1 : 0);
+  push("Modificador personalizado", Math.max(0, customCusto));
+
+  push("Reducao por alcance", Math.min(0, alcanceSigned));
+  push("Reducao por duracao", Math.min(0, duracaoSigned));
+  push("Reducao por ativacao", Math.min(0, ativacaoAjusteNumerico));
+  push("Exige turno completo", isEnabled(mods.exigeTurnoCompleto) ? -2 : 0);
+  push("Acao aumentada", -acaoAumentadaEtapas);
+  push(
+    "Preparacao obrigatoria",
+    -(
+      PREPARACAO_OBRIGATORIA_REDUCTION[
+        asText(
+          mods.preparacaoObrigatoria,
+        ) as DevelopedTechniqueModifierSet["preparacaoObrigatoria"]
+      ] ?? 0
+    ),
+  );
+  push(
+    "Exige teste",
+    -(
+      EXIGE_TESTE_REDUCTION[
+        asText(mods.exigeTeste) as DevelopedTechniqueModifierSet["exigeTeste"]
+      ] ?? 0
+    ),
+  );
+  push(
+    "Inconstante",
+    -(
+      INCONSTANTE_REDUCTION[
+        asText(mods.inconstante) as DevelopedTechniqueModifierSet["inconstante"]
+      ] ?? 0
+    ),
+  );
+  push("Incontrolavel", isEnabled(mods.incontrolavel) ? -3 : 0);
+  push(
+    "Efeito colateral",
+    -(
+      EFEITO_COLATERAL_REDUCTION[
+        asText(
+          mods.efeitoColateral,
+        ) as DevelopedTechniqueModifierSet["efeitoColateral"]
+      ] ?? 0
+    ),
+  );
+  push("Cansativo", isEnabled(mods.cansativo) ? -1 : 0);
+  push("Retroalimentacao", isEnabled(mods.retroalimentacao) ? -3 : 0);
+  push("Impreciso", isEnabled(mods.impreciso) ? -1 : 0);
+  push("Sem movimento", isEnabled(mods.semMovimento) ? -2 : 0);
+  push(
+    "Condicional",
+    -(
+      CONDICIONAL_REDUCTION[
+        asText(mods.condicional) as DevelopedTechniqueModifierSet["condicional"]
+      ] ?? 0
+    ),
+  );
+  push("Alvo restrito", isEnabled(mods.alvoRestrito) ? -1 : 0);
+  push("Recurso externo", isEnabled(mods.recursoExterno) ? -1 : 0);
+  push("Modificador personalizado (reducao)", Math.min(0, customCusto));
+
+  return entries;
 };
 
 const buildTechniqueAutoEffectLines = (
@@ -5000,10 +5207,11 @@ const TECHNIQUE_PRECISAO_TOOLTIP = "Custo: +1 PE por +1 de precisao.";
 
 const TECHNIQUE_PENETRANTE_TOOLTIP = "Custo: +2 PE por nivel.";
 
-const TECHNIQUE_DANO_AMPLIADO_TOOLTIP = "Custo: +1 PE por +2 de dano ampliado.";
+const TECHNIQUE_DANO_AMPLIADO_TOOLTIP =
+  "Custo: +1 PE por +2 de dano adicional quando o dado de dano explodir.";
 
-const TECHNIQUE_CRITICO_APRIMORADO_TOOLTIP =
-  "Custo: +1 PE por nível. Cada nível = +2 de dano em crítico (máximo +6).";
+const TECHNIQUE_CRITICO_AMPLIADO_TOOLTIP =
+  "Custo: +1 PE por +2 de dano adicional em caso de crítico (D20 crítico).";
 
 const TECHNIQUE_DANO_CONTINUO_TOOLTIP = "Custo: +1 PE por +1 de dano continuo.";
 
@@ -5862,7 +6070,7 @@ const PRETIPOS: PretipoDef[] = [
     vantagens: [
       { catalogId: "acao-em-movimento", graduacao: 1 },
       { catalogId: "ataque-domino", graduacao: 1 },
-      { catalogId: "critico-aprimorado", graduacao: 1 },
+      { catalogId: "critico-ampliado", graduacao: 1 },
     ],
     desvantagens: [{ catalogId: "impaciente", graduacao: 1 }],
     poderes: [
@@ -6524,6 +6732,12 @@ function App() {
   const [quickSheetRollTotalValue, setQuickSheetRollTotalValue] = useState(2);
   const [quickSheetRollIsAnimating, setQuickSheetRollIsAnimating] =
     useState(false);
+  const [tecnicaRelatorioModalId, setTecnicaRelatorioModalId] = useState<
+    string | null
+  >(null);
+  const [tecnicaEmEdicaoId, setTecnicaEmEdicaoId] = useState<string | null>(
+    null,
+  );
   const [quickSheetRollRevealedDice, setQuickSheetRollRevealedDice] = useState<
     {
       value: number | null;
@@ -6535,6 +6749,22 @@ function App() {
   >([]);
   const quickSheetRevealTimeoutsRef = useRef<number[]>([]);
   const quickSheetRollIntervalRef = useRef<number | null>(null);
+
+  const clearQuickSheetRollInterval = () => {
+    if (quickSheetRollIntervalRef.current !== null) {
+      window.clearInterval(quickSheetRollIntervalRef.current);
+      quickSheetRollIntervalRef.current = null;
+    }
+  };
+
+  const clearQuickSheetRevealTimeouts = () => {
+    for (const t of quickSheetRevealTimeoutsRef.current) {
+      window.clearTimeout(t);
+    }
+
+    quickSheetRevealTimeoutsRef.current = [];
+  };
+
   const [danoPoderesConfig, setDanoPoderesConfig] = useState<
     Record<string, { incluiDanoBase: boolean; metadeGrad: boolean }>
   >({});
@@ -9087,6 +9317,27 @@ function App() {
     [],
   );
 
+  const isSelectedCharacterPersisted =
+    activeSheetId !== null && selectedCharacter?.id === activeSheetId;
+  const isSelectedVariation = !!selectedCharacter?.parentId;
+
+  const saveSelectedCharacter = async () => {
+    if (!selectedCharacter) {
+      return;
+    }
+
+    if (isSelectedVariation) {
+      return;
+    }
+
+    if (!isSelectedCharacterPersisted) {
+      setSavePasswordModalOpen(true);
+      return;
+    }
+
+    await persistSelectedCharacter(activeSheetPassword);
+  };
+
   if (!selectedCharacter) {
     return (
       <>
@@ -9111,27 +9362,6 @@ function App() {
       </>
     );
   }
-
-  const isSelectedCharacterPersisted =
-    activeSheetId !== null && selectedCharacter.id === activeSheetId;
-  const isSelectedVariation = !!selectedCharacter.parentId;
-
-  const saveSelectedCharacter = async () => {
-    if (!selectedCharacter) {
-      return;
-    }
-
-    if (isSelectedVariation) {
-      return;
-    }
-
-    if (!isSelectedCharacterPersisted) {
-      setSavePasswordModalOpen(true);
-      return;
-    }
-
-    await persistSelectedCharacter(activeSheetPassword);
-  };
 
   const principalCharacter =
     characters.find((character) => !character.parentId) ??
@@ -10191,8 +10421,8 @@ function App() {
     tecnicaAumentoDano +
     tecnicaPrecisao +
     tecnicaPenetrante * 2 +
-    Math.ceil(tecnicaDanoAmpliado / 2) +
-    Math.ceil(tecnicaCriticoAprimorado / 2) +
+    tecnicaDanoAmpliado +
+    tecnicaCriticoAprimorado +
     tecnicaDanoContinuo +
     ATTACK_MULTIPLE_COST[tecnicaMods.ataqueMultiplo] +
     (tecnicaMods.efeitoSecundario ? 2 : 0) +
@@ -10287,10 +10517,9 @@ function App() {
     tecnicaPenetrante +
     Math.min(5, Math.floor(tecnicaMargemAdicionalDisponivel / 2));
   const maxDanoAmpliado =
-    tecnicaDanoAmpliado + Math.min(3, tecnicaMargemAdicionalDisponivel * 2);
+    tecnicaDanoAmpliado + Math.min(3, tecnicaMargemAdicionalDisponivel);
   const maxCriticoAprimorado =
-    tecnicaCriticoAprimorado +
-    Math.min(3, tecnicaMargemAdicionalDisponivel * 2);
+    tecnicaCriticoAprimorado + Math.min(3, tecnicaMargemAdicionalDisponivel);
   const maxDanoContinuo =
     tecnicaDanoContinuo + Math.min(3, tecnicaMargemAdicionalDisponivel);
   const maxBonusDefesa =
@@ -10403,11 +10632,87 @@ function App() {
   const tecnicaAcertoResumo = tecnicaEhAtaque
     ? `1d20 + ${dadoAcertoTexto}${tecnicaAcertoFoiModificado ? ` (${tecnicaAcertoPartes.join(" | ")})` : ""} (${tecnicaUsaDisparo ? "Disparo" : "CaC"})`
     : "Sem rolagem de ataque (tecnica nao ofensiva).";
+  const tecnicaAcertoFonteLabel = tecnicaUsaDisparo
+    ? "Dado de Disparo"
+    : "Dado de CaC";
+  const tecnicaPrecisaoLiquida = tecnicaPrecisao - penalidadeImpreciso;
+  const tecnicaPrecisaoTexto =
+    tecnicaPrecisaoLiquida > 0
+      ? `+${tecnicaPrecisaoLiquida}`
+      : `${tecnicaPrecisaoLiquida}`;
 
   const tecnicaDanoBaseCalculado =
     tecnicaGradParaDano + danoBaseTecnica * tecnicaDanoBaseAplicacoes;
+
+  // Estrutura detalhada de dano
+  type TecnicaDanoDetalhado = {
+    total: number;
+    base: {
+      atributo: string;
+      valor: number;
+      aplicacoes: number;
+    } | null;
+    poderes: Array<{
+      id: string;
+      nome: string;
+      graduacao: number;
+      dano: number;
+    }>;
+    modificadores: {
+      aumentoDano: number;
+      danoContinuo: number;
+    };
+    especiais: {
+      metadeGrad: boolean;
+      ataqueMultiplo: string;
+      area: string;
+    };
+  };
+
+  const construirDetalhamentoDano = (): TecnicaDanoDetalhado | null => {
+    if (!tecnicaEhAtaque) return null;
+
+    const poderesDetalhados = tecnicaPoderesAtaque.map((base) => {
+      const poder = poderesDisponiveisParaTecnica.find(
+        (p) => p.power.id === base.powerId,
+      )?.power;
+      const gradNoDano = base.danoMetadeGrad
+        ? Math.ceil(base.graduacao / 2)
+        : base.graduacao;
+      return {
+        id: base.id,
+        nome: poder?.nome ?? "Poder desconhecido",
+        graduacao: base.graduacao,
+        dano: gradNoDano,
+      };
+    });
+
+    return {
+      total: tecnicaDanoTotal,
+      base:
+        tecnicaDanoBaseAplicacoes > 0
+          ? {
+              atributo: danoBaseAtributoTecnica,
+              valor: danoBaseTecnica,
+              aplicacoes: tecnicaDanoBaseAplicacoes,
+            }
+          : null,
+      poderes: poderesDetalhados,
+      modificadores: {
+        aumentoDano: tecnicaAumentoDano,
+        danoContinuo: tecnicaDanoContinuo,
+      },
+      especiais: {
+        metadeGrad: tecnicaTemMetadeGradNoDano,
+        ataqueMultiplo: tecnicaMods.ataqueMultiplo,
+        area: tecnicaMods.area,
+      },
+    };
+  };
+
+  const tecnicaDanoDetalhado = construirDetalhamentoDano();
   const tecnicaDanoResumo = tecnicaEhAtaque
-    ? `${tecnicaDanoTotal} de dano${tecnicaAumentoDano > 0 ? ` (base ${tecnicaDanoBaseCalculado} + mod. dano +${tecnicaAumentoDano})` : ""}${tecnicaDanoBaseAplicacoes > 0 ? ` (inclui dano base de ${danoBaseAtributoTecnica}: +${danoBaseTecnica} x${tecnicaDanoBaseAplicacoes})` : ""}${tecnicaTemMetadeGradNoDano ? " (graduacao reduzida a metade em poderes aplicaveis)" : ""}${tecnicaDanoAmpliado > 0 ? ` | dano ampliado: +${tecnicaDanoAmpliado}` : ""}${tecnicaCriticoAprimorado > 0 ? ` | dano critico: +${tecnicaCriticoAprimorado * 2}` : ""}${tecnicaDanoContinuo > 0 ? ` | dano continuo: +${tecnicaDanoContinuo} por 3 turnos` : ""}${tecnicaMods.ataqueMultiplo !== "1" ? ` | ${tecnicaMods.ataqueMultiplo} ataques (dano dividido)` : ""}${tecnicaMods.area ? ` | area ${tecnicaMods.area} (penalidade por alvo adicional)` : ""}`
+    ? `${tecnicaDanoTotal} de dano${tecnicaAumentoDano > 0 ? ` (base ${tecnicaDanoBaseCalculado} + mod. dano +${tecnicaAumentoDano})` : ""}${tecnicaDanoBaseAplicacoes > 0 ? ` (inclui dano base de ${danoBaseAtributoTecnica}: +${danoBaseTecnica} x${tecnicaDanoBaseAplicacoes})` : ""}${tecnicaTemMetadeGradNoDano ? " (graduacao reduzida a metade em poderes aplicaveis)" : ""}${tecnicaDanoContinuo > 0 ? ` | dano continuo: +${tecnicaDanoContinuo} por 3 turnos` : ""}${tecnicaMods.ataqueMultiplo !== "1" ? ` | ${tecnicaMods.ataqueMultiplo} ataques (dano dividido)` : ""}${tecnicaMods.area ? ` | area ${tecnicaMods.area} (penalidade por alvo adicional)` : ""}`
     : "Sem dano de ataque automatico.";
 
   const adicionarPoderBaseTecnica = () => {
@@ -10443,6 +10748,57 @@ function App() {
     }));
   };
 
+  useEffect(() => {
+    const danoAmpliado = parseNatural(tecnicaDraft.modificadores.danoAmpliado);
+    const criticoAmpliado = parseNatural(
+      tecnicaDraft.modificadores.criticoAprimorado,
+    );
+
+    let novoEfeito = tecnicaDraft.efeito.trim();
+
+    // Remover linhas antigas de dano/crítico ampliado se existirem
+    const linhas = novoEfeito.split(" | ");
+    const linhasLimpas = linhas.filter(
+      (linha) =>
+        !linha.includes("Dano ampliado:") &&
+        !linha.includes("Crítico ampliado:"),
+    );
+    novoEfeito = linhasLimpas.join(" | ").trim();
+
+    // Construir novas linhas de efeito
+    const efeitosNovos: string[] = [];
+    if (danoAmpliado > 0) {
+      efeitosNovos.push(
+        `Dano ampliado: +${danoAmpliado * 2} de dano adicional quando o dado de dano explodir.`,
+      );
+    }
+    if (criticoAmpliado > 0) {
+      efeitosNovos.push(
+        `Crítico ampliado: +${criticoAmpliado * 2} de dano adicional quando o D20 critar.`,
+      );
+    }
+
+    // Montar efeito final
+    if (efeitosNovos.length > 0) {
+      if (novoEfeito) {
+        novoEfeito = novoEfeito + " | " + efeitosNovos.join(" | ");
+      } else {
+        novoEfeito = efeitosNovos.join(" | ");
+      }
+    }
+
+    // Só atualiza se realmente mudou para evitar loop
+    if (novoEfeito !== tecnicaDraft.efeito) {
+      setTecnicaDraft((current) => ({
+        ...current,
+        efeito: novoEfeito,
+      }));
+    }
+  }, [
+    tecnicaDraft.modificadores.danoAmpliado,
+    tecnicaDraft.modificadores.criticoAprimorado,
+  ]);
+
   const salvarTecnicaDesenvolvida = () => {
     const nomeNormalizado = tecnicaDraft.nome.trim();
     if (!nomeNormalizado) {
@@ -10462,38 +10818,67 @@ function App() {
       return;
     }
 
-    const tecnicaAcquisitionComNova = getTechniqueAcquisitionState(nivelAtual, [
-      ...selectedCharacter.tecnicasDesenvolvidas,
-      { id: "__draft__", tipo: tecnicaDraft.tipo },
-    ]);
+    const emEdicao = tecnicaEmEdicaoId !== null;
 
-    const custoPPAdicionalNovaTecnica =
-      tecnicaAcquisitionComNova.ppPagoTotal -
-      tecnicaAcquisitionAtual.ppPagoTotal;
-
-    if (nivelAtual < 5 && custoPPAdicionalNovaTecnica > 0) {
-      toast.error(
-        "Ate o nivel 4, voce so pode cadastrar tecnicas dentro da progressao gratuita. No nivel 5+, novas tecnicas alem da progressao custam PP.",
+    if (!emEdicao) {
+      // Validações de PP apenas para novas técnicas
+      const tecnicaAcquisitionComNova = getTechniqueAcquisitionState(
+        nivelAtual,
+        [
+          ...selectedCharacter.tecnicasDesenvolvidas,
+          { id: "__draft__", tipo: tecnicaDraft.tipo },
+        ],
       );
-      return;
+
+      const custoPPAdicionalNovaTecnica =
+        tecnicaAcquisitionComNova.ppPagoTotal -
+        tecnicaAcquisitionAtual.ppPagoTotal;
+
+      if (nivelAtual < 5 && custoPPAdicionalNovaTecnica > 0) {
+        toast.error(
+          "Ate o nivel 4, voce so pode cadastrar tecnicas dentro da progressao gratuita. No nivel 5+, novas tecnicas alem da progressao custam PP.",
+        );
+        return;
+      }
+
+      if (
+        custoPPAdicionalNovaTecnica > 0 &&
+        ppRestante < custoPPAdicionalNovaTecnica
+      ) {
+        toast.error(
+          `PP insuficiente para adquirir a tecnica agora (custo adicional: ${custoPPAdicionalNovaTecnica} PP).`,
+        );
+        return;
+      }
     }
 
-    if (
-      custoPPAdicionalNovaTecnica > 0 &&
-      ppRestante < custoPPAdicionalNovaTecnica
-    ) {
-      toast.error(
-        `PP insuficiente para adquirir a tecnica agora (custo adicional: ${custoPPAdicionalNovaTecnica} PP).`,
-      );
-      return;
+    // Montar efeito com crítico ampliado e dano ampliado
+    let efetoCompleto = tecnicaDraft.efeito.trim();
+    if (tecnicaDanoAmpliado > 0 || tecnicaCriticoAprimorado > 0) {
+      const efeitos: string[] = [];
+      if (tecnicaDanoAmpliado > 0) {
+        efeitos.push(
+          `Dano ampliado: +${tecnicaDanoAmpliado * 2} de dano adicional quando o dado de dano explodir.`,
+        );
+      }
+      if (tecnicaCriticoAprimorado > 0) {
+        efeitos.push(
+          `Crítico ampliado: +${tecnicaCriticoAprimorado * 2} de dano adicional quando o D20 critar.`,
+        );
+      }
+      if (efetoCompleto) {
+        efetoCompleto = efetoCompleto + " | " + efeitos.join(" | ");
+      } else {
+        efetoCompleto = efeitos.join(" | ");
+      }
     }
 
     const tecnica: DevelopedTechnique = {
-      id: crypto.randomUUID(),
+      id: emEdicao ? tecnicaEmEdicaoId : crypto.randomUUID(),
       nome: nomeNormalizado,
       tipo: tecnicaDraft.tipo,
       conceito: tecnicaDraft.conceito.trim(),
-      efeito: tecnicaDraft.efeito.trim(),
+      efeito: efetoCompleto,
       acao: tecnicaDraft.acao.trim(),
       alcance: tecnicaDraft.alcance.trim(),
       alvo: tecnicaDraft.alvo.trim(),
@@ -10501,9 +10886,11 @@ function App() {
       gatilho: tecnicaDraft.gatilho.trim(),
       acerto: tecnicaAcertoResumo,
       dano: tecnicaDanoResumo,
+      danoNumerico: tecnicaDanoTotal,
       poderesBase: tecnicaBaseResolvida.map((base) => ({
         id: base.id,
         powerId: base.powerId,
+        nome: base.nome,
         graduacao: String(base.graduacao),
         danoSomaBase: base.danoSomaBase,
         danoMetadeGrad: base.danoMetadeGrad,
@@ -10531,16 +10918,33 @@ function App() {
       adicionalAplicadoPE: tecnicaAdicionalAplicadoPE,
       maiorGraduacaoBase: tecnicaMaiorGraduacaoBase,
       bonusDiretoAplicado: tecnicaBonusDiretoAplicado,
-      createdAt: new Date().toISOString(),
+      createdAt: emEdicao
+        ? selectedCharacter.tecnicasDesenvolvidas.find(
+            (t) => t.id === tecnicaEmEdicaoId,
+          )?.createdAt || new Date().toISOString()
+        : new Date().toISOString(),
     };
 
-    updateCharacter((current) => ({
-      ...current,
-      tecnicasDesenvolvidas: [...current.tecnicasDesenvolvidas, tecnica],
-    }));
+    if (emEdicao) {
+      // Atualizar técnica existente
+      updateCharacter((current) => ({
+        ...current,
+        tecnicasDesenvolvidas: current.tecnicasDesenvolvidas.map((t) =>
+          t.id === tecnicaEmEdicaoId ? tecnica : t,
+        ),
+      }));
+      setTecnicaEmEdicaoId(null);
+      toast.success("Tecnica atualizada com sucesso.");
+    } else {
+      // Adicionar nova técnica
+      updateCharacter((current) => ({
+        ...current,
+        tecnicasDesenvolvidas: [...current.tecnicasDesenvolvidas, tecnica],
+      }));
+      toast.success("Tecnica cadastrada na ficha.");
+    }
 
     setTecnicaDraft(createDevelopedTechniqueDraft());
-    toast.success("Tecnica cadastrada na ficha.");
   };
 
   const removerTecnicaDesenvolvida = (tecnicaId: string) => {
@@ -10550,6 +10954,44 @@ function App() {
         (tecnica) => tecnica.id !== tecnicaId,
       ),
     }));
+  };
+
+  const iniciarEdicaoTecnica = (tecnica: DevelopedTechnique) => {
+    // Preencher o formulário com dados da técnica
+    const novosDraft: DevelopedTechniqueDraft = {
+      nome: tecnica.nome,
+      tipo: tecnica.tipo,
+      conceito: tecnica.conceito,
+      efeito: stripTechniqueAutoEffectBlock(tecnica.efeito || ""),
+      acao: tecnica.acao,
+      alcance: tecnica.alcance,
+      alvo: tecnica.alvo,
+      duracao: tecnica.duracao,
+      gatilho: tecnica.gatilho,
+      acerto: tecnica.acerto,
+      dano: tecnica.dano,
+      danoNumerico: tecnica.danoNumerico,
+      poderesBase: tecnica.poderesBase,
+      modificadores: tecnica.modificadores,
+    };
+
+    setTecnicaDraft(novosDraft);
+    setTecnicaEmEdicaoId(tecnica.id);
+
+    // Scroll para o formulário
+    setTimeout(() => {
+      const formularioSecao = document.querySelector(
+        ".tecnicas-dev-panel",
+      ) as HTMLElement;
+      if (formularioSecao) {
+        formularioSecao.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 0);
+  };
+
+  const cancelarEdicaoTecnica = () => {
+    setTecnicaEmEdicaoId(null);
+    setTecnicaDraft(createDevelopedTechniqueDraft());
   };
 
   const conhecimentosEditaveis = getEditableConhecimentos(
@@ -10938,21 +11380,6 @@ function App() {
     }
 
     return safeMin + Math.floor(Math.random() * span);
-  };
-
-  const clearQuickSheetRollInterval = () => {
-    if (quickSheetRollIntervalRef.current !== null) {
-      window.clearInterval(quickSheetRollIntervalRef.current);
-      quickSheetRollIntervalRef.current = null;
-    }
-  };
-
-  const clearQuickSheetRevealTimeouts = () => {
-    for (const t of quickSheetRevealTimeoutsRef.current) {
-      window.clearTimeout(t);
-    }
-
-    quickSheetRevealTimeoutsRef.current = [];
   };
 
   const updateQuickSheetRollSummary = (
@@ -11727,29 +12154,450 @@ function App() {
                 {selectedCharacter.tecnicasDesenvolvidas.length === 0 ? (
                   <p>Nenhuma tecnica cadastrada.</p>
                 ) : (
-                  <ul className="quick-sheet-list">
-                    {selectedCharacter.tecnicasDesenvolvidas.map((tecnica) => (
-                      <li key={tecnica.id} className="quick-sheet-item-rich">
-                        <div className="quick-sheet-item-head">
-                          <strong>{tecnica.nome}</strong>
-                          <span className="quick-sheet-item-tag">
-                            {tecnica.tipo}
-                          </span>
-                        </div>
-                        <span className="quick-sheet-item-meta">
-                          Custo final: {tecnica.custoFinalPE} PE
-                        </span>
-                        {tecnica.conceito || tecnica.efeito ? (
-                          <p className="quick-sheet-item-note">
-                            {toQuickNarrative(
-                              tecnica.conceito || tecnica.efeito,
-                              150,
-                            )}
-                          </p>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="tecnicas-desenvolvidas-grid">
+                    {selectedCharacter.tecnicasDesenvolvidas.map((tecnica) => {
+                      // Extrai modificadores aplicados (não-vazios)
+                      const modificadoresAplicados: Array<{
+                        nome: string;
+                        valor: string;
+                      }> = [];
+                      const defaults =
+                        createDevelopedTechniqueModifierDefaults();
+                      const mods = {
+                        ...defaults,
+                        ...tecnica.modificadores,
+                      };
+                      const asString = (value: unknown): string =>
+                        value === undefined || value === null
+                          ? ""
+                          : String(value).trim();
+                      const asNumber = (value: unknown): number => {
+                        const parsed = Number.parseInt(asString(value), 10);
+                        return Number.isNaN(parsed) ? 0 : parsed;
+                      };
+                      const isEnabled = (value: unknown): boolean => {
+                        if (typeof value === "boolean") {
+                          return value;
+                        }
+                        const normalized = asString(value).toLowerCase();
+                        return (
+                          normalized === "sim" ||
+                          normalized === "true" ||
+                          normalized === "1"
+                        );
+                      };
+                      const hasChoice = (value: unknown): boolean => {
+                        const normalized = asString(value).toLowerCase();
+                        return (
+                          normalized !== "" &&
+                          normalized !== "nao" &&
+                          normalized !== "não" &&
+                          normalized !== "false" &&
+                          normalized !== "0"
+                        );
+                      };
+
+                      // Modificadores numéricos (string)
+                      if (asNumber(mods.aumentoDano) !== 0)
+                        modificadoresAplicados.push({
+                          nome: "Aumento Dano",
+                          valor: `+${asNumber(mods.aumentoDano)}`,
+                        });
+                      if (asNumber(mods.precisao) !== 0)
+                        modificadoresAplicados.push({
+                          nome: "Precisão",
+                          valor: `+${asNumber(mods.precisao)}`,
+                        });
+                      if (asNumber(mods.penetrante) !== 0)
+                        modificadoresAplicados.push({
+                          nome: "Penetrante",
+                          valor: `+${asNumber(mods.penetrante)}`,
+                        });
+                      if (asNumber(mods.danoAmpliado) !== 0)
+                        modificadoresAplicados.push({
+                          nome: "Dano Ampliado",
+                          valor: `+${asNumber(mods.danoAmpliado) * 2} (em explosão de dado)`,
+                        });
+                      if (asNumber(mods.criticoAprimorado) !== 0)
+                        modificadoresAplicados.push({
+                          nome: "Crítico Ampliado",
+                          valor: `+${asNumber(mods.criticoAprimorado) * 2} (D20 crítico)`,
+                        });
+                      if (asNumber(mods.danoContinuo) !== 0)
+                        modificadoresAplicados.push({
+                          nome: "Dano Contínuo",
+                          valor: `+${asNumber(mods.danoContinuo)}`,
+                        });
+                      if (asNumber(mods.bonusDefesa) !== 0)
+                        modificadoresAplicados.push({
+                          nome: "Bônus Defesa",
+                          valor: `+${asNumber(mods.bonusDefesa)}`,
+                        });
+                      if (asNumber(mods.reducaoDanoRecebido) !== 0)
+                        modificadoresAplicados.push({
+                          nome: "Redução Dano",
+                          valor: `+${asNumber(mods.reducaoDanoRecebido)}`,
+                        });
+                      if (asNumber(mods.absorcao) !== 0)
+                        modificadoresAplicados.push({
+                          nome: "Absorção",
+                          valor: `+${asNumber(mods.absorcao)}`,
+                        });
+                      if (asNumber(mods.ricochete) !== 0)
+                        modificadoresAplicados.push({
+                          nome: "Ricochete",
+                          valor: String(asNumber(mods.ricochete)),
+                        });
+                      if (asNumber(mods.alcanceDelta) !== 0)
+                        modificadoresAplicados.push({
+                          nome: "Alcance",
+                          valor: `${asNumber(mods.alcanceDelta) > 0 ? "+" : ""}${asNumber(mods.alcanceDelta)}`,
+                        });
+                      if (asNumber(mods.duracaoDelta) !== 0)
+                        modificadoresAplicados.push({
+                          nome: "Duração",
+                          valor: `${asNumber(mods.duracaoDelta) > 0 ? "+" : ""}${asNumber(mods.duracaoDelta)}`,
+                        });
+                      if (asNumber(mods.deslocamentoMetros) !== 0)
+                        modificadoresAplicados.push({
+                          nome: `Deslocar ${mods.deslocamentoTipo}`,
+                          valor: `${asNumber(mods.deslocamentoMetros)}m`,
+                        });
+                      if (asNumber(mods.acaoAumentadaEtapas) !== 0)
+                        modificadoresAplicados.push({
+                          nome: "Ação Aumentada",
+                          valor: `+${asNumber(mods.acaoAumentadaEtapas)}`,
+                        });
+
+                      // Modificadores string (vazios = não aplicados)
+                      if (asNumber(mods.ataqueMultiplo) > 1)
+                        modificadoresAplicados.push({
+                          nome: "Ataque Múltiplo",
+                          valor: String(asNumber(mods.ataqueMultiplo)),
+                        });
+                      if (hasChoice(mods.area))
+                        modificadoresAplicados.push({
+                          nome: "Área",
+                          valor: asString(mods.area),
+                        });
+                      if (hasChoice(mods.controleNivel))
+                        modificadoresAplicados.push({
+                          nome: `Controle ${mods.controleNivel}`,
+                          valor: asString(mods.controleEstado) || "—",
+                        });
+                      if (hasChoice(mods.indireto))
+                        modificadoresAplicados.push({
+                          nome: `Indireto ${mods.indireto}`,
+                          valor: "✓",
+                        });
+                      if (hasChoice(mods.sutil))
+                        modificadoresAplicados.push({
+                          nome: `Sutil ${mods.sutil}`,
+                          valor: "✓",
+                        });
+                      if (hasChoice(mods.preparacaoObrigatoria))
+                        modificadoresAplicados.push({
+                          nome: `Preparação ${mods.preparacaoObrigatoria}`,
+                          valor: "✓",
+                        });
+                      if (hasChoice(mods.exigeTeste))
+                        modificadoresAplicados.push({
+                          nome: `Teste ${mods.exigeTeste}`,
+                          valor: "✓",
+                        });
+                      if (hasChoice(mods.inconstante))
+                        modificadoresAplicados.push({
+                          nome: `Inconstante ${mods.inconstante}`,
+                          valor: "✓",
+                        });
+                      if (hasChoice(mods.efeitoColateral))
+                        modificadoresAplicados.push({
+                          nome: `Efeito Colateral ${mods.efeitoColateral}`,
+                          valor: "✓",
+                        });
+                      if (hasChoice(mods.condicional))
+                        modificadoresAplicados.push({
+                          nome: `Condicional ${mods.condicional}`,
+                          valor: "✓",
+                        });
+                      if (hasChoice(mods.ativacaoAjuste))
+                        modificadoresAplicados.push({
+                          nome: `Ativação ${mods.ativacaoAjuste}`,
+                          valor: "✓",
+                        });
+                      if (
+                        hasChoice(mods.deslocamentoTipo) &&
+                        asNumber(mods.deslocamentoMetros) > 0
+                      )
+                        modificadoresAplicados.push({
+                          nome: asString(mods.deslocamentoTipo),
+                          valor: "✓",
+                        });
+
+                      // Modificadores booleanos
+                      if (isEnabled(mods.efeitoSecundario))
+                        modificadoresAplicados.push({
+                          nome: "Efeito Secundário",
+                          valor: "✓",
+                        });
+                      if (isEnabled(mods.incuravel))
+                        modificadoresAplicados.push({
+                          nome: "Incurável",
+                          valor: "✓",
+                        });
+                      if (isEnabled(mods.contagioso))
+                        modificadoresAplicados.push({
+                          nome: "Contagioso",
+                          valor: "✓",
+                        });
+                      if (isEnabled(mods.exigeTurnoCompleto))
+                        modificadoresAplicados.push({
+                          nome: "Exige Turno Completo",
+                          valor: "✓",
+                        });
+                      if (isEnabled(mods.rastreamento))
+                        modificadoresAplicados.push({
+                          nome: "Rastreamento",
+                          valor: "✓",
+                        });
+                      if (isEnabled(mods.seletivo))
+                        modificadoresAplicados.push({
+                          nome: "Seletivo",
+                          valor: "✓",
+                        });
+                      if (isEnabled(mods.reflexo))
+                        modificadoresAplicados.push({
+                          nome: "Reflexo",
+                          valor: "✓",
+                        });
+                      if (isEnabled(mods.traicoeiro))
+                        modificadoresAplicados.push({
+                          nome: "Traiçoeiro",
+                          valor: "✓",
+                        });
+                      if (isEnabled(mods.preciso))
+                        modificadoresAplicados.push({
+                          nome: "Preciso",
+                          valor: "✓",
+                        });
+                      if (isEnabled(mods.incontrolavel))
+                        modificadoresAplicados.push({
+                          nome: "Incontrolável",
+                          valor: "✓",
+                        });
+                      if (isEnabled(mods.cansativo))
+                        modificadoresAplicados.push({
+                          nome: "Cansativo",
+                          valor: "✓",
+                        });
+                      if (isEnabled(mods.retroalimentacao))
+                        modificadoresAplicados.push({
+                          nome: "Retroalimentação",
+                          valor: "✓",
+                        });
+                      if (isEnabled(mods.impreciso))
+                        modificadoresAplicados.push({
+                          nome: "Impreciso",
+                          valor: "✓",
+                        });
+                      if (isEnabled(mods.semMovimento))
+                        modificadoresAplicados.push({
+                          nome: "Sem Movimento",
+                          valor: "✓",
+                        });
+                      if (isEnabled(mods.alvoRestrito))
+                        modificadoresAplicados.push({
+                          nome: "Alvo Restrito",
+                          valor: "✓",
+                        });
+                      if (isEnabled(mods.recursoExterno))
+                        modificadoresAplicados.push({
+                          nome: "Recurso Externo",
+                          valor: "✓",
+                        });
+                      if (
+                        hasChoice(mods.controleNivel) &&
+                        asString(mods.controleAtributoResistencia) !==
+                          defaults.controleAtributoResistencia
+                      )
+                        modificadoresAplicados.push({
+                          nome: "Resistência",
+                          valor: asString(mods.controleAtributoResistencia),
+                        });
+
+                      // Modificador personalizado
+                      if (hasChoice(mods.modificadorPersonalizadoNome))
+                        modificadoresAplicados.push({
+                          nome: asString(mods.modificadorPersonalizadoNome),
+                          valor:
+                            asNumber(mods.modificadorPersonalizadoCusto) !== 0
+                              ? String(
+                                  asNumber(mods.modificadorPersonalizadoCusto),
+                                )
+                              : "✓",
+                        });
+
+                      return (
+                        <article
+                          key={tecnica.id}
+                          className="tecnica-desenvolvida-card"
+                        >
+                          {/* HEADER - Nome, Tipo, Custo */}
+                          <header className="tecnica-card-header">
+                            <div className="tecnica-card-title">
+                              <h4>{tecnica.nome}</h4>
+                            </div>
+                            <div className="tecnica-card-badges">
+                              <span
+                                className={`tecnica-tipo-badge tipo-${tecnica.tipo.toLowerCase()}`}
+                              >
+                                {tecnica.tipo}
+                              </span>
+                              <span className="tecnica-custo-badge">
+                                {tecnica.duracao === "Sustentado"
+                                  ? `${tecnica.custoFinalPE} PE (ativar) / ${Math.ceil(tecnica.custoFinalPE / 2)} PE (manter)`
+                                  : `${tecnica.custoFinalPE} PE`}
+                              </span>
+                            </div>
+                          </header>
+
+                          {/* PODER BASE */}
+                          <div className="tecnica-card-section-compact">
+                            <span className="tecnica-section-label-compact">
+                              PODER BASE
+                            </span>
+                            <div className="tecnica-poderes-list-compact">
+                              {tecnica.poderesBase.map((poder, idx) => (
+                                <span
+                                  key={idx}
+                                  className="tecnica-poder-tag-compact"
+                                >
+                                  {poder.nome || "Desconhecido"}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* META - 2x2 Grid */}
+                          <div className="tecnica-card-meta-2x2">
+                            <div className="tecnica-meta-item-compact">
+                              <span className="tecnica-meta-label-compact">
+                                AÇÃO
+                              </span>
+                              <span className="tecnica-meta-valor-compact">
+                                {tecnica.acao}
+                              </span>
+                            </div>
+                            <div className="tecnica-meta-item-compact">
+                              <span className="tecnica-meta-label-compact">
+                                ALCANCE
+                              </span>
+                              <span className="tecnica-meta-valor-compact">
+                                {tecnica.alcance}
+                              </span>
+                            </div>
+                            <div className="tecnica-meta-item-compact">
+                              <span className="tecnica-meta-label-compact">
+                                ALVO
+                              </span>
+                              <span className="tecnica-meta-valor-compact">
+                                {tecnica.alvo}
+                              </span>
+                            </div>
+                            <div className="tecnica-meta-item-compact">
+                              <span className="tecnica-meta-label-compact">
+                                DURAÇÃO
+                              </span>
+                              <span className="tecnica-meta-valor-compact">
+                                {tecnica.duracao}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* CONCEITO */}
+                          {tecnica.conceito && (
+                            <div className="tecnica-card-text-section">
+                              <p className="tecnica-text-content">
+                                {tecnica.conceito}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* EFEITO */}
+                          {tecnica.efeito && (
+                            <div className="tecnica-card-text-section">
+                              <span className="tecnica-text-label">
+                                EFEITO:
+                              </span>
+                              <p className="tecnica-text-content">
+                                {tecnica.efeito}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* GATILHO */}
+                          {tecnica.gatilho && (
+                            <div className="tecnica-card-text-section">
+                              <span className="tecnica-text-label">
+                                GATILHO:
+                              </span>
+                              <p className="tecnica-text-content">
+                                {tecnica.gatilho}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* MODIFICADORES E LIMITAÇÕES */}
+                          {modificadoresAplicados.length > 0 && (
+                            <div className="tecnica-mods-section">
+                              <span className="tecnica-mods-label">
+                                MODIFICADORES E LIMITAÇÕES
+                              </span>
+                              <div className="tecnica-mods-grid">
+                                {modificadoresAplicados.map((mod, idx) => (
+                                  <div key={idx} className="tecnica-mod-item">
+                                    <span className="mod-nome">{mod.nome}</span>
+                                    <span className="mod-valor">
+                                      {mod.valor}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* COMBATE - Acerto e Dano */}
+                          {(tecnica.acerto !==
+                            "Sem rolagem de ataque (tecnica nao ofensiva)." ||
+                            tecnica.dano !==
+                              "Sem dano de ataque automatico.") && (
+                            <footer className="tecnica-card-footer">
+                              {tecnica.acerto !==
+                                "Sem rolagem de ataque (tecnica nao ofensiva)." && (
+                                <div className="tecnica-combate-row">
+                                  <strong>ACERTO:</strong>
+                                  <span>{tecnica.acerto}</span>
+                                </div>
+                              )}
+                              {tecnica.dano !==
+                                "Sem dano de ataque automatico." && (
+                                <div className="tecnica-combate-row">
+                                  <strong>DANO:</strong>
+                                  <span>
+                                    {tecnica.danoNumerico ??
+                                      (parseInt(
+                                        tecnica.dano.split("de dano")[0].trim(),
+                                      ) ||
+                                        0)}
+                                  </span>
+                                </div>
+                              )}
+                            </footer>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
                 )}
               </section>
             </div>
@@ -13573,6 +14421,7 @@ function App() {
                                       ? {
                                           ...item,
                                           powerId: newPowerId,
+                                          nome: newPowerData?.power.nome ?? "",
                                           graduacao: newPowerData
                                             ? String(
                                                 newPowerData.graduacaoAtual,
@@ -13643,51 +14492,72 @@ function App() {
                         </button>
 
                         {baseEhAtaque ? (
-                          <div className="tecnicas-dev-checks tecnica-dano-checks">
-                            <label>
-                              <input
-                                type="checkbox"
-                                checked={base.danoSomaBase}
-                                onChange={(event) =>
-                                  setTecnicaDraft((current) => ({
-                                    ...current,
-                                    poderesBase: current.poderesBase.map(
-                                      (item) =>
-                                        item.id === base.id
-                                          ? {
-                                              ...item,
-                                              danoSomaBase:
-                                                event.target.checked,
-                                            }
-                                          : item,
-                                    ),
-                                  }))
-                                }
-                              />
-                              Somar dano base ({danoBaseAtributoTecnica})
-                            </label>
-                            <label>
-                              <input
-                                type="checkbox"
-                                checked={base.danoMetadeGrad}
-                                onChange={(event) =>
-                                  setTecnicaDraft((current) => ({
-                                    ...current,
-                                    poderesBase: current.poderesBase.map(
-                                      (item) =>
-                                        item.id === base.id
-                                          ? {
-                                              ...item,
-                                              danoMetadeGrad:
-                                                event.target.checked,
-                                            }
-                                          : item,
-                                    ),
-                                  }))
-                                }
-                              />
-                              Metade da graduacao no dano
-                            </label>
+                          <div className="tecnicas-dano-checks-wrapper">
+                            <p className="tecnicas-dano-checks-header">
+                              Modificadores de dano
+                            </p>
+                            <div className="tecnicas-dev-checks tecnica-dano-checks">
+                              <label
+                                className="tecnica-check-card-beauty"
+                                data-tooltip="Somar Dano Base é quando o poder permite adicionar seu dano base, seja ele baseado em Força ou em Agilidade, ao dano final do seu poder. Exclusivo de poderes de toque (corpo a corpo)."
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={base.danoSomaBase}
+                                  onChange={(event) =>
+                                    setTecnicaDraft((current) => ({
+                                      ...current,
+                                      poderesBase: current.poderesBase.map(
+                                        (item) =>
+                                          item.id === base.id
+                                            ? {
+                                                ...item,
+                                                danoSomaBase:
+                                                  event.target.checked,
+                                              }
+                                            : item,
+                                      ),
+                                    }))
+                                  }
+                                />
+                                <span className="checkbox-label-content">
+                                  <span className="checkbox-icon">+</span>
+                                  <span className="checkbox-text">
+                                    Somar dano base ({danoBaseAtributoTecnica})
+                                  </span>
+                                </span>
+                              </label>
+                              <label
+                                className="tecnica-check-card-beauty"
+                                data-tooltip="Metade do Dano é para poderes que na descrição do poder já diz que ele progride o dano igual a metade da graduação. Se o poder que você selecionou é desse tipo, então essa caixa deve ser marcada."
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={base.danoMetadeGrad}
+                                  onChange={(event) =>
+                                    setTecnicaDraft((current) => ({
+                                      ...current,
+                                      poderesBase: current.poderesBase.map(
+                                        (item) =>
+                                          item.id === base.id
+                                            ? {
+                                                ...item,
+                                                danoMetadeGrad:
+                                                  event.target.checked,
+                                              }
+                                            : item,
+                                      ),
+                                    }))
+                                  }
+                                />
+                                <span className="checkbox-label-content">
+                                  <span className="checkbox-icon">½</span>
+                                  <span className="checkbox-text">
+                                    Metade da graduacao no dano
+                                  </span>
+                                </span>
+                              </label>
+                            </div>
                           </div>
                         ) : null}
                       </div>
@@ -13881,13 +14751,196 @@ function App() {
                       <span className="tecnica-info-readout-label">
                         Acerto da tecnica
                       </span>
-                      <p>{tecnicaAcertoResumo}</p>
+                      {tecnicaEhAtaque ? (
+                        <div className="tecnica-acerto-detalhado">
+                          <div className="tecnica-acerto-item">
+                            <span className="tecnica-acerto-item-label">
+                              Dado Base
+                            </span>
+                            <div className="tecnica-acerto-item-content">
+                              {renderQuickSheetDieChip("D20")}
+                            </div>
+                          </div>
+
+                          <div className="tecnica-acerto-item">
+                            <span className="tecnica-acerto-item-label">
+                              {tecnicaAcertoFonteLabel}
+                            </span>
+                            <div className="tecnica-acerto-item-content">
+                              {dadoAcertoTecnica === "-" ? (
+                                <span className="tecnica-acerto-no-die">
+                                  Sem dado
+                                </span>
+                              ) : (
+                                renderQuickSheetDieChip(
+                                  dadoAcertoTecnica as Dice,
+                                )
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="tecnica-acerto-item">
+                            <span className="tecnica-acerto-item-label">
+                              Precisao
+                            </span>
+                            <div className="tecnica-acerto-item-content tecnica-acerto-precisao-content">
+                              <strong className="tecnica-acerto-precisao-valor">
+                                {tecnicaPrecisaoTexto}
+                              </strong>
+                              {penalidadeImpreciso > 0 ? (
+                                <span className="tecnica-acerto-precisao-nota">
+                                  (inclui -{penalidadeImpreciso} Impreciso)
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="tecnica-acerto-item tecnica-acerto-resumo-final-item">
+                            <span className="tecnica-acerto-item-label">
+                              <span className="tecnica-acerto-label-text">
+                                Rolagem Final
+                              </span>
+                              <span className="tecnica-acerto-tipo-badge">
+                                {tecnicaUsaDisparo
+                                  ? "Disparo"
+                                  : "Corpo a corpo"}
+                              </span>
+                            </span>
+                            <div className="tecnica-acerto-item-content tecnica-acerto-resumo-final-content">
+                              <span className="tecnica-acerto-formula-base">
+                                1D20 +
+                              </span>
+                              {dadoAcertoTecnica === "-" ? (
+                                <span className="tecnica-acerto-no-die">
+                                  Sem dado
+                                </span>
+                              ) : (
+                                <span className="tecnica-acerto-dado-texto">
+                                  1{dadoAcertoTecnica.toUpperCase()}
+                                </span>
+                              )}
+                              {tecnicaPrecisao > 0 ? (
+                                <span className="tecnica-acerto-precisao-aplicada">
+                                  {tecnicaPrecisaoTexto}
+                                </span>
+                              ) : (
+                                <span className="tecnica-acerto-precisao-zero">
+                                  +0
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p>{tecnicaAcertoResumo}</p>
+                      )}
                     </article>
                     <article className="tecnica-info-readout-card">
                       <span className="tecnica-info-readout-label">
                         Dano da tecnica
                       </span>
-                      <p>{tecnicaDanoResumo}</p>
+                      {tecnicaDanoDetalhado ? (
+                        <div className="tecnica-dano-detalhado">
+                          <div className="tecnica-dano-total">
+                            <span className="dano-total-label">
+                              Dano total:
+                            </span>
+                            <strong className="dano-total-valor">
+                              {tecnicaDanoDetalhado.total}
+                            </strong>
+                          </div>
+                          <div className="tecnica-dano-breakdown">
+                            {tecnicaDanoDetalhado.base && (
+                              <div className="dano-item dano-base">
+                                <span className="dano-label">
+                                  Dano Base (
+                                  {tecnicaDanoDetalhado.base.atributo ===
+                                  "Agilidade"
+                                    ? "Agi"
+                                    : "For"}
+                                  ):
+                                </span>
+                                <span className="dano-valor">
+                                  {tecnicaDanoDetalhado.base.valor}
+                                  {tecnicaDanoDetalhado.base.aplicacoes > 1
+                                    ? ` x${tecnicaDanoDetalhado.base.aplicacoes}`
+                                    : ""}
+                                </span>
+                              </div>
+                            )}
+                            {tecnicaDanoDetalhado.poderes.map((poder) => (
+                              <div
+                                key={poder.id}
+                                className="dano-item dano-poder"
+                              >
+                                <span className="dano-label">
+                                  {poder.nome}:
+                                </span>
+                                <span className="dano-valor">
+                                  {poder.dano}
+                                  {poder.graduacao > poder.dano &&
+                                    tecnicaDanoDetalhado.especiais.metadeGrad &&
+                                    " (½ grad)"}
+                                </span>
+                              </div>
+                            ))}
+                            {tecnicaDanoDetalhado.modificadores.aumentoDano >
+                              0 && (
+                              <div className="dano-item dano-modificador">
+                                <span className="dano-label">
+                                  Aumento de Dano:
+                                </span>
+                                <span className="dano-valor">
+                                  {
+                                    tecnicaDanoDetalhado.modificadores
+                                      .aumentoDano
+                                  }
+                                </span>
+                              </div>
+                            )}
+
+                            {tecnicaDanoDetalhado.modificadores.danoContinuo >
+                              0 && (
+                              <div className="dano-item dano-continuo">
+                                <span className="dano-label">
+                                  Dano Contínuo:
+                                </span>
+                                <span className="dano-valor">
+                                  +
+                                  {
+                                    tecnicaDanoDetalhado.modificadores
+                                      .danoContinuo
+                                  }{" "}
+                                  por 3 turnos
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          {(tecnicaDanoDetalhado.especiais.ataqueMultiplo !==
+                            "1" ||
+                            tecnicaDanoDetalhado.especiais.area) && (
+                            <div className="tecnica-dano-notas">
+                              {tecnicaDanoDetalhado.especiais.ataqueMultiplo !==
+                                "1" && (
+                                <div className="nota-item">
+                                  {
+                                    tecnicaDanoDetalhado.especiais
+                                      .ataqueMultiplo
+                                  }{" "}
+                                  ataques (dano dividido)
+                                </div>
+                              )}
+                              {tecnicaDanoDetalhado.especiais.area && (
+                                <div className="nota-item">
+                                  Área {tecnicaDanoDetalhado.especiais.area}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p>{tecnicaDanoResumo}</p>
+                      )}
                     </article>
                   </div>
 
@@ -14009,7 +15062,7 @@ function App() {
                     </label>
                     <label>
                       <span className="tecnica-label-with-help">
-                        <span>Dano ampliado</span>
+                        <span>Dano ampliado </span>
                         <span
                           className="info-dot"
                           data-tooltip={TECHNIQUE_DANO_AMPLIADO_TOOLTIP}
@@ -14029,10 +15082,10 @@ function App() {
                     </label>
                     <label>
                       <span className="tecnica-label-with-help">
-                        <span>Critico aprimorado</span>
+                        <span>Critico ampliado</span>
                         <span
                           className="info-dot"
-                          data-tooltip={TECHNIQUE_CRITICO_APRIMORADO_TOOLTIP}
+                          data-tooltip={TECHNIQUE_CRITICO_AMPLIADO_TOOLTIP}
                         >
                           i
                         </span>
@@ -14041,7 +15094,7 @@ function App() {
                         min={0}
                         max={maxCriticoAprimorado}
                         value={tecnicaMods.criticoAprimorado}
-                        ariaLabel="Critico aprimorado"
+                        ariaLabel="Critico ampliado"
                         onChange={(value) =>
                           atualizarModTecnica("criticoAprimorado", value)
                         }
@@ -15180,16 +16233,29 @@ function App() {
                       {tecnicaDraft.tipo}.
                     </p>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={salvarTecnicaDesenvolvida}
-                    disabled={
-                      tecnicaExcedeLimite ||
-                      !Number.isFinite(tecnicaCustoFinalPE)
-                    }
-                  >
-                    Cadastrar tecnica
-                  </button>
+                  <div className="tecnica-form-actions">
+                    <button
+                      type="button"
+                      onClick={salvarTecnicaDesenvolvida}
+                      disabled={
+                        tecnicaExcedeLimite ||
+                        !Number.isFinite(tecnicaCustoFinalPE)
+                      }
+                    >
+                      {tecnicaEmEdicaoId
+                        ? "Salvar alteracoes"
+                        : "Cadastrar tecnica"}
+                    </button>
+                    {tecnicaEmEdicaoId && (
+                      <button
+                        type="button"
+                        className="tecnica-cancel-button"
+                        onClick={cancelarEdicaoTecnica}
+                      >
+                        Cancelar
+                      </button>
+                    )}
+                  </div>
                 </section>
 
                 <section className="tecnicas-dev-subsection">
@@ -15202,204 +16268,500 @@ function App() {
                         (tecnica) => {
                           const tecnicaEhGratuita =
                             tecnicaAcquisitionAtual.freeIds.has(tecnica.id);
-                          const tecnicaConfiguracaoCompleta = (
-                            Object.entries(tecnica.modificadores) as Array<
-                              [
-                                keyof DevelopedTechniqueModifierSet,
-                                string | boolean,
-                              ]
-                            >
-                          ).map(([chave, valor]) => {
-                            const valorFormatado =
-                              typeof valor === "boolean"
-                                ? valor
-                                  ? "Sim"
-                                  : "Nao"
-                                : valor === ""
-                                  ? "(vazio)"
-                                  : valor;
-                            return `${chave}: ${valorFormatado}`;
-                          });
-                          const tecnicaModsSelecionados = [
-                            ...[
-                              {
-                                ok:
-                                  clamp(
-                                    parseNatural(
-                                      tecnica.modificadores.aumentoDano,
-                                    ),
-                                    0,
-                                    5,
-                                  ) > 0,
-                                label: `Aumento de dano +${clamp(parseNatural(tecnica.modificadores.aumentoDano), 0, 5)}`,
-                              },
-                              {
-                                ok:
-                                  clamp(
-                                    parseNatural(
-                                      tecnica.modificadores.precisao,
-                                    ),
-                                    0,
-                                    5,
-                                  ) > 0,
-                                label: `Precisao +${clamp(parseNatural(tecnica.modificadores.precisao), 0, 5)}`,
-                              },
-                              {
-                                ok:
-                                  clamp(
-                                    parseNatural(
-                                      tecnica.modificadores.danoAmpliado,
-                                    ),
-                                    0,
-                                    3,
-                                  ) > 0,
-                                label: `Dano ampliado +${clamp(parseNatural(tecnica.modificadores.danoAmpliado), 0, 3)}`,
-                              },
-                              {
-                                ok:
-                                  clamp(
-                                    parseNatural(
-                                      tecnica.modificadores.criticoAprimorado,
-                                    ),
-                                    0,
-                                    3,
-                                  ) > 0,
-                                label: `Dano critico +${clamp(parseNatural(tecnica.modificadores.criticoAprimorado), 0, 3) * 2}`,
-                              },
-                              {
-                                ok:
-                                  clamp(
-                                    parseNatural(
-                                      tecnica.modificadores.danoContinuo,
-                                    ),
-                                    0,
-                                    3,
-                                  ) > 0,
-                                label: `Dano continuo +${clamp(parseNatural(tecnica.modificadores.danoContinuo), 0, 3)} por 3 turnos`,
-                              },
-                              {
-                                ok: tecnica.modificadores.alcanceDelta !== "0",
-                                label: `Ajuste de alcance ${tecnica.modificadores.alcanceDelta}`,
-                              },
-                              {
-                                ok: tecnica.modificadores.duracaoDelta !== "0",
-                                label: `Ajuste de duracao ${tecnica.modificadores.duracaoDelta}`,
-                              },
-                              {
-                                ok: tecnica.modificadores.ativacaoAjuste !== "",
-                                label: `Ajuste de ativacao ${tecnica.modificadores.ativacaoAjuste}`,
-                              },
-                            ]
-                              .filter((entry) => entry.ok)
-                              .map((entry) => entry.label),
-                            ...buildTechniqueAutoEffectLines(
+                          const tecnicaRelatorioCustos =
+                            buildTechniqueModifierCostReport(tecnica);
+                          const tecnicaEfeitoAuto =
+                            buildTechniqueAutoEffectLines(
                               tecnica.modificadores,
                               tecnica.alcance,
-                            ),
-                          ];
+                            );
+                          const tecnicaEfeitoManual =
+                            stripTechniqueAutoEffectBlock(tecnica.efeito || "");
+                          const tecnicaEfeitoExibicao =
+                            tecnicaEfeitoManual ||
+                            (tecnicaEfeitoAuto.length > 0
+                              ? tecnicaEfeitoAuto.join(" ")
+                              : "Sem descricao de efeito.");
+                          const resolvePoderBaseNome = (
+                            base: DevelopedTechniqueBasePower,
+                          ): string => {
+                            const nomeSalvo = base.nome?.trim();
+                            if (nomeSalvo) {
+                              return nomeSalvo;
+                            }
+
+                            const nomeCatalogo =
+                              POWER_BY_ID.get(base.powerId)?.nome?.trim() ?? "";
+                            if (nomeCatalogo) {
+                              return nomeCatalogo;
+                            }
+
+                            return "Poder sem nome";
+                          };
+                          const tecnicaAumentoDanoCard = clamp(
+                            parseNatural(tecnica.modificadores.aumentoDano),
+                            0,
+                            5,
+                          );
+                          const tecnicaBaseAtributoCard = hasAcuidadeTecnica
+                            ? "Agi"
+                            : "For";
+                          const tecnicaBaseValorCard =
+                            BONUS_BY_DICE[
+                              selectedCharacter.atributos[
+                                hasAcuidadeTecnica ? "Agilidade" : "Forca"
+                              ]
+                            ];
+                          const tecnicaBaseAplicacoesCard =
+                            tecnica.poderesBase.reduce(
+                              (total, base) =>
+                                total + (base.danoSomaBase ? 1 : 0),
+                              0,
+                            );
+                          const tecnicaPoderesDanoCard =
+                            tecnica.poderesBase.map((base) => ({
+                              id: base.id,
+                              nome: resolvePoderBaseNome(base),
+                              dano: base.danoMetadeGrad
+                                ? Math.ceil(
+                                    clamp(parseNatural(base.graduacao), 1, 10) /
+                                      2,
+                                  )
+                                : clamp(parseNatural(base.graduacao), 1, 10),
+                            }));
+                          const tecnicaDanoTotalCard =
+                            tecnicaPoderesDanoCard.reduce(
+                              (sum, poder) => sum + poder.dano,
+                              0,
+                            ) +
+                            tecnicaBaseValorCard * tecnicaBaseAplicacoesCard +
+                            tecnicaAumentoDanoCard;
+                          const totalGraduacoesBase =
+                            tecnica.poderesBase.reduce(
+                              (sum, base) =>
+                                sum +
+                                clamp(parseNatural(base.graduacao), 1, 10),
+                              0,
+                            );
+                          const tecnicaTagsVisuais = tecnicaRelatorioCustos
+                            .slice(0, 8)
+                            .map(
+                              (entry) =>
+                                `${entry.nome} (${formatSignedPe(entry.custo)})`,
+                            );
 
                           return (
                             <article
                               key={tecnica.id}
-                              className="tecnica-dev-item"
+                              className="tecnica-showcase-wrap"
                             >
-                              <div>
-                                <span>
-                                  Aquisicao:{" "}
-                                  {tecnicaEhGratuita
-                                    ? "Gratuita"
-                                    : `${TECHNIQUE_PP_BY_TYPE[tecnica.tipo]} PP`}
-                                </span>
-                                <strong>
-                                  {tecnica.nome} ({tecnica.tipo})
-                                </strong>
-                                <span>
-                                  Custo final: {tecnica.custoFinalPE} PE
-                                </span>
-                                <span>Acao: {tecnica.acao || "-"}</span>
-                                <span>Alcance: {tecnica.alcance || "-"}</span>
-                                <span>Alvo: {tecnica.alvo || "-"}</span>
-                                <span>Duracao: {tecnica.duracao || "-"}</span>
-                                <span>Gatilho: {tecnica.gatilho || "-"}</span>
-                                <span>Acerto: {tecnica.acerto ?? "-"}</span>
-                                <span>Dano: {tecnica.dano ?? "-"}</span>
-                                <span>
-                                  Calculo PE: base {tecnica.custoBasePE} | mods
-                                  +{tecnica.custoModificadoresPE} | reducoes -
-                                  {tecnica.reducoesPE}
-                                </span>
-                                <span>
-                                  Limite adicional: +{tecnica.limiteAdicionalPE}{" "}
-                                  | Aplicado: +{tecnica.adicionalAplicadoPE}
-                                </span>
-                                <span>
-                                  Maior graduacao base:{" "}
-                                  {tecnica.maiorGraduacaoBase}
-                                  {" | "}
-                                  Bonus direto aplicado: +
-                                  {tecnica.bonusDiretoAplicado}
-                                </span>
-                                <span>Criada em: {tecnica.createdAt}</span>
-                                <p>{tecnica.conceito || "Sem conceito."}</p>
-                                <p>
-                                  {tecnica.efeito || "Sem descricao de efeito."}
-                                </p>
-                                <ul className="ficha-inline-list">
-                                  {tecnica.poderesBase.map((base) => {
-                                    const power = POWER_BY_ID.get(base.powerId);
-                                    const extras: string[] = [];
-                                    if (base.danoSomaBase) {
-                                      extras.push("dano base");
-                                    }
-                                    if (base.danoMetadeGrad) {
-                                      extras.push("metade grad");
-                                    }
-                                    const extrasTexto =
-                                      extras.length > 0
-                                        ? ` | ${extras.join(" | ")}`
-                                        : "";
-                                    return (
-                                      <li key={base.id}>
-                                        {power?.nome ?? "Poder removido"} |
-                                        Grad. {base.graduacao}
-                                        {extrasTexto}
-                                      </li>
-                                    );
-                                  })}
-                                </ul>
-                                <ul className="ficha-inline-list">
-                                  {tecnicaModsSelecionados.length > 0 ? (
-                                    tecnicaModsSelecionados.map((linha) => (
-                                      <li key={`${tecnica.id}-${linha}`}>
-                                        {linha}
-                                      </li>
-                                    ))
-                                  ) : (
-                                    <li>
-                                      Nenhum modificador/falha selecionado.
-                                    </li>
-                                  )}
-                                </ul>
-                                <ul className="ficha-inline-list">
-                                  {tecnicaConfiguracaoCompleta.map((linha) => (
-                                    <li key={`${tecnica.id}-config-${linha}`}>
-                                      {linha}
-                                    </li>
-                                  ))}
-                                </ul>
+                              <div className="tecnica-showcase-card">
+                                <header className="tecnica-showcase-head">
+                                  <div className="tecnica-showcase-headline">
+                                    <span className="tecnica-showcase-acq">
+                                      Aquisicao:{" "}
+                                      {tecnicaEhGratuita
+                                        ? "Gratuita"
+                                        : `${TECHNIQUE_PP_BY_TYPE[tecnica.tipo]} PP`}
+                                    </span>
+                                    <strong>{tecnica.nome}</strong>
+                                  </div>
+                                  <div className="tecnica-showcase-head-actions">
+                                    <div className="tecnica-info-group">
+                                      <span
+                                        className={`tecnica-tipo-badge tipo-${tecnica.tipo.toLowerCase()}`}
+                                      >
+                                        {tecnica.tipo}
+                                      </span>
+                                      <span className="tecnica-custo-badge">
+                                        {tecnica.custoFinalPE} PE
+                                      </span>
+                                    </div>
+                                    <div className="tecnica-actions-group">
+                                      <button
+                                        type="button"
+                                        className="tecnica-report-trigger"
+                                        onClick={() =>
+                                          setTecnicaRelatorioModalId(tecnica.id)
+                                        }
+                                        aria-haspopup="dialog"
+                                        aria-expanded={
+                                          tecnicaRelatorioModalId === tecnica.id
+                                        }
+                                        aria-label={`Abrir relatorio da tecnica ${tecnica.nome}`}
+                                        title="Ver detalhes"
+                                      >
+                                        <svg
+                                          width="16"
+                                          height="16"
+                                          viewBox="0 0 24 24"
+                                          fill="currentColor"
+                                        >
+                                          <circle cx="12" cy="5" r="2" />
+                                          <circle cx="12" cy="12" r="2" />
+                                          <circle cx="12" cy="19" r="2" />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="tecnica-edit-button"
+                                        onClick={() =>
+                                          iniciarEdicaoTecnica(tecnica)
+                                        }
+                                        aria-label={`Editar tecnica ${tecnica.nome}`}
+                                        title="Editar"
+                                      >
+                                        <svg
+                                          width="16"
+                                          height="16"
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        >
+                                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="trash-button"
+                                        onClick={() =>
+                                          removerTecnicaDesenvolvida(tecnica.id)
+                                        }
+                                        aria-label={`Remover tecnica ${tecnica.nome}`}
+                                      >
+                                        <svg
+                                          viewBox="0 0 24 24"
+                                          aria-hidden="true"
+                                        >
+                                          <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9z" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  </div>
+                                </header>
+
+                                <div className="tecnica-showcase-frame">
+                                  <div className="tecnica-showcase-meta-grid">
+                                    <span>
+                                      <strong>Acao:</strong>{" "}
+                                      {tecnica.acao || "-"}
+                                    </span>
+                                    <span>
+                                      <strong>Alcance:</strong>{" "}
+                                      {tecnica.alcance || "-"}
+                                    </span>
+                                    <span>
+                                      <strong>Alvo:</strong>{" "}
+                                      {tecnica.alvo || "-"}
+                                    </span>
+                                    <span>
+                                      <strong>Duracao:</strong>{" "}
+                                      {tecnica.duracao || "-"}
+                                    </span>
+                                    <span>
+                                      <strong>Acerto:</strong>{" "}
+                                      {tecnica.acerto ?? "-"}
+                                    </span>
+                                    <span>
+                                      <strong>Dano:</strong>{" "}
+                                      {tecnica.danoNumerico ??
+                                        tecnicaDanoTotalCard}
+                                    </span>
+                                  </div>
+
+                                  <div className="tecnica-showcase-box">
+                                    <span className="tecnica-showcase-label">
+                                      Conceito
+                                    </span>
+                                    <p>{tecnica.conceito || "Sem conceito."}</p>
+                                  </div>
+
+                                  <div className="tecnica-showcase-box">
+                                    <span className="tecnica-showcase-label">
+                                      Efeito
+                                    </span>
+                                    <p>{tecnicaEfeitoExibicao}</p>
+                                  </div>
+
+                                  {tecnica.gatilho ? (
+                                    <div className="tecnica-showcase-box tecnica-showcase-box-small">
+                                      <span className="tecnica-showcase-label">
+                                        Gatilho
+                                      </span>
+                                      <p>{tecnica.gatilho}</p>
+                                    </div>
+                                  ) : null}
+
+                                  <div className="tecnica-showcase-subsection">
+                                    <span className="tecnica-showcase-label">
+                                      Poderes Base
+                                    </span>
+                                    <ul className="tecnica-showcase-tag-list">
+                                      {tecnica.poderesBase.map((base) => {
+                                        const extras: string[] = [];
+                                        if (base.danoSomaBase)
+                                          extras.push("dano base");
+                                        if (base.danoMetadeGrad)
+                                          extras.push("metade grad");
+                                        const extrasTexto =
+                                          extras.length > 0
+                                            ? ` | ${extras.join(" | ")}`
+                                            : "";
+                                        return (
+                                          <li key={base.id}>
+                                            {resolvePoderBaseNome(base)} ·{" "}
+                                            {base.graduacao} grad
+                                            {extrasTexto}
+                                          </li>
+                                        );
+                                      })}
+                                    </ul>
+                                  </div>
+
+                                  <div className="tecnica-showcase-subsection">
+                                    <span className="tecnica-showcase-label">
+                                      Modificacoes Aplicadas
+                                    </span>
+                                    <ul className="tecnica-showcase-tag-list tecnica-showcase-tag-list-mods">
+                                      {tecnicaTagsVisuais.length > 0 ? (
+                                        tecnicaTagsVisuais.map((tag) => (
+                                          <li key={`${tecnica.id}-${tag}`}>
+                                            {tag}
+                                          </li>
+                                        ))
+                                      ) : (
+                                        <li>
+                                          Sem modificacoes com custo direto.
+                                        </li>
+                                      )}
+                                    </ul>
+                                  </div>
+                                </div>
                               </div>
-                              <button
-                                type="button"
-                                className="trash-button"
-                                onClick={() =>
-                                  removerTecnicaDesenvolvida(tecnica.id)
-                                }
-                                aria-label={`Remover tecnica ${tecnica.nome}`}
-                              >
-                                <svg viewBox="0 0 24 24" aria-hidden="true">
-                                  <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9z" />
-                                </svg>
-                              </button>
+
+                              {tecnicaRelatorioModalId === tecnica.id
+                                ? createPortal(
+                                    <div
+                                      className="tecnica-report-modal-overlay"
+                                      onClick={() =>
+                                        setTecnicaRelatorioModalId(null)
+                                      }
+                                    >
+                                      <section
+                                        className="tecnica-report-modal"
+                                        role="dialog"
+                                        aria-modal="true"
+                                        aria-labelledby={`tecnica-report-modal-title-${tecnica.id}`}
+                                        onClick={(event) =>
+                                          event.stopPropagation()
+                                        }
+                                      >
+                                        <header className="tecnica-report-modal-head">
+                                          <div className="tecnica-report-modal-title-wrap">
+                                            <span className="tecnica-report-modal-kicker">
+                                              Relatorio completo
+                                            </span>
+                                            <h4
+                                              id={`tecnica-report-modal-title-${tecnica.id}`}
+                                            >
+                                              {tecnica.nome}
+                                            </h4>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            className="tecnica-report-modal-close"
+                                            onClick={() =>
+                                              setTecnicaRelatorioModalId(null)
+                                            }
+                                            aria-label="Fechar relatorio"
+                                          >
+                                            Fechar
+                                          </button>
+                                        </header>
+
+                                        <div className="tecnica-report-content">
+                                          <div className="tecnica-report-grid">
+                                            <p>
+                                              <strong>Custo base:</strong>{" "}
+                                              {formatSignedPe(
+                                                tecnica.custoBasePE,
+                                              )}
+                                            </p>
+                                            <p>
+                                              <strong>Modificadores:</strong>{" "}
+                                              {formatSignedPe(
+                                                tecnica.custoModificadoresPE,
+                                              )}
+                                            </p>
+                                            <p>
+                                              <strong>Reducoes:</strong>{" "}
+                                              {formatSignedPe(
+                                                -tecnica.reducoesPE,
+                                              )}
+                                            </p>
+                                            <p>
+                                              <strong>Custo final:</strong>{" "}
+                                              {tecnica.custoFinalPE} PE
+                                            </p>
+                                            <p>
+                                              <strong>Limite adicional:</strong>{" "}
+                                              +{tecnica.limiteAdicionalPE} PE
+                                            </p>
+                                            <p>
+                                              <strong>
+                                                Adicional aplicado:
+                                              </strong>{" "}
+                                              +{tecnica.adicionalAplicadoPE} PE
+                                            </p>
+                                            <p>
+                                              <strong>
+                                                Maior graduacao base:
+                                              </strong>{" "}
+                                              {tecnica.maiorGraduacaoBase}
+                                            </p>
+                                            <p>
+                                              <strong>
+                                                Bonus direto aplicado:
+                                              </strong>{" "}
+                                              +{tecnica.bonusDiretoAplicado}
+                                            </p>
+                                          </div>
+
+                                          <div className="tecnica-report-block">
+                                            <h5>Estrutura do dano</h5>
+                                            <ul className="ficha-inline-list">
+                                              <li>
+                                                Dano total:{" "}
+                                                {tecnicaDanoTotalCard}
+                                              </li>
+                                              {tecnicaPoderesDanoCard.map(
+                                                (poder) => (
+                                                  <li
+                                                    key={`${tecnica.id}-dano-${poder.id}`}
+                                                  >
+                                                    {poder.nome}: {poder.dano}
+                                                  </li>
+                                                ),
+                                              )}
+                                              {tecnicaBaseAplicacoesCard > 0 ? (
+                                                <li>
+                                                  Dano Base (
+                                                  {tecnicaBaseAtributoCard}):{" "}
+                                                  {tecnicaBaseValorCard}
+                                                  {tecnicaBaseAplicacoesCard > 1
+                                                    ? ` x${tecnicaBaseAplicacoesCard}`
+                                                    : ""}
+                                                </li>
+                                              ) : null}
+                                              {tecnicaAumentoDanoCard > 0 ? (
+                                                <li>
+                                                  Aumento de Dano:{" "}
+                                                  {tecnicaAumentoDanoCard}
+                                                </li>
+                                              ) : null}
+                                            </ul>
+                                          </div>
+
+                                          <div className="tecnica-report-block">
+                                            <h5>
+                                              Poderes base usados (
+                                              {tecnica.poderesBase.length})
+                                            </h5>
+                                            <p>
+                                              Total de graduacoes:{" "}
+                                              {totalGraduacoesBase}
+                                            </p>
+                                            <ul className="ficha-inline-list">
+                                              {tecnica.poderesBase.map(
+                                                (base) => {
+                                                  const extras: string[] = [];
+                                                  if (base.danoSomaBase)
+                                                    extras.push("dano base");
+                                                  if (base.danoMetadeGrad)
+                                                    extras.push("metade grad");
+                                                  return (
+                                                    <li
+                                                      key={`${tecnica.id}-report-base-${base.id}`}
+                                                    >
+                                                      {resolvePoderBaseNome(
+                                                        base,
+                                                      )}{" "}
+                                                      | GRAD {base.graduacao}
+                                                      {extras.length > 0
+                                                        ? ` | ${extras.join(" | ")}`
+                                                        : ""}
+                                                    </li>
+                                                  );
+                                                },
+                                              )}
+                                            </ul>
+                                          </div>
+
+                                          <div className="tecnica-report-block">
+                                            <h5>
+                                              Modificacoes e custos aplicados
+                                            </h5>
+                                            {tecnicaRelatorioCustos.length >
+                                            0 ? (
+                                              <ul className="ficha-inline-list">
+                                                {tecnicaRelatorioCustos.map(
+                                                  (entry, idx) => (
+                                                    <li
+                                                      key={`${tecnica.id}-report-cost-${idx}`}
+                                                    >
+                                                      {entry.nome}:{" "}
+                                                      {formatSignedPe(
+                                                        entry.custo,
+                                                      )}
+                                                    </li>
+                                                  ),
+                                                )}
+                                              </ul>
+                                            ) : (
+                                              <p>
+                                                Sem modificacoes que alterem o
+                                                custo.
+                                              </p>
+                                            )}
+                                          </div>
+
+                                          <div className="tecnica-report-block">
+                                            <h5>
+                                              Efeitos automaticos dos
+                                              modificadores
+                                            </h5>
+                                            {tecnicaEfeitoAuto.length > 0 ? (
+                                              <ul className="ficha-inline-list">
+                                                {tecnicaEfeitoAuto.map(
+                                                  (linha, idx) => (
+                                                    <li
+                                                      key={`${tecnica.id}-report-auto-${idx}`}
+                                                    >
+                                                      {linha}
+                                                    </li>
+                                                  ),
+                                                )}
+                                              </ul>
+                                            ) : (
+                                              <p>
+                                                Nenhum efeito automatico gerado.
+                                              </p>
+                                            )}
+                                          </div>
+
+                                          <p className="tecnica-report-created">
+                                            Criada em: {tecnica.createdAt}
+                                          </p>
+                                        </div>
+                                      </section>
+                                    </div>,
+                                    document.body,
+                                  )
+                                : null}
                             </article>
                           );
                         },
