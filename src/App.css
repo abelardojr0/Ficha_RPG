@@ -7030,6 +7030,7 @@ button.danger:hover,
 .tecnicas-dev-intro {
   padding: 0.45rem 0.65rem 0;
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.42rem;
 }
 
@@ -7040,7 +7041,12 @@ button.danger:hover,
 .tecnicas-dev-guide-duo {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-column: 1 / span 2;
   gap: 0.42rem;
+}
+
+.tecnicas-dev-intro > .tecnicas-dev-guide-card {
+  grid-column: 3;
 }
 
 .tecnicas-dev-guide-card {
@@ -7086,19 +7092,62 @@ button.danger:hover,
 }
 
 .tecnicas-dev-status-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-column: 1 / -1;
+  gap: 0.44rem;
 }
 
-.tecnicas-dev-status-chip {
-  padding: 0.2rem 0.48rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--ink-light) 38%, transparent);
-  background: color-mix(in srgb, var(--brand-accent) 12%, var(--paper-soft));
-  color: var(--ink);
-  font-size: 0.76rem;
-  font-weight: 600;
+.tecnicas-dev-status-card {
+  position: relative;
+  overflow: hidden;
+  padding: 0.5rem 0.62rem;
+  border: 1px solid color-mix(in srgb, var(--ink-light) 40%, transparent);
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--brand-accent) 18%, transparent),
+      transparent 62%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--paper-soft) 94%, #000),
+      color-mix(in srgb, var(--paper) 96%, #000)
+    );
+  box-shadow:
+    0 8px 18px color-mix(in srgb, var(--shadow-deep) 30%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 12%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.tecnicas-dev-status-card::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: color-mix(in srgb, var(--brand-accent) 62%, var(--brand));
+}
+
+.tecnicas-dev-status-label {
+  margin: 0;
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--ink-light) 72%, var(--ink));
+  white-space: nowrap;
+}
+
+.tecnicas-dev-status-value {
+  margin: 0;
+  font-size: 1.12rem;
+  line-height: 1.15;
+  font-weight: 800;
+  color: color-mix(in srgb, var(--ink) 94%, #ffffff);
+  margin-left: auto;
 }
 
 .tecnicas-dev-grid {
@@ -8571,11 +8620,16 @@ button.danger:hover,
   }
 
   .tecnicas-dev-grid,
+  .tecnicas-dev-intro,
   .tecnicas-dev-textareas,
   .tecnicas-dev-checks,
   .tecnicas-dev-guide-duo,
   .tecnica-auto-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tecnicas-dev-intro > .tecnicas-dev-guide-card {
+    grid-column: auto;
   }
 
   .tecnica-info-readouts {
@@ -8613,14 +8667,17 @@ button.danger:hover,
     padding-bottom: 0.52rem;
     margin-bottom: 0.52rem;
   }
+
   .tecnica-report-modal-overlay {
     padding: 0.55rem;
     align-items: flex-end;
   }
+
   .tecnica-report-modal {
     width: min(100vw, 100%);
     max-height: 92vh;
   }
+
   .tecnica-report-modal-head {
     flex-direction: column;
     align-items: flex-start;
@@ -8642,6 +8699,271 @@ button.danger:hover,
   .tecnica-showcase-meta-grid span:last-child {
     border-bottom: 0;
   }
+}
+
+/* TECHNIQUE CONFIRMATION MODAL */
+.tecnica-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: color-mix(in srgb, var(--shadow-deep) 72%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  backdrop-filter: blur(3px);
+}
+
+.tecnica-confirm-modal {
+  width: min(540px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--paper-soft) 96%, #000),
+    color-mix(in srgb, var(--paper) 98%, #000)
+  );
+  border: 1px solid color-mix(in srgb, var(--ink-light) 38%, transparent);
+  border-radius: 0;
+  box-shadow:
+    0 24px 48px color-mix(in srgb, var(--shadow-deep) 82%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+  display: flex;
+  flex-direction: column;
+}
+
+.tecnica-confirm-header {
+  padding: 1rem 1.1rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--ink-light) 30%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.tecnica-confirm-kicker {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: color-mix(in srgb, var(--brand-accent) 75%, var(--ink));
+}
+
+.tecnica-confirm-header h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.tecnica-confirm-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.tecnica-confirm-warning {
+  margin: 0.7rem 1.1rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 0;
+  border: 1px solid color-mix(in srgb, #f39c12 55%, transparent);
+  border-left: 3px solid #f39c12;
+  background: color-mix(in srgb, #f39c12 8%, var(--paper));
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
+.tecnica-confirm-warning svg {
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+  color: #d68910;
+}
+
+.tecnica-confirm-warning p {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--ink) 90%, #f39c12);
+}
+
+.tecnica-confirm-warning strong {
+  color: #d68910;
+}
+
+.tecnica-confirm-report {
+  padding: 0.7rem 1.1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.6rem;
+  flex: 1;
+}
+
+.tecnica-confirm-report-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.tecnica-confirm-report-label {
+  margin: 0;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-muted);
+}
+
+.tecnica-confirm-report-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.tecnica-confirm-report-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.48rem;
+  background: color-mix(in srgb, var(--ink) 3%, var(--paper-soft));
+  border: 1px solid color-mix(in srgb, var(--ink-light) 20%, transparent);
+  font-size: 0.81rem;
+  color: var(--ink-muted);
+}
+
+.tecnica-confirm-report-list li span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tecnica-confirm-positive {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: color-mix(in srgb, #4ade80 80%, white);
+  white-space: nowrap;
+}
+
+.tecnica-confirm-negative {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: color-mix(in srgb, #f87171 80%, white);
+  white-space: nowrap;
+}
+
+.tecnica-confirm-empty {
+  margin: 0;
+  padding: 0.5rem 0;
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+  grid-column: 1 / -1;
+}
+
+.tecnica-confirm-footer {
+  padding: 0.75rem 1.1rem;
+  border-top: 1px solid color-mix(in srgb, var(--ink-light) 28%, transparent);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.tecnica-confirm-cancel {
+  padding: 0.5rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--ink-light) 42%, transparent);
+  color: var(--ink-muted);
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.tecnica-confirm-cancel:hover {
+  background: color-mix(in srgb, var(--ink) 6%, var(--paper-soft));
+  color: var(--ink);
+}
+
+.tecnica-confirm-ok {
+  padding: 0.5rem 1.2rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: color-mix(in srgb, var(--brand) 28%, var(--paper));
+  border: 1px solid color-mix(in srgb, var(--brand) 55%, transparent);
+  color: color-mix(in srgb, var(--brand-accent) 90%, white);
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    box-shadow 140ms ease;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+}
+
+.tecnica-confirm-ok:hover {
+  background: color-mix(in srgb, var(--brand) 45%, var(--paper));
+  box-shadow:
+    0 4px 12px color-mix(in srgb, var(--brand-deep) 40%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 14%, transparent);
+  color: #ffffff;
+}
+
+/* SCROLL TO TOP BUTTON */
+.scroll-top-btn {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 9999;
+  width: 2.4rem;
+  height: 2.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--brand) 55%, var(--brand-deep));
+  background: color-mix(in srgb, var(--paper-soft) 80%, var(--brand-deep));
+  color: color-mix(in srgb, var(--brand-accent) 88%, white);
+  box-shadow:
+    0 4px 16px color-mix(in srgb, var(--shadow-deep) 55%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+  opacity: 0.88;
+  transition:
+    opacity 160ms ease,
+    background 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+  cursor: pointer;
+  padding: 0;
+}
+
+.scroll-top-btn:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--paper-soft) 60%, var(--brand));
+  transform: translateY(-2px);
+  box-shadow:
+    0 6px 20px color-mix(in srgb, var(--shadow-deep) 65%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 16%, transparent);
+}
+
+.scroll-top-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand) 55%, transparent);
+  outline-offset: 3px;
+}
+
+.scroll-top-btn svg {
+  flex: 0 0 auto;
+  display: block;
 }
 
 /* Final UI polish requested by user */

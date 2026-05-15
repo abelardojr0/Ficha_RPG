@@ -4939,6 +4939,20 @@ const buildTechniqueAutoEffectLines = (
     );
   }
 
+  const danoAmpliado = clamp(parseNatural(mods.danoAmpliado), 0, 3);
+  const criticoAprimorado = clamp(parseNatural(mods.criticoAprimorado), 0, 3);
+
+  if (danoAmpliado > 0) {
+    lines.push(
+      `Dano ampliado: +${danoAmpliado * 2} de dano adicional quando o dado de dano explodir.`,
+    );
+  }
+  if (criticoAprimorado > 0) {
+    lines.push(
+      `Critico ampliado: +${criticoAprimorado * 2} de dano adicional quando o D20 critar.`,
+    );
+  }
+
   return lines;
 };
 
@@ -6828,8 +6842,17 @@ function App() {
     null,
   );
   const [tecnicasSubTab, setTecnicasSubTab] = useState<"nova" | "minhas">(
-    "nova",
+    "minhas",
   );
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const [tecnicaConfirmModal, setTecnicaConfirmModal] = useState<{
+    additions: { nome: string; custo: number }[];
+    reductions: { nome: string; custo: number }[];
+    margemRestante: number;
+    tipo: string;
+    nome: string;
+    custoFinal: number;
+  } | null>(null);
   const [quickSheetRollRevealedDice, setQuickSheetRollRevealedDice] = useState<
     {
       value: number | null;
@@ -7101,6 +7124,12 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 300);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
     if (screen !== "group" || !selectedGroup) {
       return;
     }
@@ -7263,6 +7292,77 @@ function App() {
       }));
     }
   }, [selectedCharacter?.poderes]);
+
+  const poderesCatalogo = PODERES_POR_NAIPE[naipePoderSelecionado];
+
+  const tiposNoCatalogo = useMemo(
+    () => [...new Set(poderesCatalogo.map((p) => p.tipo))].sort(),
+    [poderesCatalogo],
+  );
+
+  const poderesCatalogoFiltrado = useMemo(
+    () =>
+      poderesCatalogo.filter((p) => {
+        if (
+          catalogoSearch &&
+          !p.nome.toLowerCase().includes(catalogoSearch.toLowerCase())
+        )
+          return false;
+        if (catalogoFiltroAcao && p.acao !== catalogoFiltroAcao) return false;
+        if (catalogoFiltroDuracao && p.duracao !== catalogoFiltroDuracao)
+          return false;
+        if (catalogoFiltroTipo && p.tipo !== catalogoFiltroTipo) return false;
+        return true;
+      }),
+    [
+      poderesCatalogo,
+      catalogoSearch,
+      catalogoFiltroAcao,
+      catalogoFiltroDuracao,
+      catalogoFiltroTipo,
+    ],
+  );
+
+  const tecnicaAutoEfeitoLinhas = useMemo(
+    () =>
+      buildTechniqueAutoEffectLines(
+        tecnicaDraft.modificadores,
+        tecnicaDraft.alcance,
+      ),
+    [tecnicaDraft.modificadores, tecnicaDraft.alcance],
+  );
+
+  useEffect(() => {
+    setTecnicaDraft((current) => {
+      const nextEfeito = upsertTechniqueAutoEffectBlock(
+        current.efeito,
+        tecnicaAutoEfeitoLinhas,
+      );
+
+      if (nextEfeito === current.efeito) {
+        return current;
+      }
+
+      return {
+        ...current,
+        efeito: nextEfeito,
+      };
+    });
+  }, [tecnicaAutoEfeitoLinhas]);
+
+  useEffect(
+    () => () => {
+      clearQuickSheetRollInterval();
+      clearQuickSheetRevealTimeouts();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (activeEditorTab === "tecnicas-desenvolvimento" && !tecnicaEmEdicaoId) {
+      setTecnicasSubTab("minhas");
+    }
+  }, [activeEditorTab, tecnicaEmEdicaoId]);
 
   // Helpers para gerenciar grupos
   const getGroupByKey = (groupKey: string): GroupRecord | null => {
@@ -9229,6 +9329,149 @@ function App() {
         theme="colored"
         className="app-toast-container"
       />
+
+      {tecnicaConfirmModal
+        ? createPortal(
+            <div
+              className="tecnica-confirm-overlay"
+              onClick={() => setTecnicaConfirmModal(null)}
+            >
+              <div
+                className="tecnica-confirm-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="tecnica-confirm-title"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <header className="tecnica-confirm-header">
+                  <div className="tecnica-confirm-kicker">
+                    Confirmar cadastro
+                  </div>
+                  <h4 id="tecnica-confirm-title">{tecnicaConfirmModal.nome}</h4>
+                  <div className="tecnica-confirm-meta">
+                    <span
+                      className={`tecnica-tipo-badge tipo-${tecnicaConfirmModal.tipo.toLowerCase()}`}
+                    >
+                      {tecnicaConfirmModal.tipo}
+                    </span>
+                    <span className="tecnica-custo-badge">
+                      {tecnicaConfirmModal.custoFinal} PE
+                    </span>
+                  </div>
+                </header>
+
+                {tecnicaConfirmModal.margemRestante > 0 && (
+                  <div className="tecnica-confirm-warning">
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                      <line x1="12" y1="9" x2="12" y2="13" />
+                      <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    <p>
+                      Ainda sobram{" "}
+                      <strong>{tecnicaConfirmModal.margemRestante} PE</strong>{" "}
+                      de margem disponivel. Tem certeza que quer cadastrar sem
+                      usar o maximo de recursos que esta tecnica pode ter?
+                    </p>
+                  </div>
+                )}
+
+                <div className="tecnica-confirm-report">
+                  {tecnicaConfirmModal.additions.length > 0 && (
+                    <div className="tecnica-confirm-report-col">
+                      <p className="tecnica-confirm-report-label">Aplicado</p>
+                      <ul className="tecnica-confirm-report-list">
+                        {tecnicaConfirmModal.additions.map((entry) => (
+                          <li key={`confirm-add-${entry.nome}`}>
+                            <span>{entry.nome}</span>
+                            <strong className="tecnica-confirm-positive">
+                              {formatSignedPe(entry.custo)}
+                            </strong>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {tecnicaConfirmModal.reductions.length > 0 && (
+                    <div className="tecnica-confirm-report-col">
+                      <p className="tecnica-confirm-report-label">Reduzido</p>
+                      <ul className="tecnica-confirm-report-list">
+                        {tecnicaConfirmModal.reductions.map((entry) => (
+                          <li key={`confirm-red-${entry.nome}`}>
+                            <span>{entry.nome}</span>
+                            <strong className="tecnica-confirm-negative">
+                              {formatSignedPe(entry.custo)}
+                            </strong>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {tecnicaConfirmModal.additions.length === 0 &&
+                    tecnicaConfirmModal.reductions.length === 0 && (
+                      <p className="tecnica-confirm-empty">
+                        Nenhum modificador ou reducao aplicado.
+                      </p>
+                    )}
+                </div>
+
+                <footer className="tecnica-confirm-footer">
+                  <button
+                    type="button"
+                    className="tecnica-confirm-cancel"
+                    onClick={() => setTecnicaConfirmModal(null)}
+                  >
+                    Voltar e editar
+                  </button>
+                  <button
+                    type="button"
+                    className="tecnica-confirm-ok"
+                    onClick={salvarTecnicaDesenvolvida}
+                  >
+                    {tecnicaEmEdicaoId
+                      ? "Confirmar alteracoes"
+                      : "Confirmar cadastro"}
+                  </button>
+                </footer>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {showScrollTop ? (
+        <button
+          type="button"
+          className="scroll-top-btn"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          aria-label="Voltar ao topo"
+          title="Voltar ao topo"
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="18 15 12 9 6 15" />
+          </svg>
+        </button>
+      ) : null}
     </>
   );
 
@@ -9343,71 +9586,6 @@ function App() {
     setSavePasswordError("");
     void persistSelectedCharacter(savePasswordInput);
   };
-
-  const poderesCatalogo = PODERES_POR_NAIPE[naipePoderSelecionado];
-
-  const tiposNoCatalogo = useMemo(
-    () => [...new Set(poderesCatalogo.map((p) => p.tipo))].sort(),
-    [poderesCatalogo],
-  );
-
-  const poderesCatalogoFiltrado = useMemo(
-    () =>
-      poderesCatalogo.filter((p) => {
-        if (
-          catalogoSearch &&
-          !p.nome.toLowerCase().includes(catalogoSearch.toLowerCase())
-        )
-          return false;
-        if (catalogoFiltroAcao && p.acao !== catalogoFiltroAcao) return false;
-        if (catalogoFiltroDuracao && p.duracao !== catalogoFiltroDuracao)
-          return false;
-        if (catalogoFiltroTipo && p.tipo !== catalogoFiltroTipo) return false;
-        return true;
-      }),
-    [
-      poderesCatalogo,
-      catalogoSearch,
-      catalogoFiltroAcao,
-      catalogoFiltroDuracao,
-      catalogoFiltroTipo,
-    ],
-  );
-
-  const tecnicaAutoEfeitoLinhas = useMemo(
-    () =>
-      buildTechniqueAutoEffectLines(
-        tecnicaDraft.modificadores,
-        tecnicaDraft.alcance,
-      ),
-    [tecnicaDraft.modificadores, tecnicaDraft.alcance],
-  );
-
-  useEffect(() => {
-    setTecnicaDraft((current) => {
-      const nextEfeito = upsertTechniqueAutoEffectBlock(
-        current.efeito,
-        tecnicaAutoEfeitoLinhas,
-      );
-
-      if (nextEfeito === current.efeito) {
-        return current;
-      }
-
-      return {
-        ...current,
-        efeito: nextEfeito,
-      };
-    });
-  }, [tecnicaAutoEfeitoLinhas]);
-
-  useEffect(
-    () => () => {
-      clearQuickSheetRollInterval();
-      clearQuickSheetRevealTimeouts();
-    },
-    [],
-  );
 
   const isSelectedCharacterPersisted =
     activeSheetId !== null && selectedCharacter?.id === activeSheetId;
@@ -10864,58 +11042,62 @@ function App() {
     }));
   };
 
-  useEffect(() => {
-    const danoAmpliado = parseNatural(tecnicaDraft.modificadores.danoAmpliado);
-    const criticoAmpliado = parseNatural(
-      tecnicaDraft.modificadores.criticoAprimorado,
-    );
-
-    let novoEfeito = tecnicaDraft.efeito.trim();
-
-    // Remover linhas antigas de dano/crítico ampliado se existirem
-    const linhas = novoEfeito.split(" | ");
-    const linhasLimpas = linhas.filter(
-      (linha) =>
-        !linha.includes("Dano ampliado:") &&
-        !linha.includes("Crítico ampliado:"),
-    );
-    novoEfeito = linhasLimpas.join(" | ").trim();
-
-    // Construir novas linhas de efeito
-    const efeitosNovos: string[] = [];
-    if (danoAmpliado > 0) {
-      efeitosNovos.push(
-        `Dano ampliado: +${danoAmpliado * 2} de dano adicional quando o dado de dano explodir.`,
-      );
+  const confirmarCadastroTecnica = () => {
+    const nomeNormalizado = tecnicaDraft.nome.trim();
+    if (!nomeNormalizado) {
+      toast.error("Defina um nome para a tecnica.");
+      return;
     }
-    if (criticoAmpliado > 0) {
-      efeitosNovos.push(
-        `Crítico ampliado: +${criticoAmpliado * 2} de dano adicional quando o D20 critar.`,
-      );
+    if (tecnicaBaseResolvida.length === 0) {
+      toast.error("Selecione ao menos um poder base valido.");
+      return;
     }
-
-    // Montar efeito final
-    if (efeitosNovos.length > 0) {
-      if (novoEfeito) {
-        novoEfeito = novoEfeito + " | " + efeitosNovos.join(" | ");
-      } else {
-        novoEfeito = efeitosNovos.join(" | ");
+    if (tecnicaExcedeLimite) {
+      toast.error(
+        `A tecnica excede o limite de modificadores (+${tecnicaLimiteAdicional} base + ${tecnicaReducoesPE} em reducoes = +${tecnicaLimiteAdicionalExpandido}) para tipo ${tecnicaDraft.tipo}.`,
+      );
+      return;
+    }
+    const emEdicao = tecnicaEmEdicaoId !== null;
+    if (!emEdicao) {
+      const tecnicaAcquisitionComNova = getTechniqueAcquisitionState(
+        nivelAtual,
+        [
+          ...selectedCharacter.tecnicasDesenvolvidas,
+          { id: "__draft__", tipo: tecnicaDraft.tipo },
+        ],
+      );
+      const custoPPAdicionalNovaTecnica =
+        tecnicaAcquisitionComNova.ppPagoTotal -
+        tecnicaAcquisitionAtual.ppPagoTotal;
+      if (nivelAtual < 5 && custoPPAdicionalNovaTecnica > 0) {
+        toast.error(
+          "Ate o nivel 4, voce so pode cadastrar tecnicas dentro da progressao gratuita. No nivel 5+, novas tecnicas alem da progressao custam PP.",
+        );
+        return;
+      }
+      if (
+        custoPPAdicionalNovaTecnica > 0 &&
+        ppRestante < custoPPAdicionalNovaTecnica
+      ) {
+        toast.error(
+          `PP insuficiente para adquirir a tecnica agora (custo adicional: ${custoPPAdicionalNovaTecnica} PP).`,
+        );
+        return;
       }
     }
-
-    // Só atualiza se realmente mudou para evitar loop
-    if (novoEfeito !== tecnicaDraft.efeito) {
-      setTecnicaDraft((current) => ({
-        ...current,
-        efeito: novoEfeito,
-      }));
-    }
-  }, [
-    tecnicaDraft.modificadores.danoAmpliado,
-    tecnicaDraft.modificadores.criticoAprimorado,
-  ]);
+    setTecnicaConfirmModal({
+      additions: tecnicaCustosAdicionais,
+      reductions: tecnicaCustosReducoes,
+      margemRestante: tecnicaMargemAdicionalDisponivel,
+      tipo: tecnicaDraft.tipo,
+      nome: nomeNormalizado,
+      custoFinal: tecnicaCustoFinalPE,
+    });
+  };
 
   const salvarTecnicaDesenvolvida = () => {
+    setTecnicaConfirmModal(null);
     const nomeNormalizado = tecnicaDraft.nome.trim();
     if (!nomeNormalizado) {
       toast.error("Defina um nome para a tecnica.");
@@ -14419,84 +14601,297 @@ function App() {
             {activeEditorTab === "tecnicas-desenvolvimento" ? (
               <section className="block tecnicas-dev-panel">
                 <h3>Desenvolvimento de Tecnicas</h3>
-                <div
-                  className="tecnicas-dev-intro"
-                  style={tecnicaEmEdicaoId ? { display: "none" } : undefined}
-                >
-                  <div className="tecnicas-dev-guide-duo">
-                    <div className="tecnicas-dev-guide-card">
-                      <p className="tecnicas-dev-guide-title">
-                        Fluxo de criacao de tecnica
-                      </p>
-                      <ol className="tecnicas-dev-guide-list">
-                        <li>
-                          Conceito e nome da tecnica (identidade de combate).
-                        </li>
-                        <li>
-                          Selecione 1+ poderes base coerentes e defina o efeito
-                          unificado da execucao.
-                        </li>
-                        <li>
-                          Defina tipo, acao, alcance, alvo, duracao, acerto,
-                          dano e gatilho quando houver.
-                        </li>
-                        <li>
-                          Aplique modificadores, limitacoes e falhas; valide
-                          limites e calcule o custo final.
-                        </li>
-                      </ol>
+                {tecnicasSubTab === "minhas" && !tecnicaEmEdicaoId ? (
+                  <div className="tecnicas-dev-intro">
+                    <div className="tecnicas-dev-guide-duo">
+                      <div className="tecnicas-dev-guide-card">
+                        <p className="tecnicas-dev-guide-title">
+                          Fluxo de criacao de tecnica
+                        </p>
+                        <ol className="tecnicas-dev-guide-list">
+                          <li>
+                            Conceito e nome da tecnica (identidade de combate).
+                          </li>
+                          <li>
+                            Selecione 1+ poderes base coerentes e defina o
+                            efeito unificado da execucao.
+                          </li>
+                          <li>
+                            Defina tipo, acao, alcance, alvo, duracao, acerto,
+                            dano e gatilho quando houver.
+                          </li>
+                          <li>
+                            Aplique modificadores, limitacoes e falhas; valide
+                            limites e calcule o custo final.
+                          </li>
+                        </ol>
+                      </div>
+
+                      <div className="tecnicas-dev-guide-card">
+                        <p className="tecnicas-dev-guide-title">
+                          Progressao gratuita obrigatoria (nivel 0 a 4)
+                        </p>
+                        <ul className="tecnicas-dev-guide-list">
+                          <li>Nivel 0: 2 Tecnicas Primarias gratis.</li>
+                          <li>Nivel 1: +1 Tecnica Primaria gratis.</li>
+                          <li>Nivel 2: +1 Tecnica Avancada gratis.</li>
+                          <li>
+                            Nivel 3: +1 Tecnica Primaria ou Avancada gratis.
+                          </li>
+                          <li>Nivel 4: +1 Tecnica Especial gratis.</li>
+                        </ul>
+                      </div>
                     </div>
 
                     <div className="tecnicas-dev-guide-card">
                       <p className="tecnicas-dev-guide-title">
-                        Progressao gratuita obrigatoria (nivel 0 a 4)
+                        Principio do sistema
                       </p>
-                      <ul className="tecnicas-dev-guide-list">
-                        <li>Nivel 0: 2 Tecnicas Primarias gratis.</li>
-                        <li>Nivel 1: +1 Tecnica Primaria gratis.</li>
-                        <li>Nivel 2: +1 Tecnica Avancada gratis.</li>
-                        <li>
-                          Nivel 3: +1 Tecnica Primaria ou Avancada gratis.
-                        </li>
-                        <li>Nivel 4: +1 Tecnica Especial gratis.</li>
-                      </ul>
+                      <p className="tecnicas-dev-guide-note">
+                        Tecnicas sao construidas como uma unica acao e nao criam
+                        efeito isolado fora dos poderes base.
+                      </p>
+                      <p className="tecnicas-dev-guide-note">
+                        Formula oficial: Custo Final = Custo Base +
+                        Modificadores - Limitacoes/Falhas.
+                      </p>
+                      <p className="tecnicas-dev-guide-note">
+                        Limite de adicional antes das reducoes: Primaria +5,
+                        Avancada +10, Especial +16.
+                      </p>
+                      <p className="tecnicas-dev-guide-note">
+                        Aquisicao no nivel 5+: Primaria
+                        {` (${TECHNIQUE_PP_BY_TYPE.Primaria} PP)`}, Avancada
+                        {` (${TECHNIQUE_PP_BY_TYPE.Avancada} PP)`}, Especial
+                        {` (${TECHNIQUE_PP_BY_TYPE.Especial} PP)`}.
+                      </p>
+                    </div>
+
+                    <div className="tecnicas-dev-status-row">
+                      <article className="tecnicas-dev-status-card">
+                        <span className="tecnicas-dev-status-label">
+                          Tecnicas cadastradas
+                        </span>
+                        <strong className="tecnicas-dev-status-value">
+                          {tecnicaAcquisitionAtual.freeTotalUsado}/
+                          {tecnicaAcquisitionAtual.freeTotalDisponivel}
+                        </strong>
+                      </article>
+                      <article className="tecnicas-dev-status-card">
+                        <span className="tecnicas-dev-status-label">
+                          Tecnicas disponiveis
+                        </span>
+                        <strong className="tecnicas-dev-status-value">
+                          {tecnicaAcquisitionAtual.freeRestante}
+                        </strong>
+                      </article>
                     </div>
                   </div>
+                ) : null}
 
-                  <div className="tecnicas-dev-guide-card">
-                    <p className="tecnicas-dev-guide-title">
-                      Principio do sistema
-                    </p>
-                    <p className="tecnicas-dev-guide-note">
-                      Tecnicas sao construidas como uma unica acao e nao criam
-                      efeito isolado fora dos poderes base.
-                    </p>
-                    <p className="tecnicas-dev-guide-note">
-                      Formula oficial: Custo Final = Custo Base + Modificadores
-                      - Limitacoes/Falhas.
-                    </p>
-                    <p className="tecnicas-dev-guide-note">
-                      Limite de adicional antes das reducoes: Primaria +5,
-                      Avancada +10, Especial +16.
-                    </p>
-                    <p className="tecnicas-dev-guide-note">
-                      Aquisicao no nivel 5+: Primaria
-                      {` (${TECHNIQUE_PP_BY_TYPE.Primaria} PP)`}, Avancada
-                      {` (${TECHNIQUE_PP_BY_TYPE.Avancada} PP)`}, Especial
-                      {` (${TECHNIQUE_PP_BY_TYPE.Especial} PP)`}.
-                    </p>
-                  </div>
+                {(tecnicasSubTab === "nova" || !!tecnicaEmEdicaoId) && (
+                  <section className="tecnicas-dev-subsection tecnica-cost-summary">
+                    <h4>Calculo Final</h4>
+                    <div className="tecnica-cost-cards">
+                      <article className="tecnica-cost-card">
+                        <span className="tecnica-cost-card-label">
+                          Custo Base
+                        </span>
+                        <strong>{tecnicaCustoBasePE} PE</strong>
+                      </article>
+                      <article className="tecnica-cost-card tecnica-cost-card-positive">
+                        <span className="tecnica-cost-card-label">
+                          Modificadores
+                        </span>
+                        <strong>+{tecnicaCustoModificadoresPE} PE</strong>
+                      </article>
+                      <article className="tecnica-cost-card tecnica-cost-card-negative">
+                        <span className="tecnica-cost-card-label">
+                          Reducoes
+                        </span>
+                        <strong>-{tecnicaReducoesPE} PE</strong>
+                      </article>
+                      <article className="tecnica-cost-card tecnica-cost-card-final">
+                        <span className="tecnica-cost-card-label">
+                          Custo Final
+                        </span>
+                        <strong>{tecnicaCustoFinalPE} PE</strong>
+                      </article>
+                    </div>
 
-                  <div className="tecnicas-dev-status-row">
-                    <span className="tecnicas-dev-status-chip">
-                      Vagas usadas: {tecnicaAcquisitionAtual.freeTotalUsado}/
-                      {tecnicaAcquisitionAtual.freeTotalDisponivel}
-                    </span>
-                    <span className="tecnicas-dev-status-chip">
-                      Vagas restantes: {tecnicaAcquisitionAtual.freeRestante}
-                    </span>
-                  </div>
-                </div>
+                    <div className="tecnica-cost-breakdown-grid">
+                      <article className="tecnica-budget-panel">
+                        <div className="tecnica-budget-head">
+                          <div>
+                            <h5>Orcamento de Modificadores</h5>
+                            <p>
+                              Quanto da margem da tecnica esta sendo consumido
+                              agora.
+                            </p>
+                          </div>
+                          <span
+                            className={`tecnica-budget-status ${
+                              tecnicaExcedeLimite
+                                ? "tecnica-budget-status-danger"
+                                : "tecnica-budget-status-ok"
+                            }`}
+                          >
+                            {tecnicaExcedeLimite
+                              ? "Acima do limite"
+                              : "Dentro do limite"}
+                          </span>
+                        </div>
+
+                        <div className="tecnica-budget-meter-block">
+                          <div className="tecnica-budget-meter-labels">
+                            <strong>
+                              {tecnicaCustoModificadoresPE}/
+                              {tecnicaLimiteAdicionalExpandido} PE
+                            </strong>
+                            <span>
+                              Consumo atual da margem total disponivel
+                            </span>
+                          </div>
+                          <div
+                            className="tecnica-budget-meter-track"
+                            aria-hidden="true"
+                          >
+                            <span
+                              className={`tecnica-budget-meter-fill ${
+                                tecnicaExcedeLimite
+                                  ? "tecnica-budget-meter-fill-danger"
+                                  : ""
+                              }`}
+                              style={{
+                                width: `${tecnicaUsoOrcamentoPercentual}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="tecnica-budget-stats">
+                          <article className="tecnica-budget-stat-card tecnica-budget-stat-card-emphasis">
+                            <span>Adicional aplicado</span>
+                            <strong>+{tecnicaCustoModificadoresPE} PE</strong>
+                            <small>
+                              Bruto de todos os modificadores adicionados.
+                            </small>
+                          </article>
+                          <article className="tecnica-budget-stat-card">
+                            <span>Limite base</span>
+                            <strong>+{tecnicaLimiteAdicional} PE</strong>
+                            <small>{tecnicaDraft.tipo}</small>
+                          </article>
+                          <article className="tecnica-budget-stat-card">
+                            <span>Folga por reducoes</span>
+                            <strong>+{tecnicaReducoesPE} PE</strong>
+                            <small>
+                              Total de reducoes que ampliam a margem.
+                            </small>
+                          </article>
+                          <article className="tecnica-budget-stat-card">
+                            <span>Margem restante</span>
+                            <strong>
+                              +{tecnicaMargemAdicionalDisponivel} PE
+                            </strong>
+                            <small>
+                              Ainda disponivel sem estourar o limite.
+                            </small>
+                          </article>
+                        </div>
+
+                        <div className="tecnica-budget-columns">
+                          <div className="tecnica-budget-column">
+                            <div className="tecnica-budget-column-head">
+                              <h6>Aplicado em</h6>
+                              <span>+{tecnicaTotalAdicionais} PE brutos</span>
+                            </div>
+                            {tecnicaCustosAdicionais.length > 0 ? (
+                              <ul className="tecnica-budget-chip-list">
+                                {tecnicaCustosAdicionais.map((entry) => (
+                                  <li
+                                    key={`draft-addition-${entry.nome}`}
+                                    className="tecnica-budget-chip"
+                                  >
+                                    <span>{entry.nome}</span>
+                                    <strong>
+                                      {formatSignedPe(entry.custo)}
+                                    </strong>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="tecnica-budget-empty">
+                                Nenhum modificador consumindo adicional no
+                                momento.
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="tecnica-budget-column">
+                            <div className="tecnica-budget-column-head">
+                              <h6>Reducoes que aliviam o custo</h6>
+                              <span>-{tecnicaTotalReducoesDetalhadas} PE</span>
+                            </div>
+                            {tecnicaCustosReducoes.length > 0 ? (
+                              <ul className="tecnica-budget-chip-list">
+                                {tecnicaCustosReducoes.map((entry) => (
+                                  <li
+                                    key={`draft-reduction-${entry.nome}`}
+                                    className="tecnica-budget-chip tecnica-budget-chip-reduction"
+                                  >
+                                    <span>{entry.nome}</span>
+                                    <strong>
+                                      {formatSignedPe(entry.custo)}
+                                    </strong>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="tecnica-budget-empty">
+                                Nenhuma reducao compensando os modificadores.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    </div>
+
+                    <p className="tecnica-cost-note">
+                      Formula: Custo Final = Custo Base + Modificadores -
+                      Reducoes.
+                    </p>
+                    {tecnicaExcedeLimite ? (
+                      <p className="danger-value">
+                        Excede limite de PE adicional para tecnica{" "}
+                        {tecnicaDraft.tipo}.
+                      </p>
+                    ) : null}
+                    <div className="tecnica-form-actions">
+                      <button
+                        type="button"
+                        onClick={confirmarCadastroTecnica}
+                        disabled={
+                          tecnicaExcedeLimite ||
+                          !Number.isFinite(tecnicaCustoFinalPE)
+                        }
+                      >
+                        {tecnicaEmEdicaoId
+                          ? "Salvar alteracoes"
+                          : "Cadastrar tecnica"}
+                      </button>
+                      {tecnicaEmEdicaoId && (
+                        <button
+                          type="button"
+                          className="tecnica-cancel-button"
+                          onClick={cancelarEdicaoTecnica}
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                    </div>
+                  </section>
+                )}
 
                 <div className="powers-tabs">
                   <button
@@ -16369,211 +16764,6 @@ function App() {
                             </small>
                           </span>
                         </label>
-                      </div>
-                    </section>
-
-                    <section className="tecnicas-dev-subsection tecnica-cost-summary">
-                      <h4>Calculo Final</h4>
-                      <div className="tecnica-cost-cards">
-                        <article className="tecnica-cost-card">
-                          <span className="tecnica-cost-card-label">
-                            Custo Base
-                          </span>
-                          <strong>{tecnicaCustoBasePE} PE</strong>
-                        </article>
-                        <article className="tecnica-cost-card tecnica-cost-card-positive">
-                          <span className="tecnica-cost-card-label">
-                            Modificadores
-                          </span>
-                          <strong>+{tecnicaCustoModificadoresPE} PE</strong>
-                        </article>
-                        <article className="tecnica-cost-card tecnica-cost-card-negative">
-                          <span className="tecnica-cost-card-label">
-                            Reducoes
-                          </span>
-                          <strong>-{tecnicaReducoesPE} PE</strong>
-                        </article>
-                        <article className="tecnica-cost-card tecnica-cost-card-final">
-                          <span className="tecnica-cost-card-label">
-                            Custo Final
-                          </span>
-                          <strong>{tecnicaCustoFinalPE} PE</strong>
-                        </article>
-                      </div>
-
-                      <div className="tecnica-cost-breakdown-grid">
-                        <article className="tecnica-budget-panel">
-                          <div className="tecnica-budget-head">
-                            <div>
-                              <h5>Orcamento de Modificadores</h5>
-                              <p>
-                                Quanto da margem da tecnica esta sendo consumido
-                                agora.
-                              </p>
-                            </div>
-                            <span
-                              className={`tecnica-budget-status ${
-                                tecnicaExcedeLimite
-                                  ? "tecnica-budget-status-danger"
-                                  : "tecnica-budget-status-ok"
-                              }`}
-                            >
-                              {tecnicaExcedeLimite
-                                ? "Acima do limite"
-                                : "Dentro do limite"}
-                            </span>
-                          </div>
-
-                          <div className="tecnica-budget-meter-block">
-                            <div className="tecnica-budget-meter-labels">
-                              <strong>
-                                {tecnicaCustoModificadoresPE}/
-                                {tecnicaLimiteAdicionalExpandido} PE
-                              </strong>
-                              <span>
-                                Consumo atual da margem total disponivel
-                              </span>
-                            </div>
-                            <div
-                              className="tecnica-budget-meter-track"
-                              aria-hidden="true"
-                            >
-                              <span
-                                className={`tecnica-budget-meter-fill ${
-                                  tecnicaExcedeLimite
-                                    ? "tecnica-budget-meter-fill-danger"
-                                    : ""
-                                }`}
-                                style={{
-                                  width: `${tecnicaUsoOrcamentoPercentual}%`,
-                                }}
-                              />
-                            </div>
-                          </div>
-
-                          <div className="tecnica-budget-stats">
-                            <article className="tecnica-budget-stat-card tecnica-budget-stat-card-emphasis">
-                              <span>Adicional aplicado</span>
-                              <strong>+{tecnicaAdicionalAplicadoPE} PE</strong>
-                              <small>
-                                Liquido depois de abater as reducoes
-                                selecionadas.
-                              </small>
-                            </article>
-                            <article className="tecnica-budget-stat-card">
-                              <span>Limite base</span>
-                              <strong>+{tecnicaLimiteAdicional} PE</strong>
-                              <small>{tecnicaDraft.tipo}</small>
-                            </article>
-                            <article className="tecnica-budget-stat-card">
-                              <span>Folga por reducoes</span>
-                              <strong>+{tecnicaReducoesPE} PE</strong>
-                              <small>
-                                Total de reducoes que ampliam a margem.
-                              </small>
-                            </article>
-                            <article className="tecnica-budget-stat-card">
-                              <span>Margem restante</span>
-                              <strong>
-                                +{tecnicaMargemAdicionalDisponivel} PE
-                              </strong>
-                              <small>
-                                Ainda disponivel sem estourar o limite.
-                              </small>
-                            </article>
-                          </div>
-
-                          <div className="tecnica-budget-columns">
-                            <div className="tecnica-budget-column">
-                              <div className="tecnica-budget-column-head">
-                                <h6>Aplicado em</h6>
-                                <span>+{tecnicaTotalAdicionais} PE brutos</span>
-                              </div>
-                              {tecnicaCustosAdicionais.length > 0 ? (
-                                <ul className="tecnica-budget-chip-list">
-                                  {tecnicaCustosAdicionais.map((entry) => (
-                                    <li
-                                      key={`draft-addition-${entry.nome}`}
-                                      className="tecnica-budget-chip"
-                                    >
-                                      <span>{entry.nome}</span>
-                                      <strong>
-                                        {formatSignedPe(entry.custo)}
-                                      </strong>
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p className="tecnica-budget-empty">
-                                  Nenhum modificador consumindo adicional no
-                                  momento.
-                                </p>
-                              )}
-                            </div>
-
-                            <div className="tecnica-budget-column">
-                              <div className="tecnica-budget-column-head">
-                                <h6>Reducoes que aliviam o custo</h6>
-                                <span>
-                                  -{tecnicaTotalReducoesDetalhadas} PE
-                                </span>
-                              </div>
-                              {tecnicaCustosReducoes.length > 0 ? (
-                                <ul className="tecnica-budget-chip-list">
-                                  {tecnicaCustosReducoes.map((entry) => (
-                                    <li
-                                      key={`draft-reduction-${entry.nome}`}
-                                      className="tecnica-budget-chip tecnica-budget-chip-reduction"
-                                    >
-                                      <span>{entry.nome}</span>
-                                      <strong>
-                                        {formatSignedPe(entry.custo)}
-                                      </strong>
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p className="tecnica-budget-empty">
-                                  Nenhuma reducao compensando os modificadores.
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </article>
-                      </div>
-
-                      <p className="tecnica-cost-note">
-                        Formula: Custo Final = Custo Base + Modificadores -
-                        Reducoes.
-                      </p>
-                      {tecnicaExcedeLimite ? (
-                        <p className="danger-value">
-                          Excede limite de PE adicional para tecnica{" "}
-                          {tecnicaDraft.tipo}.
-                        </p>
-                      ) : null}
-                      <div className="tecnica-form-actions">
-                        <button
-                          type="button"
-                          onClick={salvarTecnicaDesenvolvida}
-                          disabled={
-                            tecnicaExcedeLimite ||
-                            !Number.isFinite(tecnicaCustoFinalPE)
-                          }
-                        >
-                          {tecnicaEmEdicaoId
-                            ? "Salvar alteracoes"
-                            : "Cadastrar tecnica"}
-                        </button>
-                        {tecnicaEmEdicaoId && (
-                          <button
-                            type="button"
-                            className="tecnica-cancel-button"
-                            onClick={cancelarEdicaoTecnica}
-                          >
-                            Cancelar
-                          </button>
-                        )}
                       </div>
                     </section>
                   </>
