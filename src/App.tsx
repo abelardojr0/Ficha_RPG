@@ -9,13 +9,20 @@
 import { createPortal } from "react-dom";
 import { ToastContainer, toast } from "react-toastify";
 import { FaShieldHalved, FaWeightHanging } from "react-icons/fa6";
-import { GiRollingEnergy, GiScrollQuill, GiWalkingBoot } from "react-icons/gi";
+import {
+  GiRollingDices,
+  GiRollingEnergy,
+  GiScrollQuill,
+  GiWalkingBoot,
+} from "react-icons/gi";
 import {
   MdOutlineAddPhotoAlternate,
   MdCheckBox,
   MdCheckBoxOutlineBlank,
   MdBolt,
   MdCallSplit,
+  MdAdd,
+  MdRemove,
   MdOutlineShield,
 } from "react-icons/md";
 import { IoMdHeartHalf } from "react-icons/io";
@@ -6899,6 +6906,9 @@ function App() {
   const [tecnicaDraft, setTecnicaDraft] = useState<DevelopedTechniqueDraft>(
     () => restoredDraft?.tecnicaDraft ?? createDevelopedTechniqueDraft(),
   );
+  const [quickSheetResources, setQuickSheetResources] = useState<
+    Record<string, { vida: number; eter: number }>
+  >({});
   const tecnicaMods = {
     ...createDevelopedTechniqueModifierDefaults(),
     ...(tecnicaDraft.modificadores ?? {}),
@@ -11498,6 +11508,20 @@ function App() {
   const vidaMaxima =
     VIDA_BASE_POR_CONSTITUICAO[selectedCharacter.atributos.Constituicao];
   const eterMaximo = ETER_BASE_POR_TECNICA[selectedCharacter.atributos.Tecnica];
+  const quickSheetResourceState = quickSheetResources[selectedCharacter.id] ?? {
+    vida: vidaMaxima,
+    eter: eterMaximo,
+  };
+  const quickSheetVidaAtual = clamp(
+    quickSheetResourceState.vida,
+    0,
+    vidaMaxima,
+  );
+  const quickSheetEterAtual = clamp(
+    quickSheetResourceState.eter,
+    0,
+    eterMaximo,
+  );
   const hasAcuidade = selectedCharacter.vantagens.some(
     (vantagem) => vantagem.catalogId === "acuidade",
   );
@@ -11905,21 +11929,133 @@ function App() {
     );
   };
 
-  const quickSheetDanoBaseTexto =
-    danoBase >= 0 ? `+${danoBase}` : `${danoBase}`;
-  const quickSheetDanoPoderesTexto =
-    poderesCombateCalculados.length === 0
-      ? "Sem poder ofensivo"
-      : poderesCombateCalculados
-          .map((item) =>
-            item.total >= 0
-              ? `${item.power.nome} +${item.total}`
-              : `${item.power.nome} ${item.total}`,
-          )
-          .join(" | ");
+  const renderQuickSheetCombatDieIcon = (die: Dice | "D20") => {
+    switch (die) {
+      case "D4":
+        return (
+          <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+            <polygon className="die-face-top" points="32 4 55 47 32 59" />
+            <polygon className="die-face-main" points="32 4 32 59 8 45" />
+            <polygon className="die-face-side" points="8 45 32 59 55 47" />
+            <path className="die-face-line die-face-line-strong" d="M32 4 32 59" />
+            <path className="die-face-line" d="M32 4 8 45 32 59 55 47Z" />
+            <path className="die-face-line" d="M8 45 55 47" />
+          </svg>
+        );
+      case "D6":
+        return (
+          <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+            <polygon className="die-face-top" points="32 7 54 19 32 31 10 19" />
+            <polygon className="die-face-main" points="10 19 32 31 32 57 10 44" />
+            <polygon className="die-face-side" points="54 19 32 31 32 57 54 44" />
+            <path className="die-face-line" d="M10 19v25l22 13 22-13V19" />
+            <path className="die-face-line" d="M32 31v26" />
+          </svg>
+        );
+      case "D8":
+        return (
+          <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+            <polygon className="die-face-main" points="32 3 56 30 50 38 32 61 14 38 8 30" />
+            <polygon className="die-face-top" points="32 3 56 30 8 30" />
+            <polygon className="die-face-side" points="8 30 14 38 32 61 32 30" />
+            <polygon className="die-face-main" points="56 30 50 38 32 61 32 30" />
+            <path className="die-face-line die-face-line-strong" d="M8 30h48" />
+            <path className="die-face-line" d="M32 3v58" />
+          </svg>
+        );
+      case "D10":
+        return (
+          <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+            <polygon className="die-face-top" points="32 3 47 30 32 37 17 30" />
+            <polygon className="die-face-main" points="17 30 32 37 32 61 7 39" />
+            <polygon className="die-face-side" points="47 30 57 39 32 61 32 37" />
+            <path className="die-face-line" d="M32 3 7 39 32 61 57 39Z" />
+            <path className="die-face-line" d="M17 30h30" />
+            <path className="die-face-line" d="M32 3v58" />
+          </svg>
+        );
+      case "D12":
+        return (
+          <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+            <polygon className="die-face-main" points="32 5 50 12 59 29 53 49 32 59 11 49 5 29 14 12" />
+            <polygon className="die-face-top" points="32 17 45 25 40 41 24 41 19 25" />
+            <path className="die-face-line" d="M32 5 32 17" />
+            <path className="die-face-line" d="M32 59 24 41" />
+          </svg>
+        );
+      case "D20":
+        return (
+          <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+            <polygon className="die-face-main" points="32 4 50 11 60 29 53 49 32 60 11 49 4 29 14 11" />
+            <polygon className="die-face-top" points="32 4 50 11 41 28 23 28 14 11" />
+            <polygon className="die-face-side" points="23 28 41 28 53 49 32 60 11 49" />
+            <path className="die-face-line" d="M32 4 23 28 32 60 41 28Z" />
+            <path className="die-face-line" d="M11 49 32 60 53 49" />
+          </svg>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const quickSheetDanoBaseTexto = String(danoBase);
+  const quickSheetDamageSources = [
+    {
+      id: "dano-base",
+      nome: `Base (${danoBaseAtributo})`,
+      valor: quickSheetDanoBaseTexto,
+      detalhe: selectedCharacter.atributos[danoBaseAtributo],
+    },
+    ...poderesCombateCalculados.map((item) => ({
+      id: item.id,
+      nome: item.power.nome,
+      valor: String(item.total),
+      detalhe: [
+        `Grad. ${item.graduacao}`,
+        item.config.metadeGrad ? "metade da grad." : null,
+        item.config.incluiDanoBase ? "inclui base" : null,
+      ]
+        .filter((detail): detail is string => detail !== null)
+        .join(" | "),
+    })),
+  ];
   const quickSheetRollHasPendingDice = quickSheetRollRevealedDice.some(
     (step) => step.pending,
   );
+  const quickSheetCombatEntries = [
+    {
+      key: "ataque-cac",
+      nome: "Ataque CaC" as const,
+      dado: selectedCharacter.combate.ataqueCac,
+    },
+    {
+      key: "disparo",
+      nome: "Disparo" as const,
+      dado: selectedCharacter.combate.disparo,
+    },
+  ];
+
+  const adjustQuickSheetResource = (
+    resource: "vida" | "eter",
+    delta: number,
+  ) => {
+    const resourceMax = resource === "vida" ? vidaMaxima : eterMaximo;
+
+    setQuickSheetResources((current) => {
+      const currentResource = current[selectedCharacter.id] ?? {
+        vida: vidaMaxima,
+        eter: eterMaximo,
+      };
+
+      return {
+        ...current,
+        [selectedCharacter.id]: {
+          ...currentResource,
+          [resource]: clamp(currentResource[resource] + delta, 0, resourceMax),
+        },
+      };
+    });
+  };
 
   if (screen === "quick-sheet") {
     return (
@@ -11987,72 +12123,177 @@ function App() {
           </nav>
 
           {fichaGeradaPagina === 1 ? (
-            <div className="quick-sheet-grid">
-              <section className="quick-sheet-card quick-sheet-summary-card">
-                <h2>
-                  <span className="quick-sheet-title">Resumo rapido</span>
-                </h2>
-                <div className="quick-sheet-priority-bar quick-sheet-priority-bar-inline">
-                  <article className="quick-sheet-priority-item">
-                    <span className="quick-sheet-priority-label">
-                      <IoMdHeartHalf aria-hidden="true" />
-                      Vida
-                    </span>
-                    <strong>{vidaMaxima}</strong>
-                  </article>
-                  <article className="quick-sheet-priority-item">
-                    <span className="quick-sheet-priority-label">
-                      <GiRollingEnergy aria-hidden="true" />
-                      Eter
-                    </span>
-                    <strong>{eterMaximo}</strong>
-                  </article>
-                  <article className="quick-sheet-priority-item">
-                    <span className="quick-sheet-priority-label">
-                      <MdOutlineShield aria-hidden="true" />
-                      Defesa
-                    </span>
-                    <strong>{defesaAtual}</strong>
-                  </article>
-                  <article className="quick-sheet-priority-item">
-                    <span className="quick-sheet-priority-label">
-                      <FaShieldHalved aria-hidden="true" />
-                      Resistencia
-                    </span>
-                    <strong>{resistenciaTotalEfetiva}</strong>
-                  </article>
-                  <article className="quick-sheet-priority-item">
-                    <span className="quick-sheet-priority-label">
-                      <GiWalkingBoot aria-hidden="true" />
-                      Movimento
-                    </span>
-                    <strong>{movimentoAtual}m</strong>
-                  </article>
-                  <article className="quick-sheet-priority-item">
-                    <span className="quick-sheet-priority-label">
-                      <MdBolt aria-hidden="true" />
-                      Dano
-                    </span>
-                    <strong className="quick-sheet-priority-damage">
-                      <span>{quickSheetDanoPoderesTexto}</span>
-                      <span className="quick-sheet-priority-damage-base">
-                        Base {quickSheetDanoBaseTexto}
-                      </span>
+            <>
+              <div className="quick-sheet-resource-panel quick-sheet-resource-panel-hero">
+                <article className="quick-sheet-resource-card quick-sheet-resource-card-vida">
+                  <span className="quick-sheet-resource-label">
+                    <IoMdHeartHalf aria-hidden="true" />
+                    Vida
+                  </span>
+                  <div className="quick-sheet-resource-control">
+                    <button
+                      type="button"
+                      className="quick-sheet-resource-button"
+                      onClick={() => adjustQuickSheetResource("vida", -1)}
+                      disabled={quickSheetVidaAtual <= 0}
+                      aria-label="Reduzir vida"
+                      title="Reduzir vida"
+                    >
+                      <MdRemove aria-hidden="true" />
+                    </button>
+                    <strong className="quick-sheet-resource-value">
+                      <span>{quickSheetVidaAtual}</span>
+                      <small>/ {vidaMaxima}</small>
                     </strong>
-                  </article>
-                  <article className="quick-sheet-priority-item">
-                    <span className="quick-sheet-priority-label">
-                      <FaWeightHanging aria-hidden="true" />
-                      Carga
-                    </span>
-                    <strong>{cargaAtual}kg</strong>
-                  </article>
-                </div>
-              </section>
+                    <button
+                      type="button"
+                      className="quick-sheet-resource-button"
+                      onClick={() => adjustQuickSheetResource("vida", 1)}
+                      disabled={quickSheetVidaAtual >= vidaMaxima}
+                      aria-label="Aumentar vida"
+                      title="Aumentar vida"
+                    >
+                      <MdAdd aria-hidden="true" />
+                    </button>
+                  </div>
+                </article>
+                <article className="quick-sheet-resource-card quick-sheet-resource-card-eter">
+                  <span className="quick-sheet-resource-label">
+                    <GiRollingEnergy aria-hidden="true" />
+                    Eter
+                  </span>
+                  <div className="quick-sheet-resource-control">
+                    <button
+                      type="button"
+                      className="quick-sheet-resource-button"
+                      onClick={() => adjustQuickSheetResource("eter", -1)}
+                      disabled={quickSheetEterAtual <= 0}
+                      aria-label="Reduzir eter"
+                      title="Reduzir eter"
+                    >
+                      <MdRemove aria-hidden="true" />
+                    </button>
+                    <strong className="quick-sheet-resource-value">
+                      <span>{quickSheetEterAtual}</span>
+                      <small>/ {eterMaximo}</small>
+                    </strong>
+                    <button
+                      type="button"
+                      className="quick-sheet-resource-button"
+                      onClick={() => adjustQuickSheetResource("eter", 1)}
+                      disabled={quickSheetEterAtual >= eterMaximo}
+                      aria-label="Aumentar eter"
+                      title="Aumentar eter"
+                    >
+                      <MdAdd aria-hidden="true" />
+                    </button>
+                  </div>
+                </article>
+              </div>
 
-              <section className="quick-sheet-card">
+              <div className="quick-sheet-combat-panel">
+                {quickSheetCombatEntries.map((combate) => (
+                  <article key={combate.key} className="quick-sheet-combat-card">
+                    <span className="quick-sheet-combat-label">
+                      <MdCallSplit aria-hidden="true" />
+                      {combate.nome}
+                    </span>
+                    <div className="quick-sheet-combat-control">
+                      {combate.dado === "-" ? (
+                        <span className="quick-sheet-combat-empty">
+                          Sem dado
+                        </span>
+                      ) : (
+                        <span
+                          className="quick-sheet-combat-die-card"
+                          aria-label={`${combate.nome} ${combate.dado}`}
+                        >
+                          {renderQuickSheetCombatDieIcon(combate.dado)}
+                          <span>{combate.dado}</span>
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        className="quick-sheet-combat-roll-button"
+                        onClick={() =>
+                          openQuickSheetCombatRoller(
+                            combate.nome,
+                            combate.dado,
+                          )
+                        }
+                        disabled={combate.dado === "-"}
+                        aria-label={`Rolar ${combate.nome}`}
+                        title={`Rolar ${combate.nome}`}
+                      >
+                        <GiRollingDices aria-hidden="true" />
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              <div className="quick-sheet-grid">
+                <section className="quick-sheet-card quick-sheet-summary-card">
+                  <h2>
+                    <span className="quick-sheet-title">Resumo rapido</span>
+                  </h2>
+                  <div className="quick-sheet-priority-bar quick-sheet-priority-bar-inline">
+                    <article className="quick-sheet-priority-item">
+                      <span className="quick-sheet-priority-label">
+                        <MdOutlineShield aria-hidden="true" />
+                        Defesa
+                      </span>
+                      <strong>{defesaAtual}</strong>
+                    </article>
+                    <article className="quick-sheet-priority-item">
+                      <span className="quick-sheet-priority-label">
+                        <FaShieldHalved aria-hidden="true" />
+                        Resistencia
+                      </span>
+                      <strong>{resistenciaTotalEfetiva}</strong>
+                    </article>
+                    <article className="quick-sheet-priority-item">
+                      <span className="quick-sheet-priority-label">
+                        <GiWalkingBoot aria-hidden="true" />
+                        Movimento
+                      </span>
+                      <strong>{movimentoAtual}m</strong>
+                    </article>
+                    <article className="quick-sheet-priority-item">
+                      <span className="quick-sheet-priority-label">
+                        <FaWeightHanging aria-hidden="true" />
+                        Carga
+                      </span>
+                      <strong>{cargaAtual}kg</strong>
+                    </article>
+                    <article className="quick-sheet-priority-item quick-sheet-priority-item-damage">
+                      <span className="quick-sheet-priority-label">
+                        <MdBolt aria-hidden="true" />
+                        Dano
+                      </span>
+                      <div className="quick-sheet-damage-source-list">
+                        {quickSheetDamageSources.map((source) => (
+                          <div
+                            key={source.id}
+                            className="quick-sheet-damage-source"
+                          >
+                            <span className="quick-sheet-damage-source-name">
+                              {source.nome}
+                            </span>
+                            <span className="quick-sheet-damage-source-detail">
+                              {source.detalhe}
+                            </span>
+                            <strong>{source.valor}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                  </div>
+                </section>
+
+                <section className="quick-sheet-card">
                 <h2>
-                  <span className="quick-sheet-title">Atributos e combate</span>
+                  <span className="quick-sheet-title">Atributos</span>
                 </h2>
                 <ul className="quick-sheet-list quick-sheet-attributes-grid">
                   {ATRIBUTOS.map((atributo) => {
@@ -12103,85 +12344,8 @@ function App() {
                       </li>
                     );
                   })}
-
-                  {[
-                    {
-                      key: "ataque-cac",
-                      nome: "Ataque CaC" as const,
-                      dado: selectedCharacter.combate.ataqueCac,
-                    },
-                    {
-                      key: "disparo",
-                      nome: "Disparo" as const,
-                      dado: selectedCharacter.combate.disparo,
-                    },
-                  ].map((combate) => {
-                    const points =
-                      combate.dado === "-"
-                        ? null
-                        : DICE_POLYGON_POINTS[combate.dado];
-
-                    return (
-                      <li
-                        key={combate.key}
-                        className="quick-sheet-attribute-item"
-                      >
-                        <span className="quick-sheet-attribute-line">
-                          <span className="quick-sheet-attribute-name">
-                            {combate.nome}
-                          </span>
-                          <span className="quick-sheet-attribute-actions">
-                            {combate.dado === "-" ? (
-                              <span className="quick-sheet-roll-value">
-                                Sem dado
-                              </span>
-                            ) : (
-                              <span
-                                className="quick-sheet-attribute-die active"
-                                aria-label={`${combate.nome} ${combate.dado}`}
-                              >
-                                <svg
-                                  viewBox="0 0 24 24"
-                                  aria-hidden="true"
-                                  focusable="false"
-                                >
-                                  {points === null ? (
-                                    <rect
-                                      x="3"
-                                      y="3"
-                                      width="18"
-                                      height="18"
-                                      rx="2.5"
-                                    />
-                                  ) : (
-                                    <polygon points={points} />
-                                  )}
-                                </svg>
-                                <span className="quick-sheet-attribute-die-label">
-                                  {combate.dado}
-                                </span>
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              className="quick-sheet-roll-trigger"
-                              onClick={() =>
-                                openQuickSheetCombatRoller(
-                                  combate.nome,
-                                  combate.dado,
-                                )
-                              }
-                              disabled={combate.dado === "-"}
-                            >
-                              Rolar
-                            </button>
-                          </span>
-                        </span>
-                      </li>
-                    );
-                  })}
                 </ul>
-              </section>
+                </section>
 
               <section className="quick-sheet-card quick-sheet-card-wide">
                 <h2>
@@ -12335,6 +12499,7 @@ function App() {
                 </p>
               </section>
             </div>
+            </>
           ) : (
             <div className="quick-sheet-grid">
               <section className="quick-sheet-card quick-sheet-card-wide">
