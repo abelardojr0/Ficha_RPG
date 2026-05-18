@@ -10,6 +10,8 @@ import { createPortal } from "react-dom";
 import { ToastContainer, toast } from "react-toastify";
 import { FaShieldHalved, FaWeightHanging } from "react-icons/fa6";
 import {
+  GiBowArrow,
+  GiCrossedSwords,
   GiRollingDices,
   GiRollingEnergy,
   GiScrollQuill,
@@ -6827,9 +6829,11 @@ function App() {
   );
   const [quickSheetRollModalOpen, setQuickSheetRollModalOpen] = useState(false);
   const [quickSheetRollContext, setQuickSheetRollContext] = useState<{
-    origem: "Atributo" | "Combate";
+    origem: "Atributo" | "Combate" | "Pericia" | "Tecnica";
     nome: string;
     dado: Dice;
+    bonus?: number;
+    bonusLabel?: string;
   } | null>(null);
   const [quickSheetRollD20Value, setQuickSheetRollD20Value] = useState(1);
   const [quickSheetRollAttributeValue, setQuickSheetRollAttributeValue] =
@@ -11709,6 +11713,7 @@ function App() {
       key: number;
     }[],
     d20Value: number,
+    fixedBonus = quickSheetRollContext?.bonus ?? 0,
   ) => {
     const committedValues = trail
       .filter((step) => step.value !== null)
@@ -11723,13 +11728,14 @@ function App() {
     );
     setQuickSheetRollAttributeValue(committedValues.length > 0 ? subtotal : 1);
     setQuickSheetRollExplosions(explosions);
-    setQuickSheetRollTotalValue(d20Value + subtotal);
+    setQuickSheetRollTotalValue(d20Value + subtotal + fixedBonus);
   };
 
   const finalizeQuickSheetInitialRoll = (
     d20Value: number,
     atributoValue: number,
     maxLados: number,
+    fixedBonus = quickSheetRollContext?.bonus ?? 0,
   ) => {
     const initialTrail = [
       {
@@ -11754,7 +11760,7 @@ function App() {
 
     setQuickSheetRollD20Value(d20Value);
     setQuickSheetRollRevealedDice(initialTrail);
-    updateQuickSheetRollSummary(initialTrail, d20Value);
+    updateQuickSheetRollSummary(initialTrail, d20Value, fixedBonus);
     setQuickSheetRollIsAnimating(false);
   };
 
@@ -11845,7 +11851,7 @@ function App() {
     quickSheetRevealTimeoutsRef.current.push(rollTimeout);
   };
 
-  const triggerQuickSheetRoll = (dado: Dice) => {
+  const triggerQuickSheetRoll = (dado: Dice, fixedBonus = 0) => {
     const lados = Number.parseInt(dado.replace("D", ""), 10);
     const maxLados = Number.isFinite(lados) && lados > 0 ? lados : 4;
     const animationDurationMs = 1250;
@@ -11864,13 +11870,18 @@ function App() {
       setQuickSheetRollAttributeValue(previewAtributo);
       setQuickSheetRollAttributeBreakdown([previewAtributo]);
       setQuickSheetRollExplosions(0);
-      setQuickSheetRollTotalValue(previewD20 + previewAtributo);
+      setQuickSheetRollTotalValue(previewD20 + previewAtributo + fixedBonus);
 
       if (Date.now() - startedAt >= animationDurationMs) {
         clearQuickSheetRollInterval();
         const finalD20 = getSecureRandomInt(1, 20);
         const finalAtributo = getSecureRandomInt(1, maxLados);
-        finalizeQuickSheetInitialRoll(finalD20, finalAtributo, maxLados);
+        finalizeQuickSheetInitialRoll(
+          finalD20,
+          finalAtributo,
+          maxLados,
+          fixedBonus,
+        );
       }
     }, tickMs);
   };
@@ -11880,6 +11891,37 @@ function App() {
     setQuickSheetRollContext({ origem: "Atributo", nome: atributo, dado });
     setQuickSheetRollModalOpen(true);
     triggerQuickSheetRoll(dado);
+  };
+
+  const openQuickSheetPericiaRoller = (pericia: {
+    nome: string;
+    dadoAtributo: Dice;
+    graduacao: number;
+  }) => {
+    setQuickSheetRollContext({
+      origem: "Pericia",
+      nome: pericia.nome,
+      dado: pericia.dadoAtributo,
+      bonus: pericia.graduacao,
+      bonusLabel: "Graduacao",
+    });
+    setQuickSheetRollModalOpen(true);
+    triggerQuickSheetRoll(pericia.dadoAtributo, pericia.graduacao);
+  };
+
+  const openQuickSheetTechniqueRoller = (
+    tecnica: DevelopedTechnique,
+    roll: { dado: Dice; bonus: number },
+  ) => {
+    setQuickSheetRollContext({
+      origem: "Tecnica",
+      nome: tecnica.nome,
+      dado: roll.dado,
+      bonus: roll.bonus,
+      bonusLabel: "Acerto",
+    });
+    setQuickSheetRollModalOpen(true);
+    triggerQuickSheetRoll(roll.dado, roll.bonus);
   };
 
   const openQuickSheetCombatRoller = (
@@ -11904,26 +11946,10 @@ function App() {
     setQuickSheetRollContext(null);
   };
 
-  const getQuickSheetDiePoints = (die: Dice | "D20"): string | null => {
-    if (die === "D20") {
-      return "12,2 18.5,4.5 22,10.5 21,17.5 16,22 8,22 3,17.5 2,10.5 5.5,4.5";
-    }
-
-    return DICE_POLYGON_POINTS[die];
-  };
-
   const renderQuickSheetDieChip = (die: Dice | "D20") => {
-    const points = getQuickSheetDiePoints(die);
-
     return (
       <span className="quick-sheet-die-chip" aria-label={die}>
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          {points === null ? (
-            <rect x="3" y="3" width="18" height="18" rx="2.5" />
-          ) : (
-            <polygon points={points} />
-          )}
-        </svg>
+        {renderQuickSheetCombatDieIcon(die)}
         <span>{die}</span>
       </span>
     );
@@ -12027,13 +12053,34 @@ function App() {
       key: "ataque-cac",
       nome: "Ataque CaC" as const,
       dado: selectedCharacter.combate.ataqueCac,
+      icon: GiCrossedSwords,
     },
     {
       key: "disparo",
       nome: "Disparo" as const,
       dado: selectedCharacter.combate.disparo,
+      icon: GiBowArrow,
     },
   ];
+
+  const getQuickSheetTechniqueRoll = (acerto: string) => {
+    if (!acerto || acerto.includes("Sem rolagem") || acerto.includes("Sem dado")) {
+      return null;
+    }
+
+    const dieMatch = acerto.match(/\bD(?:4|6|8|10|12)\b/i);
+    if (!dieMatch) {
+      return null;
+    }
+
+    const dado = dieMatch[0].toUpperCase() as Dice;
+    const bonus = Array.from(acerto.matchAll(/[+-]\d+/g)).reduce(
+      (total, match) => total + Number.parseInt(match[0], 10),
+      0,
+    );
+
+    return { dado, bonus };
+  };
 
   const adjustQuickSheetResource = (
     resource: "vida" | "eter",
@@ -12095,13 +12142,6 @@ function App() {
               >
                 Voltar ao editor
               </button>
-              <button
-                type="button"
-                className="quick-sheet-nav-btn"
-                onClick={() => navigateToScreen("home")}
-              >
-                Inicio
-              </button>
             </div>
           </header>
 
@@ -12118,7 +12158,7 @@ function App() {
               className={fichaGeradaPagina === 2 ? "active" : ""}
               onClick={() => setFichaGeradaPagina(2)}
             >
-              Poderes e tecnicas
+              Poderes | Tecnicas | Fluxos
             </button>
           </nav>
 
@@ -12192,44 +12232,51 @@ function App() {
               </div>
 
               <div className="quick-sheet-combat-panel">
-                {quickSheetCombatEntries.map((combate) => (
-                  <article key={combate.key} className="quick-sheet-combat-card">
-                    <span className="quick-sheet-combat-label">
-                      <MdCallSplit aria-hidden="true" />
-                      {combate.nome}
-                    </span>
-                    <div className="quick-sheet-combat-control">
-                      {combate.dado === "-" ? (
-                        <span className="quick-sheet-combat-empty">
-                          Sem dado
-                        </span>
-                      ) : (
-                        <span
-                          className="quick-sheet-combat-die-card"
-                          aria-label={`${combate.nome} ${combate.dado}`}
+                {quickSheetCombatEntries.map((combate) => {
+                  const CombatIcon = combate.icon;
+
+                  return (
+                    <article
+                      key={combate.key}
+                      className="quick-sheet-combat-card"
+                    >
+                      <span className="quick-sheet-combat-label">
+                        <CombatIcon aria-hidden="true" />
+                        {combate.nome}
+                      </span>
+                      <div className="quick-sheet-combat-control">
+                        {combate.dado === "-" ? (
+                          <span className="quick-sheet-combat-empty">
+                            Sem dado
+                          </span>
+                        ) : (
+                          <span
+                            className="quick-sheet-combat-die-card"
+                            aria-label={`${combate.nome} ${combate.dado}`}
+                          >
+                            {renderQuickSheetCombatDieIcon(combate.dado)}
+                            <span>{combate.dado}</span>
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          className="quick-sheet-combat-roll-button"
+                          onClick={() =>
+                            openQuickSheetCombatRoller(
+                              combate.nome,
+                              combate.dado,
+                            )
+                          }
+                          disabled={combate.dado === "-"}
+                          aria-label={`Rolar ${combate.nome}`}
+                          title={`Rolar ${combate.nome}`}
                         >
-                          {renderQuickSheetCombatDieIcon(combate.dado)}
-                          <span>{combate.dado}</span>
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        className="quick-sheet-combat-roll-button"
-                        onClick={() =>
-                          openQuickSheetCombatRoller(
-                            combate.nome,
-                            combate.dado,
-                          )
-                        }
-                        disabled={combate.dado === "-"}
-                        aria-label={`Rolar ${combate.nome}`}
-                        title={`Rolar ${combate.nome}`}
-                      >
-                        <GiRollingDices aria-hidden="true" />
-                      </button>
-                    </div>
-                  </article>
-                ))}
+                          <GiRollingDices aria-hidden="true" />
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
 
               <div className="quick-sheet-grid">
@@ -12298,7 +12345,6 @@ function App() {
                 <ul className="quick-sheet-list quick-sheet-attributes-grid">
                   {ATRIBUTOS.map((atributo) => {
                     const grade = selectedCharacter.atributos[atributo];
-                    const points = DICE_POLYGON_POINTS[grade];
 
                     return (
                       <li key={atributo} className="quick-sheet-attribute-item">
@@ -12308,36 +12354,20 @@ function App() {
                           </span>
                           <span className="quick-sheet-attribute-actions">
                             <span
-                              className="quick-sheet-attribute-die active"
+                              className="quick-sheet-combat-die-card quick-sheet-attribute-die-card"
                               aria-label={`${atributo} ${grade}`}
                             >
-                              <svg
-                                viewBox="0 0 24 24"
-                                aria-hidden="true"
-                                focusable="false"
-                              >
-                                {points === null ? (
-                                  <rect
-                                    x="3"
-                                    y="3"
-                                    width="18"
-                                    height="18"
-                                    rx="2.5"
-                                  />
-                                ) : (
-                                  <polygon points={points} />
-                                )}
-                              </svg>
-                              <span className="quick-sheet-attribute-die-label">
-                                {grade}
-                              </span>
+                              {renderQuickSheetCombatDieIcon(grade)}
+                              <span>{grade}</span>
                             </span>
                             <button
                               type="button"
-                              className="quick-sheet-roll-trigger"
+                              className="quick-sheet-combat-roll-button quick-sheet-attribute-roll-button"
                               onClick={() => openQuickSheetRoller(atributo)}
+                              aria-label={`Rolar ${atributo}`}
+                              title={`Rolar ${atributo}`}
                             >
-                              Rolar
+                              <GiRollingDices aria-hidden="true" />
                             </button>
                           </span>
                         </span>
@@ -12359,7 +12389,7 @@ function App() {
                     {periciasSelecionadas.length === 0 ? (
                       <p>Sem pericias com graduacao.</p>
                     ) : (
-                      <ul className="quick-sheet-list">
+                      <ul className="quick-sheet-list quick-sheet-skill-list">
                         {periciasSelecionadas.map((pericia) => (
                           <li
                             key={pericia.nome}
@@ -12378,6 +12408,17 @@ function App() {
                               <span className="quick-sheet-roll-value">
                                 {pericia.graduacao}
                               </span>
+                              <button
+                                type="button"
+                                className="quick-sheet-combat-roll-button quick-sheet-skill-roll-button"
+                                onClick={() =>
+                                  openQuickSheetPericiaRoller(pericia)
+                                }
+                                aria-label={`Rolar ${pericia.nome}`}
+                                title={`Rolar ${pericia.nome}`}
+                              >
+                                <GiRollingDices aria-hidden="true" />
+                              </button>
                             </div>
                           </li>
                         ))}
@@ -12516,11 +12557,11 @@ function App() {
                 {tecnicasBasicasSelecionadas.length === 0 ? (
                   <p>Nenhum fluxo natural configurado.</p>
                 ) : (
-                  <ul className="quick-sheet-list">
+                  <ul className="quick-sheet-list quick-sheet-mini-card-grid">
                     {tecnicasBasicasSelecionadas.map((item) => (
                       <li
                         key={item.tecnica.nome}
-                        className="quick-sheet-item-rich"
+                        className="quick-sheet-item-rich quick-sheet-mini-card"
                       >
                         <div className="quick-sheet-item-head">
                           <strong>{item.tecnica.nome}</strong>
@@ -12565,9 +12606,12 @@ function App() {
                 {poderesSelecionadosResumo.length === 0 ? (
                   <p>Nenhum poder no arsenal.</p>
                 ) : (
-                  <ul className="quick-sheet-list">
+                  <ul className="quick-sheet-list quick-sheet-mini-card-grid">
                     {poderesSelecionadosResumo.map((poder) => (
-                      <li key={poder.id} className="quick-sheet-item-rich">
+                      <li
+                        key={poder.id}
+                        className="quick-sheet-item-rich quick-sheet-mini-card"
+                      >
                         <div className="quick-sheet-item-head">
                           <strong>{poder.nome}</strong>
                           <span className="quick-sheet-item-tag">
@@ -12895,6 +12939,28 @@ function App() {
                                 )
                               : "✓",
                         });
+                      const poderesBaseResolvidos = tecnica.poderesBase
+                        .map((poder) => {
+                          const catalogPower = POWER_BY_ID.get(poder.powerId);
+                          const nome =
+                            asString(poder.nome) ||
+                            catalogPower?.nome?.trim() ||
+                            "Poder nao encontrado";
+                          const graduacao = asString(poder.graduacao);
+
+                          return {
+                            id: poder.id || poder.powerId || nome,
+                            nome,
+                            graduacao,
+                          };
+                        })
+                        .filter((poder) => poder.nome !== "");
+                      const conceitoTecnica =
+                        asString(tecnica.conceito) ||
+                        "Sem conceito registrado.";
+                      const tecnicaRoll = getQuickSheetTechniqueRoll(
+                        tecnica.acerto,
+                      );
 
                       return (
                         <article
@@ -12926,14 +12992,23 @@ function App() {
                               PODER BASE
                             </span>
                             <div className="tecnica-poderes-list-compact">
-                              {tecnica.poderesBase.map((poder, idx) => (
-                                <span
-                                  key={idx}
-                                  className="tecnica-poder-tag-compact"
-                                >
-                                  {poder.nome || "Desconhecido"}
+                              {poderesBaseResolvidos.length === 0 ? (
+                                <span className="tecnica-poder-tag-compact">
+                                  Nenhum poder base registrado
                                 </span>
-                              ))}
+                              ) : (
+                                poderesBaseResolvidos.map((poder, idx) => (
+                                  <span
+                                    key={`${poder.id}-${idx}`}
+                                    className="tecnica-poder-tag-compact"
+                                  >
+                                    {poder.nome}
+                                    {poder.graduacao
+                                      ? ` · Grad. ${poder.graduacao}`
+                                      : ""}
+                                  </span>
+                                ))
+                              )}
                             </div>
                           </div>
 
@@ -12974,13 +13049,14 @@ function App() {
                           </div>
 
                           {/* CONCEITO */}
-                          {tecnica.conceito && (
-                            <div className="tecnica-card-text-section">
-                              <p className="tecnica-text-content">
-                                {tecnica.conceito}
-                              </p>
-                            </div>
-                          )}
+                          <div className="tecnica-card-text-section">
+                            <span className="tecnica-text-label">
+                              CONCEITO:
+                            </span>
+                            <p className="tecnica-text-content">
+                              {conceitoTecnica}
+                            </p>
+                          </div>
 
                           {/* EFEITO */}
                           {tecnica.efeito && (
@@ -13036,6 +13112,22 @@ function App() {
                                 <div className="tecnica-combate-row">
                                   <strong>ACERTO:</strong>
                                   <span>{tecnica.acerto}</span>
+                                  {tecnicaRoll ? (
+                                    <button
+                                      type="button"
+                                      className="quick-sheet-combat-roll-button quick-sheet-technique-roll-button"
+                                      onClick={() =>
+                                        openQuickSheetTechniqueRoller(
+                                          tecnica,
+                                          tecnicaRoll,
+                                        )
+                                      }
+                                      aria-label={`Rolar tecnica ${tecnica.nome}`}
+                                      title={`Rolar tecnica ${tecnica.nome}`}
+                                    >
+                                      <GiRollingDices aria-hidden="true" />
+                                    </button>
+                                  ) : null}
                                 </div>
                               )}
                               {tecnica.dano !==
@@ -13082,6 +13174,11 @@ function App() {
                 <p>
                   {quickSheetRollContext.nome}: 1D20 +{" "}
                   {quickSheetRollContext.dado}
+                  {(quickSheetRollContext.bonus ?? 0) !== 0
+                    ? ` ${quickSheetRollContext.bonus! > 0 ? "+" : "-"} ${Math.abs(
+                        quickSheetRollContext.bonus!,
+                      )}`
+                    : ""}
                 </p>
                 <p className="quick-sheet-roll-rule-note">
                   Dado de atributo ou combate e explosivo: se cair no valor
@@ -13097,17 +13194,7 @@ function App() {
                   <div
                     className={`quick-sheet-roll-die-surface${quickSheetRollIsAnimating ? " rolling" : ""}`}
                   >
-                    <svg
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                      focusable="false"
-                    >
-                      {getQuickSheetDiePoints("D20") === null ? (
-                        <rect x="3" y="3" width="18" height="18" rx="2.5" />
-                      ) : (
-                        <polygon points={getQuickSheetDiePoints("D20") ?? ""} />
-                      )}
-                    </svg>
+                    {renderQuickSheetCombatDieIcon("D20")}
                     <span className="quick-sheet-roll-die-number">
                       {quickSheetRollD20Value}
                     </span>
@@ -13121,25 +13208,9 @@ function App() {
                     /* durante animação: mostra um dado girando */
                     <article className="quick-sheet-roll-die-card">
                       <div className="quick-sheet-roll-die-surface rolling">
-                        <svg
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
-                          focusable="false"
-                        >
-                          {getQuickSheetDiePoints(
-                            quickSheetRollContext.dado,
-                          ) === null ? (
-                            <rect x="3" y="3" width="18" height="18" rx="2.5" />
-                          ) : (
-                            <polygon
-                              points={
-                                getQuickSheetDiePoints(
-                                  quickSheetRollContext.dado,
-                                ) ?? ""
-                              }
-                            />
-                          )}
-                        </svg>
+                        {renderQuickSheetCombatDieIcon(
+                          quickSheetRollContext.dado,
+                        )}
                         <span className="quick-sheet-roll-die-number">
                           {quickSheetRollAttributeValue}
                         </span>
@@ -13169,31 +13240,9 @@ function App() {
                           <div
                             className={`quick-sheet-roll-die-surface${isRolling ? " rolling" : ""}`}
                           >
-                            <svg
-                              viewBox="0 0 24 24"
-                              aria-hidden="true"
-                              focusable="false"
-                            >
-                              {getQuickSheetDiePoints(
-                                quickSheetRollContext.dado,
-                              ) === null ? (
-                                <rect
-                                  x="3"
-                                  y="3"
-                                  width="18"
-                                  height="18"
-                                  rx="2.5"
-                                />
-                              ) : (
-                                <polygon
-                                  points={
-                                    getQuickSheetDiePoints(
-                                      quickSheetRollContext.dado,
-                                    ) ?? ""
-                                  }
-                                />
-                              )}
-                            </svg>
+                            {renderQuickSheetCombatDieIcon(
+                              quickSheetRollContext.dado,
+                            )}
                             <span className="quick-sheet-roll-die-number">
                               {item.value ?? "?"}
                             </span>
@@ -13209,13 +13258,15 @@ function App() {
                           {isPending ? (
                             <button
                               type="button"
-                              className="quick-sheet-roll-die-button"
+                              className="quick-sheet-combat-roll-button quick-sheet-roll-die-button"
                               onClick={() =>
                                 rollQuickSheetExplosionStep(item.key)
                               }
                               disabled={isRolling}
+                              aria-label={`Rolar ${quickSheetRollContext.dado} extra`}
+                              title={`Rolar ${quickSheetRollContext.dado} extra`}
                             >
-                              Rolar
+                              <GiRollingDices aria-hidden="true" />
                             </button>
                           ) : null}
                         </article>
@@ -13240,22 +13291,27 @@ function App() {
                 {quickSheetRollIsAnimating
                   ? "Calculando explosao do dado de atributo/combate..."
                   : quickSheetRollHasPendingDice
-                    ? `Explosao pendente: ${quickSheetRollAttributeBreakdown.join(" + ")} | role o dado extra abaixo.`
+                    ? `Explosao pendente: ${quickSheetRollAttributeBreakdown.join(" + ")}${(quickSheetRollContext.bonus ?? 0) !== 0 ? ` ${quickSheetRollContext.bonus! > 0 ? "+" : "-"} ${Math.abs(quickSheetRollContext.bonus!)} (${quickSheetRollContext.bonusLabel ?? "Bonus"})` : ""} | role o dado extra abaixo.`
                     : quickSheetRollExplosions > 0
-                      ? `Explodiu x${quickSheetRollExplosions}: ${quickSheetRollAttributeBreakdown.join(" + ")} = ${quickSheetRollAttributeValue}`
-                      : `Sem explosao: ${quickSheetRollAttributeBreakdown[0] ?? quickSheetRollAttributeValue}`}
+                      ? `Explodiu x${quickSheetRollExplosions}: ${quickSheetRollAttributeBreakdown.join(" + ")}${(quickSheetRollContext.bonus ?? 0) !== 0 ? ` ${quickSheetRollContext.bonus! > 0 ? "+" : "-"} ${Math.abs(quickSheetRollContext.bonus!)} (${quickSheetRollContext.bonusLabel ?? "Bonus"})` : ""} = ${quickSheetRollAttributeValue + (quickSheetRollContext.bonus ?? 0)}`
+                      : `Sem explosao: ${quickSheetRollAttributeBreakdown[0] ?? quickSheetRollAttributeValue}${(quickSheetRollContext.bonus ?? 0) !== 0 ? ` ${quickSheetRollContext.bonus! > 0 ? "+" : "-"} ${Math.abs(quickSheetRollContext.bonus!)} (${quickSheetRollContext.bonusLabel ?? "Bonus"})` : ""}`}
               </p>
 
               <footer className="quick-sheet-roll-actions">
                 <button
                   type="button"
-                  className="quick-sheet-nav-btn"
+                  className="quick-sheet-combat-roll-button quick-sheet-roll-repeat-button"
                   onClick={() =>
-                    triggerQuickSheetRoll(quickSheetRollContext.dado)
+                    triggerQuickSheetRoll(
+                      quickSheetRollContext.dado,
+                      quickSheetRollContext.bonus ?? 0,
+                    )
                   }
                   disabled={quickSheetRollIsAnimating}
+                  aria-label="Rolar novamente"
+                  title="Rolar novamente"
                 >
-                  {quickSheetRollIsAnimating ? "Rolando..." : "Rolar novamente"}
+                  <GiRollingDices aria-hidden="true" />
                 </button>
                 <button
                   type="button"
